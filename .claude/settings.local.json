@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/antoniojimenez/sillages/frontend && npx tsc --noEmit 2>&1 | head -60)",
+      "Bash(npx vite build 2>&1 | tail -20)",
+      "Bash(npm install tailwindcss @tailwindcss/vite 2>&1 | tail -5)",
+      "Bash(npx vite build 2>&1 | tail -10)",
+      "Bash(npx vite build 2>&1 | head -20)",
+      "Bash(rm -rf node_modules package-lock.json && npm install 2>&1 | tail -5)",
+      "Bash(node -e \"require\\('@tailwindcss/oxide'\\)\" 2>&1)",
+      "Bash(npm uninstall tailwindcss @tailwindcss/vite && npm install -D tailwindcss@3 postcss autoprefixer 2>&1 | tail -5)",
+      "Bash(node -e \"require\\('tailwindcss'\\); console.log\\('tailwindcss v3 ok'\\)\" 2>&1)",
+      "Bash(npx vite build 2>&1 | tail -8)"
+    ]
+  }
+}

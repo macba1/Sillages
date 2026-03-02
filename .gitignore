@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env
+*.local
+
+# Vite
+frontend/dist/
+
+# Railway / Vercel
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
