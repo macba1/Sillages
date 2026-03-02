@@ -88,7 +88,7 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     }
 
     case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.CheckoutSession;
+      const session = event.data.object as Stripe.Checkout.Session;
       await handleCheckoutCompleted(session);
       break;
     }
@@ -175,7 +175,7 @@ async function cancelSubscription(sub: Stripe.Subscription): Promise<void> {
   console.log(`[webhooks/stripe] Account ${accountId} subscription canceled`);
 }
 
-async function handleCheckoutCompleted(session: Stripe.CheckoutSession): Promise<void> {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
   // Checkout session completed — subscription will be synced via
   // customer.subscription.created. We update the customer ID here
   // in case it was created server-side and not yet stored.

@@ -10,7 +10,8 @@
       "Bash(node -e \"require\\('@tailwindcss/oxide'\\)\" 2>&1)",
       "Bash(npm uninstall tailwindcss @tailwindcss/vite && npm install -D tailwindcss@3 postcss autoprefixer 2>&1 | tail -5)",
       "Bash(node -e \"require\\('tailwindcss'\\); console.log\\('tailwindcss v3 ok'\\)\" 2>&1)",
-      "Bash(npx vite build 2>&1 | tail -8)"
+      "Bash(npx vite build 2>&1 | tail -8)",
+      "Bash(cd /Users/antoniojimenez/sillages/backend && npx tsc --noEmit 2>&1)"
     ]
   }
 }
