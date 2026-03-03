@@ -13,7 +13,8 @@
       "Bash(npx vite build 2>&1 | tail -8)",
       "Bash(cd /Users/antoniojimenez/sillages/backend && npx tsc --noEmit 2>&1)",
       "Bash(cd /Users/antoniojimenez/sillages/frontend && npx tsc --noEmit 2>&1)",
-      "Bash(npx tsc --noEmit 2>&1)"
+      "Bash(npx tsc --noEmit 2>&1)",
+      "Bash(find /Users/antoniojimenez/sillages/frontend -name \".env*\" | xargs ls -la 2>/dev/null)"
     ]
   }
 }
