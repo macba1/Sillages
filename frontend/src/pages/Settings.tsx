@@ -25,7 +25,7 @@ export default function Settings() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      await api.post('/briefs/trigger-now');
+      await api.post('/api/briefs/trigger-now');
       navigate('/dashboard');
     } catch (err) {
       const message =
