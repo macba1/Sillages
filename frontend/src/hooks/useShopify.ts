@@ -9,14 +9,14 @@ export function useShopifyConnection() {
 
   useEffect(() => {
     api
-      .get<{ connection: ShopifyConnection | null }>('/shopify/connection')
+      .get<{ connection: ShopifyConnection | null }>('/api/shopify/connection')
       .then(({ data }) => setConnection(data.connection))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
   async function disconnect() {
-    await api.delete('/shopify/disconnect');
+    await api.delete('/api/shopify/disconnect');
     setConnection(null);
   }
 
