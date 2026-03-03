@@ -1,5 +1,4 @@
-import { subDays, startOfDay, endOfDay, formatISO, format } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
+import { subDays } from 'date-fns';
 import { supabase } from '../lib/supabase.js';
 import { shopifyClient } from '../lib/shopify.js';
 import type { ShopifyOrder, ShopifyConnection } from '../lib/shopify.js';
@@ -37,17 +36,12 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
 
   const conn = connection as ShopifyConnection;
 
-  // Determine yesterday in the shop's timezone.
-  // conn.shop_timezone may be a Shopify/Rails name ("Eastern Time (US & Canada)")
-  // rather than an IANA name ("America/New_York"). date-fns-tz requires IANA, so
-  // we validate and fall back to UTC rather than crashing with "Invalid time value".
-  const shopTz = resolveTimezone(conn.shop_timezone);
-  const nowInShopTz = toZonedTime(new Date(), shopTz);
-  const yesterdayInShopTz = subDays(nowInShopTz, 1);
-  const dayStart = formatISO(startOfDay(yesterdayInShopTz));
-  const dayEnd = formatISO(endOfDay(yesterdayInShopTz));
-  // Use date-fns format() — safer than .toISOString() on a toZonedTime result
-  const snapshotDate = format(yesterdayInShopTz, 'yyyy-MM-dd');
+  // Use yesterday's UTC date — avoids all timezone conversion issues.
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const snapshotDate = yesterday.toISOString().slice(0, 10);
+  const dayStart = yesterday.toISOString().slice(0, 10) + 'T00:00:00Z';
+  const dayEnd = yesterday.toISOString().slice(0, 10) + 'T23:59:59Z';
 
   console.log(`[shopifySync] Syncing ${conn.shop_domain} for ${snapshotDate}`);
 
@@ -67,7 +61,7 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
     const abandonedRate = computeAbandonedCartRate(orders.length, abandonedCheckouts);
 
     // ── Week-over-week comparison ────────────────────────────────────────────
-    const lastWeekDate = subDays(yesterdayInShopTz, 7).toISOString().slice(0, 10);
+    const lastWeekDate = subDays(yesterday, 7).toISOString().slice(0, 10);
     const { data: lastWeekSnap } = await supabase
       .from('shopify_daily_snapshots')
       .select('total_revenue, total_orders, average_order_value, new_customers')
@@ -379,22 +373,6 @@ function computeWoW(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Validate that `tz` is a timezone string accepted by date-fns-tz (IANA format).
- * Shopify stores the timezone as a Rails ActiveSupport name which is NOT IANA.
- * Falls back to 'UTC' so the rest of the sync continues rather than crashing.
- */
-function resolveTimezone(tz: string | null | undefined): string {
-  if (!tz) return 'UTC';
-  try {
-    toZonedTime(new Date(), tz); // throws if tz is unrecognised
-    return tz;
-  } catch {
-    console.warn(`[shopifySync] Unrecognised timezone "${tz}", falling back to UTC`);
-    return 'UTC';
-  }
-}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
