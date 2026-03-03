@@ -26,7 +26,6 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
     .from('shopify_connections')
     .select('*')
     .eq('account_id', accountId)
-    .eq('sync_status', 'active')
     .single();
 
   if (connError || !connection) {
