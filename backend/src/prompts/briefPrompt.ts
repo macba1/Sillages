@@ -8,6 +8,23 @@ export interface BriefPromptInput {
   briefDate: string; // YYYY-MM-DD, the date being briefed (yesterday)
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Format a WoW pct as "↑12.3% vs last week" or "↓4.1% vs last week". */
+function wowStr(pct: number | null): string {
+  if (pct === null) return 'no prior data';
+  const arrow = pct >= 0 ? '↑' : '↓';
+  return `${arrow}${Math.abs(pct).toFixed(1)}% vs last week`;
+}
+
+/** Format a metric value with its WoW delta inline, e.g. "$4,820 ↑12.3% vs last week". */
+function withWow(value: string, pct: number | null): string {
+  if (pct === null) return value;
+  return `${value} (${wowStr(pct)})`;
+}
+
+// ── Prompts ───────────────────────────────────────────────────────────────────
+
 export function buildSystemPrompt(): string {
   return `You are the private intelligence analyst for a Shopify store owner. You have access to their real store data and deep knowledge of the beauty and personal care e-commerce market.
 
@@ -19,21 +36,33 @@ You produce a daily intelligence brief with exactly 6 sections. Return ONLY vali
 export function buildUserPrompt(input: BriefPromptInput): string {
   const { ownerName, storeName, snapshot, config, briefDate } = input;
 
-  const topProductsText = snapshot.top_products
-    .slice(0, 3)
-    .map(
-      (p, i) =>
-        `  ${i + 1}. ${p.title} — ${p.quantity_sold} units — $${p.revenue.toFixed(2)} revenue`,
-    )
-    .join('\n');
+  // ── Top products ───────────────────────────────────────────────────────────
+  const topProductsText = snapshot.top_products.length > 0
+    ? snapshot.top_products
+        .slice(0, 5)
+        .map(
+          (p, i) =>
+            `  ${i + 1}. ${p.title} — ${p.quantity_sold} units — $${p.revenue.toFixed(2)} revenue`,
+        )
+        .join('\n')
+    : '  No product data available';
 
+  // The #1 product by revenue — used to enforce real product name in activation
+  const topProductName = snapshot.top_products[0]?.title ?? null;
+
+  // ── Formatted metrics with WoW ─────────────────────────────────────────────
   const conversionPct = (snapshot.conversion_rate * 100).toFixed(2);
   const returningPct = (snapshot.returning_customer_rate * 100).toFixed(2);
 
-  const focusNote =
-    config.focus_areas.length > 0
-      ? `The owner's priority focus areas are: ${config.focus_areas.join(', ')}.`
-      : '';
+  const revenueStr = withWow(`$${snapshot.total_revenue.toFixed(2)}`, snapshot.wow_revenue_pct ?? null);
+  const ordersStr  = withWow(`${snapshot.total_orders}`, snapshot.wow_orders_pct ?? null);
+  const aovStr     = withWow(`$${snapshot.average_order_value.toFixed(2)}`, snapshot.wow_aov_pct ?? null);
+  const newCustStr = withWow(`${snapshot.new_customers}`, snapshot.wow_new_customers_pct ?? null);
+
+  // ── Config notes ───────────────────────────────────────────────────────────
+  const focusNote = config.focus_areas.length > 0
+    ? `The owner's priority focus areas are: ${config.focus_areas.join(', ')}.`
+    : '';
 
   const storeContextNote = config.store_context
     ? `Store context: ${config.store_context}`
@@ -54,21 +83,20 @@ export function buildUserPrompt(input: BriefPromptInput): string {
 
 Brief date: ${briefDate} (this covers yesterday's performance)
 
-STORE DATA — YESTERDAY:
-- Total revenue: $${snapshot.total_revenue.toFixed(2)}
+STORE DATA — YESTERDAY (with week-over-week comparison where available):
+- Total revenue: ${revenueStr}
 - Net revenue (after refunds): $${snapshot.net_revenue.toFixed(2)}
-- Orders: ${snapshot.total_orders}
-- Average order value: $${snapshot.average_order_value.toFixed(2)}
+- Orders: ${ordersStr}
+- Average order value: ${aovStr}
 - Sessions: ${snapshot.sessions.toLocaleString()}
 - Conversion rate: ${conversionPct}%
-- New customers: ${snapshot.new_customers}
-- Returning customers: ${snapshot.returning_customers}
-- Returning customer rate: ${returningPct}%
+- New customers: ${newCustStr}
+- Returning customers: ${snapshot.returning_customers} (${returningPct}% of buyers)
 - Refunds: $${snapshot.total_refunds.toFixed(2)}
 - Cancelled orders: ${snapshot.cancelled_orders}
 
-TOP PRODUCTS:
-${topProductsText || '  No product data available'}
+TOP PRODUCTS (real product names — use these exactly in your output, never substitute generic terms):
+${topProductsText}
 
 ${storeContextNote}
 ${competitorNote}
@@ -87,20 +115,20 @@ OUTPUT FORMAT — return exactly this JSON structure:
 
 {
   "section_yesterday": {
-    "revenue": <number>,
-    "orders": <number>,
-    "aov": <number>,
-    "sessions": <number>,
-    "conversion_rate": <number>,
-    "new_customers": <number>,
-    "top_product": "<string — product name only>",
-    "summary": "<ONE sentence. Direct, confident, tells them exactly what kind of day it was. Address ${ownerName} by name. No hedging.>"
+    "revenue": <number — must match the raw revenue figure exactly>,
+    "orders": <number — must match exactly>,
+    "aov": <number — must match exactly>,
+    "sessions": <number — must match exactly>,
+    "conversion_rate": <decimal 0–1 — return the raw decimal, e.g. 0.0235 for 2.35%. Do NOT convert to a percentage.>,
+    "new_customers": <number — must match exactly>,
+    "top_product": "${topProductName ?? '<product name from TOP PRODUCTS list above>'}",
+    "summary": "<ONE sentence. Direct, confident, tells them exactly what kind of day it was. Mention the revenue figure and one standout fact. Address ${ownerName} by name. No hedging.>"
   },
   "section_whats_working": {
     "items": [
       {
         "title": "<short label, 2-4 words>",
-        "metric": "<the specific number or percentage>",
+        "metric": "<value WITH week-over-week change — format: '38 orders ↑12% vs last week' or '$4,820 ↑8% vs last week'. Omit WoW only if no prior data.>",
         "insight": "<1-2 sentences. Why this matters. What it signals. Confident, direct.>"
       }
     ]
@@ -109,7 +137,7 @@ OUTPUT FORMAT — return exactly this JSON structure:
     "items": [
       {
         "title": "<short label, 2-4 words>",
-        "metric": "<the specific number or percentage>",
+        "metric": "<value WITH week-over-week change — same format as above. Omit WoW only if no prior data.>",
         "insight": "<1-2 sentences. What the problem is. What's at stake. No softening.>"
       }
     ]
@@ -125,10 +153,10 @@ OUTPUT FORMAT — return exactly this JSON structure:
     "estimated_upside": "<A specific, credible number or range. E.g. '+$X in monthly revenue' or '+X% conversion'. Base it on the actual data.>"
   },
   "section_activation": {
-    "what": "<One sentence. The single action to take today.>",
-    "why": "<2-3 sentences. The specific reason this action, right now, based on yesterday's data.>",
+    "what": "<One sentence. The single action to take today. MUST name the actual product — use '${topProductName ?? 'the top product by name'}', not 'your product' or 'your top seller'.>",
+    "why": "<2-3 sentences. The specific reason this action, right now, based on yesterday's data. Reference actual numbers.>",
     "how": [
-      "<Step 1 — specific, actionable, completable in under 5 minutes>",
+      "<Step 1 — specific, actionable, completable in under 5 minutes. Use real product names.>",
       "<Step 2>",
       "<Step 3>",
       "<Step 4>",
@@ -141,7 +169,9 @@ OUTPUT FORMAT — return exactly this JSON structure:
 Rules:
 - Address ${ownerName} by name in section_yesterday.summary only
 - Provide exactly 2-3 items in whats_working and whats_not_working
-- All numbers in section_yesterday must match the raw data exactly
+- All numbers in section_yesterday must match the raw data exactly — do not round or approximate. conversion_rate must be the decimal 0–1 value (e.g. 0.0235), not a percentage
 - section_activation how[] must have 4-6 steps, each completable in under 5 minutes
+- Every metric in whats_working and whats_not_working must include the WoW comparison where data is available
+- NEVER use generic product references ("your product", "your top seller", "your best item") — always use the exact product name from the TOP PRODUCTS list
 - Return ONLY the JSON object. Nothing else.`;
 }

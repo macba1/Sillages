@@ -77,10 +77,24 @@ export interface ShopifyDailySnapshot {
   ad_spend: number | null;
   roas: number | null;
   raw_shopify_payload: Record<string, unknown> | null;
+  // Week-over-week % change vs same day last week (null = no prior snapshot)
+  wow_revenue_pct: number | null;
+  wow_orders_pct: number | null;
+  wow_aov_pct: number | null;
+  wow_conversion_pct: number | null;
+  wow_new_customers_pct: number | null;
   created_at: string;
 }
 
 // ── Brief section types ──────────────────────────────────────────────────────
+
+export interface SectionYesterdayWow {
+  revenue_pct: number | null;
+  orders_pct: number | null;
+  aov_pct: number | null;
+  conversion_pct: number | null;
+  new_customers_pct: number | null;
+}
 
 export interface SectionYesterday {
   revenue: number;
@@ -91,6 +105,7 @@ export interface SectionYesterday {
   new_customers: number;
   top_product: string;
   summary: string;
+  wow: SectionYesterdayWow | null;
 }
 
 export interface WorkingItem {

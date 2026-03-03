@@ -12,6 +12,14 @@ export interface Account {
 
 // ── Brief sections ────────────────────────────────────────────────────────────
 
+export interface SectionYesterdayWow {
+  revenue_pct: number | null;
+  orders_pct: number | null;
+  aov_pct: number | null;
+  conversion_pct: number | null;
+  new_customers_pct: number | null;
+}
+
 export interface SectionYesterday {
   revenue: number;
   orders: number;
@@ -21,6 +29,7 @@ export interface SectionYesterday {
   new_customers: number;
   top_product: string;
   summary: string;
+  wow: SectionYesterdayWow | null;
 }
 
 export interface WorkingItem {

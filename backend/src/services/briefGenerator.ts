@@ -111,6 +111,16 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     const sections = JSON.parse(rawContent) as BriefSections;
 
+    // Inject WoW comparison from the snapshot directly — more reliable than
+    // asking GPT to relay numbers it was given.
+    sections.section_yesterday.wow = {
+      revenue_pct: snapshot.wow_revenue_pct ?? null,
+      orders_pct: snapshot.wow_orders_pct ?? null,
+      aov_pct: snapshot.wow_aov_pct ?? null,
+      conversion_pct: snapshot.wow_conversion_pct ?? null,
+      new_customers_pct: snapshot.wow_new_customers_pct ?? null,
+    };
+
     // Validate required keys exist
     const requiredKeys: (keyof BriefSections)[] = [
       'section_yesterday',

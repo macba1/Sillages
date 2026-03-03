@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase.js';
 import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
+import { syncYesterdayForAccount } from '../services/shopifySync.js';
 
 const router = Router();
 
@@ -128,6 +129,12 @@ router.get(
         // GDPR webhooks failing shouldn't block the install
         console.warn(`[shopify] GDPR webhook registration warning for ${shop}`);
       }
+
+      // Fire-and-forget initial sync — gives the user real data immediately
+      // without waiting for the nightly scheduler.
+      syncYesterdayForAccount(accountId).catch((err) =>
+        console.error(`[shopify/callback] Initial sync failed for account ${accountId}:`, (err as Error).message),
+      );
 
       // Redirect back to frontend onboarding complete page
       res.redirect(`${env.FRONTEND_URL}/onboarding?connected=true&shop=${encodeURIComponent(shopInfo.name)}`);

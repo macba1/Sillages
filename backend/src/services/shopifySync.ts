@@ -12,6 +12,14 @@ interface SyncResult {
   snapshotDate: string;
 }
 
+interface WowComparison {
+  revenuePct: number | null;
+  ordersPct: number | null;
+  aovPct: number | null;
+  conversionPct: number | null;
+  newCustomersPct: number | null;
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function syncYesterdayForAccount(accountId: string): Promise<SyncResult> {
@@ -54,6 +62,17 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
     const customerMetrics = computeCustomerMetrics(orders);
     const abandonedRate = computeAbandonedCartRate(orders.length, abandonedCheckouts);
 
+    // ── Week-over-week comparison ────────────────────────────────────────────
+    const lastWeekDate = subDays(yesterdayInShopTz, 7).toISOString().slice(0, 10);
+    const { data: lastWeekSnap } = await supabase
+      .from('shopify_daily_snapshots')
+      .select('total_revenue, total_orders, average_order_value, new_customers')
+      .eq('account_id', accountId)
+      .eq('snapshot_date', lastWeekDate)
+      .maybeSingle();
+
+    const wow = computeWoW(metrics, customerMetrics, lastWeekSnap);
+
     // ── Upsert snapshot ─────────────────────────────────────────────────────
     const { data: snapshot, error: upsertError } = await supabase
       .from('shopify_daily_snapshots')
@@ -74,6 +93,11 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
           top_products: productMetrics.topByRevenue,
           total_refunds: metrics.totalRefunds,
           cancelled_orders: metrics.cancelledOrders,
+          wow_revenue_pct: wow.revenuePct,
+          wow_orders_pct: wow.ordersPct,
+          wow_aov_pct: wow.aovPct,
+          wow_conversion_pct: wow.conversionPct,
+          wow_new_customers_pct: wow.newCustomersPct,
           raw_shopify_payload: {
             order_count: orders.length,
             abandoned_checkouts: abandonedCheckouts,
@@ -311,6 +335,43 @@ function computeAbandonedCartRate(
   const total = completedOrders + abandonedCount;
   if (total === 0) return 0;
   return round4(abandonedCount / total);
+}
+
+// ── Week-over-week comparison ─────────────────────────────────────────────────
+
+type LastWeekSnap = {
+  total_revenue: number;
+  total_orders: number;
+  average_order_value: number;
+  new_customers: number;
+} | null;
+
+function pctChange(current: number, prev: number): number | null {
+  if (prev === 0) return null;
+  return round2(((current - prev) / prev) * 100);
+}
+
+function computeWoW(
+  metrics: OrderMetrics,
+  customerMetrics: CustomerMetrics,
+  lastWeek: LastWeekSnap,
+): WowComparison {
+  if (!lastWeek) {
+    return {
+      revenuePct: null,
+      ordersPct: null,
+      aovPct: null,
+      conversionPct: null,
+      newCustomersPct: null,
+    };
+  }
+  return {
+    revenuePct: pctChange(metrics.totalRevenue, lastWeek.total_revenue),
+    ordersPct: pctChange(metrics.totalOrders, lastWeek.total_orders),
+    aovPct: pctChange(metrics.aov, lastWeek.average_order_value),
+    conversionPct: null, // sessions not yet available — skip conversion WoW
+    newCustomersPct: pctChange(customerMetrics.newCustomers, lastWeek.new_customers),
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
