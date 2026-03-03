@@ -1,18 +1,40 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { AxiosError } from 'axios';
 import { Navbar } from '../components/layout/Navbar';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
 import { useShopifyConnection } from '../hooks/useShopify';
 import { CheckCircle, Store } from 'lucide-react';
+import api from '../lib/api';
 
 export default function Settings() {
   const { connection, loading, disconnect } = useShopifyConnection();
   const navigate = useNavigate();
 
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
   async function handleDisconnect() {
     if (!confirm('Disconnect your Shopify store? This will stop brief generation.')) return;
     await disconnect();
     navigate('/onboarding');
+  }
+
+  async function handleGenerateNow() {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      await api.post('/briefs/trigger-now');
+      navigate('/dashboard');
+    } catch (err) {
+      const message =
+        (err as AxiosError<{ error: string }>)?.response?.data?.error ??
+        'Something went wrong. Please try again.';
+      setGenerateError(message);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -81,12 +103,33 @@ export default function Settings() {
         </section>
 
         {/* Brief Preferences */}
-        <section>
+        <section className="mb-6">
           <h2 className="section-label">Brief Preferences</h2>
           <div className="border border-[#E8DDD6] bg-white px-6 py-5">
             <p className="text-sm text-[#7A6B63]">
               Delivery time, format options, and channel preferences — coming soon.
             </p>
+          </div>
+        </section>
+
+        {/* Manual trigger */}
+        <section>
+          <h2 className="section-label">Testing</h2>
+          <div className="border border-[#E8DDD6] bg-white px-6 py-5">
+            <div className="flex items-center justify-between gap-6">
+              <div>
+                <p className="text-sm font-medium text-[#3A2332]">Generate brief now</p>
+                <p className="text-xs text-[#7A6B63] mt-0.5">
+                  Sync yesterday's store data and generate a brief immediately.
+                </p>
+              </div>
+              <Button size="sm" loading={generating} onClick={handleGenerateNow}>
+                {generating ? 'Generating your brief...' : 'Generate brief now'}
+              </Button>
+            </div>
+            {generateError && (
+              <p className="mt-4 text-xs text-red-600">{generateError}</p>
+            )}
           </div>
         </section>
 
