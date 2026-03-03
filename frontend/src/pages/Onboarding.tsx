@@ -31,7 +31,7 @@ export default function Onboarding() {
 
     setLoading(true);
     try {
-      window.location.href = `${import.meta.env.VITE_API_URL}/shopify/auth?shop=${encodeURIComponent(domain)}`;
+      window.location.href = `${import.meta.env.VITE_API_URL}/api/shopify/auth?shop=${encodeURIComponent(domain)}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setLoading(false);
