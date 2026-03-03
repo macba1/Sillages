@@ -15,10 +15,29 @@ export default function Settings() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
+  const [seeding, setSeeding] = useState(false);
+  const [seedError, setSeedError] = useState<string | null>(null);
+
   async function handleDisconnect() {
     if (!confirm('Disconnect your Shopify store? This will stop brief generation.')) return;
     await disconnect();
     navigate('/onboarding');
+  }
+
+  async function handleSeedAndGenerate() {
+    setSeeding(true);
+    setSeedError(null);
+    try {
+      await api.post('/api/briefs/seed-test-data');
+      navigate('/dashboard');
+    } catch (err) {
+      const message =
+        (err as AxiosError<{ error: string }>)?.response?.data?.error ??
+        'Something went wrong. Please try again.';
+      setSeedError(message);
+    } finally {
+      setSeeding(false);
+    }
   }
 
   async function handleGenerateNow() {
@@ -127,8 +146,22 @@ export default function Settings() {
                 {generating ? 'Generating your brief...' : 'Generate brief now'}
               </Button>
             </div>
+            <div className="flex items-center justify-between gap-6 mt-4 pt-4 border-t border-[#E8DDD6]">
+              <div>
+                <p className="text-sm font-medium text-[#3A2332]">Load test data & generate</p>
+                <p className="text-xs text-[#7A6B63] mt-0.5">
+                  Insert realistic beauty store data and generate a brief without Shopify.
+                </p>
+              </div>
+              <Button size="sm" loading={seeding} onClick={handleSeedAndGenerate}>
+                {seeding ? 'Generating your brief...' : 'Load test data & generate'}
+              </Button>
+            </div>
             {generateError && (
               <p className="mt-4 text-xs text-red-600">{generateError}</p>
+            )}
+            {seedError && (
+              <p className="mt-2 text-xs text-red-600">{seedError}</p>
             )}
           </div>
         </section>
