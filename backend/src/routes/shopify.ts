@@ -9,7 +9,7 @@ import {
   shopifyClient,
 } from '../lib/shopify.js';
 import { supabase } from '../lib/supabase.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
 
@@ -20,30 +20,38 @@ const pendingStates = new Map<string, { accountId: string; expiresAt: number }>(
 
 // ── GET /api/shopify/auth ────────────────────────────────────────────────────
 // Initiates OAuth flow. Requires the user to be authenticated with Sillages.
-router.get(
-  '/auth',
-  requireAuth,
-  (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const shop = req.query.shop as string;
+// Accepts the JWT from the Authorization header (AJAX) or ?token= query param
+// (browser navigation, where custom headers cannot be set).
+router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const headerToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7)
+      : null;
+    const token = headerToken ?? (req.query.token as string | undefined);
 
-      if (!shop || !validateShopDomain(shop)) {
-        throw new AppError(400, 'Invalid or missing shop domain');
-      }
-
-      const state = generateState();
-      pendingStates.set(state, {
-        accountId: req.accountId!,
-        expiresAt: Date.now() + 10 * 60 * 1000, // 10 min
-      });
-
-      const installUrl = buildInstallUrl(shop, state);
-      res.redirect(installUrl);
-    } catch (err) {
-      next(err);
+    if (!token) {
+      throw new AppError(401, 'Missing authorization');
     }
-  },
-);
+
+    const { accountId } = await resolveAuthToken(token);
+
+    const shop = req.query.shop as string;
+    if (!shop || !validateShopDomain(shop)) {
+      throw new AppError(400, 'Invalid or missing shop domain');
+    }
+
+    const state = generateState();
+    pendingStates.set(state, {
+      accountId,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 min
+    });
+
+    const installUrl = buildInstallUrl(shop, state);
+    res.redirect(installUrl);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── GET /api/shopify/callback ────────────────────────────────────────────────
 // Shopify redirects here after the merchant approves the app.

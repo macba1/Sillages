@@ -14,6 +14,32 @@ declare global {
   }
 }
 
+// Shared helper — verifies a raw JWT and returns the resolved accountId/userId.
+// Used by requireAuth middleware and any route that needs to accept a token
+// from a query parameter (e.g. OAuth initiations triggered by browser navigation).
+export async function resolveAuthToken(
+  token: string,
+): Promise<{ userId: string; accountId: string }> {
+  const anonClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data: { user }, error } = await anonClient.auth.getUser(token);
+
+  if (error || !user) {
+    throw new AppError(401, 'Invalid or expired token');
+  }
+
+  const { data: account, error: accountError } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (accountError || !account) {
+    throw new AppError(401, 'Account not found');
+  }
+
+  return { userId: user.id, accountId: account.id };
+}
+
 export async function requireAuth(
   req: Request,
   _res: Response,
@@ -24,30 +50,9 @@ export async function requireAuth(
     if (!authHeader?.startsWith('Bearer ')) {
       throw new AppError(401, 'Missing authorization header');
     }
-
-    const token = authHeader.slice(7);
-
-    // Verify JWT with Supabase (anon key needed for user verification)
-    const anonClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-    const { data: { user }, error } = await anonClient.auth.getUser(token);
-
-    if (error || !user) {
-      throw new AppError(401, 'Invalid or expired token');
-    }
-
-    // Look up the account record
-    const { data: account, error: accountError } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (accountError || !account) {
-      throw new AppError(401, 'Account not found');
-    }
-
-    req.userId = user.id;
-    req.accountId = account.id;
+    const { userId, accountId } = await resolveAuthToken(authHeader.slice(7));
+    req.userId = userId;
+    req.accountId = accountId;
     next();
   } catch (err) {
     next(err);

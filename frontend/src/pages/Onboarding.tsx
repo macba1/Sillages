@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { supabase } from '../lib/supabase';
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -31,7 +32,14 @@ export default function Onboarding() {
 
     setLoading(true);
     try {
-      window.location.href = `${import.meta.env.VITE_API_URL}/api/shopify/auth?shop=${encodeURIComponent(domain)}`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        setError('Session expired. Please sign in again.');
+        setLoading(false);
+        return;
+      }
+      window.location.href = `${import.meta.env.VITE_API_URL}/api/shopify/auth?shop=${encodeURIComponent(domain)}&token=${encodeURIComponent(token)}`;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setLoading(false);
