@@ -170,10 +170,18 @@ router.get(
       }
 
       // Fire-and-forget initial sync — gives the user real data immediately
-      // without waiting for the nightly scheduler.
-      syncYesterdayForAccount(accountId).catch((err) =>
-        console.error(`[shopify/callback] Initial sync failed for account ${accountId}:`, (err as Error).message),
-      );
+      // without waiting for the nightly scheduler. Errors are caught explicitly
+      // so a sync failure never crashes the server or blocks the redirect.
+      void (async () => {
+        try {
+          await syncYesterdayForAccount(accountId);
+        } catch (err) {
+          console.error(
+            `[shopify/callback] Initial sync failed for account ${accountId}:`,
+            (err as Error).message,
+          );
+        }
+      })();
 
       // Redirect back to frontend onboarding complete page
       res.redirect(`${env.FRONTEND_URL}/onboarding?connected=true&shop=${encodeURIComponent(shopInfo.name)}`);

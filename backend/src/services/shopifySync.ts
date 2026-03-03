@@ -1,4 +1,4 @@
-import { subDays, startOfDay, endOfDay, formatISO } from 'date-fns';
+import { subDays, startOfDay, endOfDay, formatISO, format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { shopifyClient } from '../lib/shopify.js';
@@ -37,13 +37,17 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
 
   const conn = connection as ShopifyConnection;
 
-  // Determine yesterday in the shop's timezone
-  const shopTz = conn.shop_timezone ?? 'UTC';
+  // Determine yesterday in the shop's timezone.
+  // conn.shop_timezone may be a Shopify/Rails name ("Eastern Time (US & Canada)")
+  // rather than an IANA name ("America/New_York"). date-fns-tz requires IANA, so
+  // we validate and fall back to UTC rather than crashing with "Invalid time value".
+  const shopTz = resolveTimezone(conn.shop_timezone);
   const nowInShopTz = toZonedTime(new Date(), shopTz);
   const yesterdayInShopTz = subDays(nowInShopTz, 1);
   const dayStart = formatISO(startOfDay(yesterdayInShopTz));
   const dayEnd = formatISO(endOfDay(yesterdayInShopTz));
-  const snapshotDate = yesterdayInShopTz.toISOString().slice(0, 10); // YYYY-MM-DD
+  // Use date-fns format() — safer than .toISOString() on a toZonedTime result
+  const snapshotDate = format(yesterdayInShopTz, 'yyyy-MM-dd');
 
   console.log(`[shopifySync] Syncing ${conn.shop_domain} for ${snapshotDate}`);
 
@@ -375,6 +379,22 @@ function computeWoW(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Validate that `tz` is a timezone string accepted by date-fns-tz (IANA format).
+ * Shopify stores the timezone as a Rails ActiveSupport name which is NOT IANA.
+ * Falls back to 'UTC' so the rest of the sync continues rather than crashing.
+ */
+function resolveTimezone(tz: string | null | undefined): string {
+  if (!tz) return 'UTC';
+  try {
+    toZonedTime(new Date(), tz); // throws if tz is unrecognised
+    return tz;
+  } catch {
+    console.warn(`[shopifySync] Unrecognised timezone "${tz}", falling back to UTC`);
+    return 'UTC';
+  }
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
