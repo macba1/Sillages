@@ -28,7 +28,7 @@ const envSchema = z.object({
   // Shopify OAuth
   SHOPIFY_API_KEY: z.string().min(1),
   SHOPIFY_API_SECRET: z.string().min(1),
-  SHOPIFY_SCOPES: z.string().default('read_orders,read_products,read_analytics,read_customers'),
+  SHOPIFY_SCOPES: z.string().default('read_all_orders,read_products,read_analytics,read_customers'),
   SHOPIFY_APP_URL: z.string().url(),
 });
 
