@@ -101,7 +101,19 @@ create trigger uic_updated_at
   for each row execute function public.set_updated_at();
 
 -- ============================================================
--- 3. SHOPIFY CONNECTIONS
+-- 3. SHOPIFY OAUTH STATES
+-- Temporary nonces for the Shopify OAuth flow.
+-- Replaces the in-memory Map so state survives server restarts.
+-- Accessed only by the backend service role — no RLS needed.
+-- ============================================================
+create table public.shopify_oauth_states (
+  state       text primary key,
+  account_id  uuid not null references public.accounts(id) on delete cascade,
+  expires_at  timestamptz not null
+);
+
+-- ============================================================
+-- 4. SHOPIFY CONNECTIONS
 -- OAuth tokens and shop metadata per account
 -- ============================================================
 create table public.shopify_connections (
@@ -151,7 +163,7 @@ create trigger shopify_connections_updated_at
   for each row execute function public.set_updated_at();
 
 -- ============================================================
--- 4. SHOPIFY DAILY SNAPSHOTS
+-- 5. SHOPIFY DAILY SNAPSHOTS
 -- Raw daily metrics pulled each morning before brief generation
 -- ============================================================
 create table public.shopify_daily_snapshots (
@@ -207,7 +219,7 @@ create index shopify_daily_snapshots_account_date_idx
   on public.shopify_daily_snapshots (account_id, snapshot_date desc);
 
 -- ============================================================
--- 5. INTELLIGENCE BRIEFS
+-- 6. INTELLIGENCE BRIEFS
 -- Generated brief per day — 6 sections stored as JSONB
 -- ============================================================
 create table public.intelligence_briefs (
