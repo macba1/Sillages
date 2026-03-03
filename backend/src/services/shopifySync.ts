@@ -1,4 +1,3 @@
-import { subDays } from 'date-fns';
 import { supabase } from '../lib/supabase.js';
 import { shopifyClient } from '../lib/shopify.js';
 import type { ShopifyOrder, ShopifyConnection } from '../lib/shopify.js';
@@ -36,12 +35,11 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
 
   const conn = connection as ShopifyConnection;
 
-  // Use yesterday's UTC date — avoids all timezone conversion issues.
   const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const snapshotDate = yesterday.toISOString().slice(0, 10);
-  const dayStart = yesterday.toISOString().slice(0, 10) + 'T00:00:00Z';
-  const dayEnd = yesterday.toISOString().slice(0, 10) + 'T23:59:59Z';
+  const dayStart = snapshotDate + 'T00:00:00Z';
+  const dayEnd = snapshotDate + 'T23:59:59Z';
 
   console.log(`[shopifySync] Syncing ${conn.shop_domain} for ${snapshotDate}`);
 
@@ -61,7 +59,9 @@ export async function syncYesterdayForAccount(accountId: string): Promise<SyncRe
     const abandonedRate = computeAbandonedCartRate(orders.length, abandonedCheckouts);
 
     // ── Week-over-week comparison ────────────────────────────────────────────
-    const lastWeekDate = subDays(yesterday, 7).toISOString().slice(0, 10);
+    const lastWeek = new Date(yesterday);
+    lastWeek.setUTCDate(lastWeek.getUTCDate() - 7);
+    const lastWeekDate = lastWeek.toISOString().slice(0, 10);
     const { data: lastWeekSnap } = await supabase
       .from('shopify_daily_snapshots')
       .select('total_revenue, total_orders, average_order_value, new_customers')
