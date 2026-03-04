@@ -14,14 +14,21 @@ export default function Settings() {
   const navigate = useNavigate();
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userEmailReady, setUserEmailReady] = useState(false);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setUserEmail(data.user?.email ?? null);
+      const email = data.user?.email ?? null;
+      setUserEmail(email);
+      setUserEmailReady(true);
+      console.log('[Settings] getUser() resolved — email:', email);
     });
   }, []);
 
   const isTony =
-    userEmail === 'tony@richmondpartner.com' || userEmail === 'tony@bitext.com';
+    userEmailReady &&
+    (userEmail === 'tony@richmondpartner.com' || userEmail === 'tony@bitext.com');
+
+  console.log('[Settings] isTony evaluated —', { userEmail, userEmailReady, isTony });
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
