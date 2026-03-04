@@ -25,6 +25,9 @@ const envSchema = z.object({
   STRIPE_PRICE_ID_GROWTH: z.string().min(1),    // $79/mo
   STRIPE_PRICE_ID_SCALE: z.string().min(1),     // $149/mo
 
+  // Supabase webhook
+  SUPABASE_WEBHOOK_SECRET: z.string().min(1).optional(),
+
   // Shopify OAuth
   SHOPIFY_API_KEY: z.string().min(1),
   SHOPIFY_API_SECRET: z.string().min(1),

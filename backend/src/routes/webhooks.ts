@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import Stripe from 'stripe';
 import { stripe } from '../lib/stripe.js';
 import { supabase } from '../lib/supabase.js';
+import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 
 const router = Router();
@@ -43,6 +44,59 @@ router.post(
   },
 );
 
+// ── POST /api/webhooks/supabase ───────────────────────────────────────────────
+// Supabase database webhook fires when a new row is inserted into public.accounts
+// (triggered by the handle_new_user() PostgreSQL function on auth.users INSERT).
+// Configure in Supabase Dashboard → Database → Webhooks → accounts table → INSERT.
+router.post(
+  '/supabase',
+  async (req: Request, res: Response) => {
+    // Verify optional shared secret
+    if (env.SUPABASE_WEBHOOK_SECRET) {
+      const secret = req.headers['x-webhook-secret'];
+      if (secret !== env.SUPABASE_WEBHOOK_SECRET) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+    }
+
+    let payload: { type: string; table: string; record: Record<string, unknown> };
+    try {
+      const raw = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
+      payload = JSON.parse(raw) as typeof payload;
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    if (payload.type !== 'INSERT' || payload.table !== 'accounts') {
+      res.json({ received: true });
+      return;
+    }
+
+    const email = payload.record.email as string | undefined;
+    const fullName = (payload.record.full_name as string | undefined) ?? 'there';
+    const firstName = fullName.split(' ')[0];
+
+    if (!email) {
+      console.warn('[webhooks/supabase] No email in accounts INSERT payload');
+      res.json({ received: true });
+      return;
+    }
+
+    try {
+      await sendWelcomeEmail(email, firstName);
+      console.log(`[webhooks/supabase] Welcome email sent to ${email}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`[webhooks/supabase] Failed to send welcome email: ${message}`);
+      // Don't return an error — we still want to ack the webhook
+    }
+
+    res.json({ received: true });
+  },
+);
+
 // ── POST /api/webhooks/shopify ────────────────────────────────────────────────
 // Shopify GDPR mandatory webhooks (customers/redact, shop/redact, customers/data_request)
 router.post(
@@ -55,6 +109,87 @@ router.post(
     res.json({ received: true });
   },
 );
+
+// ── Welcome email ─────────────────────────────────────────────────────────────
+
+async function sendWelcomeEmail(to: string, firstName: string): Promise<void> {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to Sillages</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F7F1EC;font-family:Georgia,serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F7F1EC;padding:48px 16px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+
+          <!-- Logo / wordmark -->
+          <tr>
+            <td style="padding-bottom:36px;">
+              <span style="font-size:22px;font-weight:700;letter-spacing:0.08em;color:#3A2332;text-transform:uppercase;">Sillages</span>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="color:#3A2332;font-size:17px;line-height:1.7;">
+              <p style="margin:0 0 20px;">Hi ${firstName},</p>
+
+              <p style="margin:0 0 20px;">
+                Welcome — Sillages turns your Shopify store data into a sharp daily briefing so you always know what's working, what isn't, and where to focus next.
+              </p>
+
+              <p style="margin:0 0 32px;">
+                To get your first brief, connect your store. It takes about a minute, and your first briefing will land in your inbox tomorrow morning.
+              </p>
+
+              <!-- CTA button -->
+              <table cellpadding="0" cellspacing="0" style="margin-bottom:36px;">
+                <tr>
+                  <td align="center" style="background-color:#D8B07A;border-radius:6px;">
+                    <a href="https://sillages.app/settings"
+                       style="display:inline-block;padding:14px 32px;color:#3A2332;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.04em;font-family:Georgia,serif;">
+                      Connect your Shopify store
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 20px;">Looking forward to your first brief.</p>
+
+              <p style="margin:0;">
+                Tony<br />
+                <span style="color:#8B6F7A;font-size:15px;">Founder, Sillages</span>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding-top:48px;border-top:1px solid #E8DDD6;margin-top:48px;">
+              <p style="margin:0;color:#8B6F7A;font-size:13px;font-family:Georgia,serif;">
+                You're receiving this because you signed up at sillages.app.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await resend.emails.send({
+    from: env.RESEND_FROM_EMAIL,
+    to,
+    subject: `Welcome to Sillages, ${firstName}`,
+    html,
+  });
+}
 
 // ── Stripe event handler ──────────────────────────────────────────────────────
 
