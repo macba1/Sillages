@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 import type { AxiosError } from 'axios';
 import { Navbar } from '../components/layout/Navbar';
 import { Button } from '../components/ui/Button';
@@ -11,6 +12,16 @@ import api from '../lib/api';
 export default function Settings() {
   const { connection, loading, disconnect } = useShopifyConnection();
   const navigate = useNavigate();
+
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  const isTony =
+    userEmail === 'tony@richmondpartner.com' || userEmail === 'tony@bitext.com';
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -131,8 +142,8 @@ export default function Settings() {
           </div>
         </section>
 
-        {/* Manual trigger */}
-        <section>
+        {/* Manual trigger — Tony only */}
+        {isTony && <section>
           <h2 className="section-label">Testing</h2>
           <div className="border border-[#E8DDD6] bg-white px-6 py-5">
             <div className="flex items-center justify-between gap-6">
@@ -164,7 +175,7 @@ export default function Settings() {
               <p className="mt-2 text-xs text-red-600">{seedError}</p>
             )}
           </div>
-        </section>
+        </section>}
 
       </main>
     </div>

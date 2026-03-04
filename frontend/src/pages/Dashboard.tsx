@@ -107,13 +107,16 @@ export default function Dashboard() {
 
             {/* Tony's first-day note — shown only when exactly 1 brief exists */}
             {briefs.length === 1 && (
-              <div className="mt-6 border border-[#E8DDD6] bg-[#F7F1EC] px-8 py-7">
-                <p className="text-[#3A2332] text-sm leading-relaxed">
+              <div className="mt-6 border-l-4 border-[#D8B07A] bg-[#1A1A2E] px-8 py-7">
+                <p className="text-[#D8B07A] text-xs font-semibold uppercase tracking-widest mb-3">
+                  Tonight
+                </p>
+                <p className="text-white text-sm leading-relaxed">
                   Your first brief is ready. Tonight I'll pull today's data from your store and
                   have tomorrow's brief waiting for you by 6am. I'll be looking at your orders,
                   what's moving, what's not, and where the opportunity is.
                 </p>
-                <p className="text-[#7A6B63] text-sm mt-4">— Tony</p>
+                <p className="text-white/40 text-sm mt-4">— Tony</p>
               </div>
             )}
           </>
