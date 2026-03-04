@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 import type { ShopifyConnection } from '../types';
 
 export function useShopifyConnection() {
@@ -8,9 +9,15 @@ export function useShopifyConnection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      console.log('[useShopifyConnection] session at fetch time — userId:', data.session?.user?.id ?? 'NO SESSION');
+    });
     api
       .get<{ connection: ShopifyConnection | null }>('/api/shopify/connection')
-      .then(({ data }) => setConnection(data.connection))
+      .then(({ data }) => {
+        console.log('[useShopifyConnection] response:', data.connection);
+        setConnection(data.connection);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
