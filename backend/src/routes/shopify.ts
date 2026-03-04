@@ -186,6 +186,10 @@ router.get(
 // Returns the current Shopify connection status for the authed account.
 router.get(
   '/connection',
+  (req: Request, _res: Response, next: NextFunction) => {
+    console.log(`[shopify/connection] Authorization header: ${req.headers.authorization ?? 'MISSING'}`);
+    next();
+  },
   requireAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
