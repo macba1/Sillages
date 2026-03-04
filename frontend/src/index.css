@@ -68,6 +68,15 @@ body {
   display: block;
 }
 
+/* Agent feed pulse dot */
+@keyframes agent-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.75); }
+}
+.agent-pulse {
+  animation: agent-pulse 1.4s ease-in-out infinite;
+}
+
 /* Line clamp */
 .line-clamp-2 {
   display: -webkit-box;

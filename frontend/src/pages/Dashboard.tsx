@@ -1,10 +1,65 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { BriefCard } from '../components/brief/BriefCard';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
+import type { IntelligenceBrief } from '../types/index';
+
+function AgentFeed({ brief }: { brief: IntelligenceBrief }) {
+  const topProduct = brief.section_yesterday?.top_product ?? 'top product identified';
+
+  return (
+    <div className="mt-6 bg-[#1A1A2E] px-7 py-6 font-mono text-xs">
+
+      {/* Completed items */}
+      <div className="flex flex-col gap-3">
+        {[
+          'Yesterday\'s orders synced',
+          `Top product identified: ${topProduct}`,
+          'Week-over-week analysis complete',
+        ].map((label) => (
+          <div key={label} className="flex items-start gap-3">
+            <span className="text-[#D8B07A] mt-px flex-shrink-0">✓</span>
+            <span className="text-white/70">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-white/10 my-4" />
+
+      {/* In-progress items */}
+      <div className="flex flex-col gap-3">
+        {[
+          'Scanning market signals in your category...',
+          'Building tomorrow\'s activation plan...',
+        ].map((label) => (
+          <div key={label} className="flex items-start gap-3">
+            <span className="flex-shrink-0 mt-1.5">
+              <span className="agent-pulse block w-1.5 h-1.5 rounded-full bg-[#D8B07A]" />
+            </span>
+            <span className="text-white/90">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-white/10 my-4" />
+
+      {/* Scheduled item */}
+      <div className="flex items-start gap-3">
+        <Clock size={12} className="text-white/30 mt-px flex-shrink-0" />
+        <span className="text-white/30">Tomorrow's brief — ready by 6am</span>
+      </div>
+
+      {/* Signature */}
+      <p className="mt-5 text-[#D8B07A] text-[11px] tracking-widest uppercase">— Tony is on it</p>
+    </div>
+  );
+}
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -105,20 +160,8 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Tony's first-day note — shown only when exactly 1 brief exists */}
-            {briefs.length === 1 && (
-              <div className="mt-6 border-l-4 border-[#D8B07A] bg-[#1A1A2E] px-8 py-7">
-                <p className="text-[#D8B07A] text-xs font-semibold uppercase tracking-widest mb-3">
-                  Tonight
-                </p>
-                <p className="text-white text-sm leading-relaxed">
-                  Your first brief is ready. Tonight I'll pull today's data from your store and
-                  have tomorrow's brief waiting for you by 6am. I'll be looking at your orders,
-                  what's moving, what's not, and where the opportunity is.
-                </p>
-                <p className="text-white/40 text-sm mt-4">— Tony</p>
-              </div>
-            )}
+            {/* Agent feed — shown only on the first day (exactly 1 brief) */}
+            {briefs.length === 1 && <AgentFeed brief={briefs[0]} />}
           </>
         )}
       </main>
