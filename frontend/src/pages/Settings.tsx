@@ -16,11 +16,11 @@ export default function Settings() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userEmailReady, setUserEmailReady] = useState(false);
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data.user?.email ?? null;
+    supabase.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email ?? null;
       setUserEmail(email);
       setUserEmailReady(true);
-      console.log('[Settings] getUser() resolved — email:', email);
+      console.log('[Settings] getSession() resolved — email:', email);
     });
   }, []);
 
