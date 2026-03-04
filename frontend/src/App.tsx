@@ -9,6 +9,8 @@ import Dashboard from './pages/Dashboard';
 import BriefDetail from './pages/BriefDetail';
 import Onboarding from './pages/Onboarding';
 import Settings from './pages/Settings';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -59,6 +61,10 @@ export default function App() {
             </RedirectIfAuthed>
           }
         />
+
+        {/* Password reset — public, no redirect if authed */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Auth-required */}
         <Route

@@ -93,9 +93,19 @@ export default function Login() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
+                  Password
+                </label>
+                {mode === 'signin' && (
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors"
+                  >
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
               <input
                 type="password"
                 required
