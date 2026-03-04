@@ -28,7 +28,7 @@ export default function Settings() {
     userEmailReady &&
     (userEmail === 'tony@richmondpartner.com' || userEmail === 'tony@bitext.com');
 
-  console.log('[Settings] isTony evaluated —', { userEmail, userEmailReady, isTony });
+  console.log('[Settings] isTony evaluated —', isTony, '| email:', userEmail);
 
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
