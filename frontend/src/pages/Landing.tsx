@@ -18,35 +18,6 @@ const VALUE_PROPS = [
   },
 ];
 
-const PLANS = [
-  {
-    name: 'Starter',
-    price: '$29',
-    period: '/mo',
-    description: 'One store, one clear morning brief.',
-    features: ['1 Shopify store', 'Daily intelligence brief', 'All 6 brief sections', 'Email delivery'],
-    cta: 'Start free trial',
-    featured: false,
-  },
-  {
-    name: 'Growth',
-    price: '$79',
-    period: '/mo',
-    description: 'For operators running multiple storefronts.',
-    features: ['Up to 3 Shopify stores', 'Daily intelligence brief', 'All 6 brief sections', 'Email delivery', 'Priority generation'],
-    cta: 'Start free trial',
-    featured: true,
-  },
-  {
-    name: 'Pro',
-    price: '$149',
-    period: '/mo',
-    description: 'Full access for agencies and power users.',
-    features: ['Unlimited stores', 'Daily intelligence brief', 'All 6 brief sections', 'Email delivery', 'API access', 'Dedicated support'],
-    cta: 'Contact us',
-    featured: false,
-  },
-];
 
 export default function Landing() {
   return (
@@ -56,9 +27,6 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <span className="text-[#3A2332] font-semibold tracking-tight text-base">sillages</span>
           <div className="flex items-center gap-6">
-            <a href="#pricing" className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors">
-              Pricing
-            </a>
             <Link
               to="/login"
               className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors"
@@ -163,60 +131,27 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Divider */}
-      <div className="max-w-5xl mx-auto px-6">
+      {/* Beta pricing notice */}
+      <div className="max-w-5xl mx-auto px-6 py-20">
         <div className="border-t border-[#E8DDD6]" />
-      </div>
-
-      {/* Pricing */}
-      <section id="pricing" className="max-w-5xl mx-auto px-6 py-20">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-3">Pricing</p>
-        <h2 className="text-[#3A2332] text-3xl font-semibold tracking-tight mb-12">
-          Simple, transparent pricing.
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              className={`border p-8 flex flex-col ${
-                plan.featured
-                  ? 'border-[#D8B07A] bg-white'
-                  : 'border-[#E8DDD6] bg-[#F7F1EC]'
-              }`}
-            >
-              {plan.featured && (
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-4">
-                  Most popular
-                </p>
-              )}
-              <h3 className="text-[#3A2332] font-semibold text-lg tracking-tight mb-1">{plan.name}</h3>
-              <p className="text-[#7A6B63] text-sm mb-6">{plan.description}</p>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-[#3A2332] text-4xl font-semibold tracking-tight">{plan.price}</span>
-                <span className="text-[#7A6B63] text-sm">{plan.period}</span>
-              </div>
-              <ul className="flex flex-col gap-2.5 mb-8 flex-1">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-2.5 text-sm text-[#3A2332]">
-                    <span className="w-1 h-1 bg-[#D8B07A] flex-shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to="/login"
-                className={`text-center text-sm font-medium py-2.5 transition-colors ${
-                  plan.featured
-                    ? 'bg-[#D8B07A] text-[#1A1A2E] hover:bg-[#c9a06a]'
-                    : 'border border-[#E8DDD6] text-[#3A2332] bg-white hover:bg-[#F7F1EC]'
-                }`}
-              >
-                {plan.cta}
-              </Link>
-            </div>
-          ))}
+        <div className="mt-16 border border-[#E8DDD6] bg-white px-10 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-2">Beta</p>
+            <p className="text-[#3A2332] font-semibold text-lg tracking-tight">
+              Sillages is free during beta.
+            </p>
+            <p className="text-[#7A6B63] text-sm mt-1">
+              Pricing starts at $9/month when we launch. No credit card required.
+            </p>
+          </div>
+          <Link
+            to="/login"
+            className="flex-shrink-0 bg-[#D8B07A] text-[#1A1A2E] font-medium px-6 py-3 text-sm hover:bg-[#c9a06a] transition-colors text-center"
+          >
+            Get free access
+          </Link>
         </div>
-      </section>
+      </div>
 
       {/* Footer */}
       <footer className="border-t border-[#E8DDD6]">
