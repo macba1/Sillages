@@ -195,6 +195,8 @@ router.get(
         .eq('account_id', req.accountId!)
         .maybeSingle();
 
+      console.log(`[shopify/connection] accountId=${req.accountId} data=${JSON.stringify(data)} error=${error?.message ?? 'none'}`);
+
       if (error) throw new AppError(500, error.message);
 
       res.json({ connection: data ?? null });
