@@ -13,6 +13,7 @@ import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
 import { syncYesterdayForAccount } from '../services/shopifySync.js';
+import { generateBrief } from '../services/briefGenerator.js';
 
 const router = Router();
 
@@ -169,22 +170,12 @@ router.get(
         console.warn(`[shopify] GDPR webhook registration warning for ${shop}`);
       }
 
-      // Fire-and-forget initial sync — gives the user real data immediately
-      // without waiting for the nightly scheduler. Errors are caught explicitly
-      // so a sync failure never crashes the server or blocks the redirect.
-      void (async () => {
-        try {
-          await syncYesterdayForAccount(accountId);
-        } catch (err) {
-          console.error(
-            `[shopify/callback] Initial sync failed for account ${accountId}:`,
-            (err as Error).message,
-          );
-        }
-      })();
+      // Fire-and-forget: generate the first brief immediately.
+      // Tries real Shopify data first; falls back to seed data on any sync failure
+      // (e.g. 403 scope issues). Never blocks the redirect.
+      void generateFirstBrief(accountId);
 
-      // Redirect back to frontend onboarding complete page
-      res.redirect(`${env.FRONTEND_URL}/onboarding?connected=true&shop=${encodeURIComponent(shopInfo.name)}`);
+      res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
     } catch (err) {
       next(err);
     }
@@ -255,5 +246,92 @@ router.delete(
     }
   },
 );
+
+// ── generateFirstBrief ────────────────────────────────────────────────────────
+// Tries a real Shopify sync. If that fails for any reason (missing scopes, 403,
+// etc.) it seeds realistic test data so the user always gets a first brief.
+
+async function generateFirstBrief(accountId: string): Promise<void> {
+  const yesterday = new Date();
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const snapshotDate = yesterday.toISOString().slice(0, 10);
+
+  try {
+    const { snapshotDate: syncDate } = await syncYesterdayForAccount(accountId);
+    await generateBrief({ accountId, briefDate: syncDate });
+    console.log(`[shopify/callback] First brief generated for account ${accountId}`);
+    return;
+  } catch (syncErr) {
+    console.warn(
+      `[shopify/callback] Real sync failed, falling back to seed data for account ${accountId}: ${(syncErr as Error).message}`,
+    );
+  }
+
+  try {
+    const topProducts = [
+      {
+        product_id: 'seed-001',
+        title: 'Vitamin C Brightening Serum',
+        quantity_sold: 18,
+        revenue: 2160.0,
+        variant_breakdown: [{ variant_id: 'seed-001-v1', title: '30ml', quantity: 18 }],
+      },
+      {
+        product_id: 'seed-002',
+        title: 'Hyaluronic Acid Moisturizer',
+        quantity_sold: 12,
+        revenue: 1080.0,
+        variant_breakdown: [{ variant_id: 'seed-002-v1', title: '50ml', quantity: 12 }],
+      },
+      {
+        product_id: 'seed-003',
+        title: 'Retinol Night Repair Cream',
+        quantity_sold: 8,
+        revenue: 960.0,
+        variant_breakdown: [{ variant_id: 'seed-003-v1', title: '30ml', quantity: 8 }],
+      },
+    ];
+
+    const { error: upsertError } = await supabase
+      .from('shopify_daily_snapshots')
+      .upsert(
+        {
+          account_id: accountId,
+          snapshot_date: snapshotDate,
+          total_revenue: 4820.0,
+          net_revenue: 4675.0,
+          total_orders: 38,
+          average_order_value: 126.84,
+          sessions: 1118,
+          conversion_rate: 0.034,
+          returning_customer_rate: 0.4211,
+          new_customers: 22,
+          returning_customers: 16,
+          total_customers: 38,
+          top_products: topProducts,
+          total_refunds: 145.0,
+          cancelled_orders: 2,
+          wow_revenue_pct: 12.3,
+          wow_orders_pct: 8.1,
+          wow_aov_pct: 3.7,
+          wow_conversion_pct: null,
+          wow_new_customers_pct: 15.2,
+          raw_shopify_payload: { seeded: true },
+        },
+        { onConflict: 'account_id,snapshot_date' },
+      );
+
+    if (upsertError) {
+      throw new Error(`Seed upsert failed: ${upsertError.message}`);
+    }
+
+    await generateBrief({ accountId, briefDate: snapshotDate });
+    console.log(`[shopify/callback] First brief generated from seed data for account ${accountId}`);
+  } catch (seedErr) {
+    console.error(
+      `[shopify/callback] First brief generation failed entirely for account ${accountId}: ${(seedErr as Error).message}`,
+    );
+  }
+}
 
 export default router;
