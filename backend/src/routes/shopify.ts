@@ -137,7 +137,7 @@ router.get(
             sync_status: 'active',
             sync_error: null,
           },
-          { onConflict: 'account_id' },
+          { onConflict: 'shop_domain' },
         );
 
       // 3) Check upsert result
