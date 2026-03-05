@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Settings, LogOut } from 'lucide-react';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
 import { useShopifyConnection } from '../hooks/useShopify';
+import { supabase } from '../lib/supabase';
 import type { IntelligenceBrief } from '../types/index';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -23,7 +24,13 @@ function WowBadge({ pct }: { pct: number | null | undefined }) {
   if (pct == null) return null;
   const up = pct >= 0;
   return (
-    <span className={`text-[10px] font-semibold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+        up
+          ? 'bg-[#E8F5E9] text-emerald-700'
+          : 'bg-[#FFEBEE] text-red-600'
+      }`}
+    >
       {up ? '↑' : '↓'}{Math.abs(pct).toFixed(1)}%
     </span>
   );
@@ -33,7 +40,7 @@ function WowBadge({ pct }: { pct: number | null | undefined }) {
 
 function StatusCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl p-4 mb-3">
+    <div className="bg-white rounded-xl p-5 mb-3 border-t-[3px] border-t-[#D8B07A]">
       <p className="text-[10px] font-bold uppercase tracking-widest text-[#7A6B63] mb-3">{title}</p>
       {children}
     </div>
@@ -84,9 +91,9 @@ function CardYesterday({
       <div className="flex flex-col gap-4">
         {/* Revenue row */}
         <div>
-          <p className="text-[10px] font-medium text-[#7A6B63] mb-0.5">Revenue</p>
+          <p className="text-[10px] font-medium text-[#7A6B63] mb-1">Revenue</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-[24px] font-bold text-[#3A2332] leading-none">
+            <span className="text-[32px] font-bold text-[#3A2332] leading-none">
               {fmt(revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
             </span>
             {wow?.revenue_pct != null && <WowBadge pct={wow.revenue_pct} />}
@@ -94,9 +101,9 @@ function CardYesterday({
         </div>
         {/* Orders row */}
         <div>
-          <p className="text-[10px] font-medium text-[#7A6B63] mb-0.5">Orders</p>
+          <p className="text-[10px] font-medium text-[#7A6B63] mb-1">Orders</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-[24px] font-bold text-[#3A2332] leading-none">{orders}</span>
+            <span className="text-[28px] font-bold text-[#3A2332] leading-none">{orders}</span>
             {wow?.orders_pct != null && <WowBadge pct={wow.orders_pct} />}
           </div>
         </div>
@@ -109,20 +116,20 @@ function CardWhatsNext({ brief }: { brief: IntelligenceBrief | null }) {
   const topProduct = brief?.section_yesterday?.top_product;
   const gap = brief?.section_gap;
 
-  const items: { dot: string; text: string }[] = [];
+  const items: { dot: string; label: string; labelColor: string; text: string }[] = [];
 
   if (topProduct) {
-    items.push({ dot: '#D8B07A', text: `Watching if ${topProduct} keeps selling` });
+    items.push({ dot: '#D8B07A', label: 'Tonight', labelColor: '#D8B07A', text: `Watching if ${topProduct} keeps selling` });
   } else {
-    items.push({ dot: '#D8B07A', text: "Checking today's order trends" });
+    items.push({ dot: '#D8B07A', label: 'Tonight', labelColor: '#D8B07A', text: "Checking today's order trends" });
   }
 
-  items.push({ dot: '#34D399', text: 'Brief ready by 6am tomorrow' });
+  items.push({ dot: '#34D399', label: 'Tomorrow', labelColor: '#34D399', text: 'Brief ready by 6am' });
 
   if (gap) {
-    items.push({ dot: '#B0A8A0', text: gap.gap.replace(/\.$/, '') });
+    items.push({ dot: '#B0A8A0', label: 'This week', labelColor: '#B0A8A0', text: gap.gap.replace(/\.$/, '') });
   } else {
-    items.push({ dot: '#B0A8A0', text: 'Tracking whether more visitors complete their purchase' });
+    items.push({ dot: '#B0A8A0', label: 'This week', labelColor: '#B0A8A0', text: 'Tracking whether more visitors complete their purchase' });
   }
 
   return (
@@ -131,10 +138,18 @@ function CardWhatsNext({ brief }: { brief: IntelligenceBrief | null }) {
         {items.map((item, i) => (
           <div key={i} className="flex items-start gap-2.5">
             <span
-              className="flex-shrink-0 rounded-full mt-[5px]"
+              className="flex-shrink-0 rounded-full mt-[6px]"
               style={{ width: 7, height: 7, backgroundColor: item.dot }}
             />
-            <p className="text-sm text-[#3A2332] leading-relaxed">{item.text}</p>
+            <div>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider mr-1.5"
+                style={{ color: item.labelColor, fontVariant: 'small-caps' }}
+              >
+                {item.label}
+              </span>
+              <span className="text-sm text-[#3A2332] leading-relaxed">{item.text}</span>
+            </div>
           </div>
         ))}
       </div>
@@ -252,14 +267,28 @@ export default function Dashboard() {
     <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row">
 
       {/* ── Left sidebar ── */}
-      <aside className="bg-[#E8DDD4] md:w-[280px] md:flex-shrink-0 flex flex-col px-6 py-8 md:overflow-y-auto md:h-full">
+      <aside className="bg-[#E8DDD4] md:w-[320px] md:flex-shrink-0 flex flex-col px-6 py-8 md:overflow-y-auto md:h-full">
 
-        {/* Brand */}
-        <div className="mb-7">
-          <p className="text-[#D8B07A] font-bold text-[18px] uppercase tracking-wider">
-            Sillages
-          </p>
-          <p className="text-[#7A6B63] text-[13px] mt-0.5">Working for you.</p>
+        {/* Brand + nav */}
+        <div className="flex items-start justify-between mb-7">
+          <div>
+            <p className="text-[#D8B07A] font-bold text-[18px] uppercase tracking-wider">
+              Sillages
+            </p>
+            <p className="text-[#7A6B63] text-[13px] mt-0.5">Working for you.</p>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5">
+            <Link to="/settings" title="Settings" className="text-[#7A6B63] hover:text-[#3A2332] transition-colors">
+              <Settings size={15} />
+            </Link>
+            <button
+              title="Sign out"
+              className="text-[#7A6B63] hover:text-[#3A2332] transition-colors"
+              onClick={() => supabase.auth.signOut()}
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
         </div>
 
         {/* Agent avatar */}
