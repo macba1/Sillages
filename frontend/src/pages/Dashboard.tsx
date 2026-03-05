@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
@@ -31,7 +31,16 @@ function WowBadge({ pct }: { pct: number | null | undefined }) {
 
 // ── Left sidebar components ──────────────────────────────────────────────────
 
-function RightNow({ brief, isGenerating }: { brief: IntelligenceBrief | null; isGenerating: boolean }) {
+function StatusCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-xl p-4 mb-3">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-[#7A6B63] mb-3">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function CardRightNow({ brief, isGenerating }: { brief: IntelligenceBrief | null; isGenerating: boolean }) {
   const issue = brief?.section_whats_not_working?.items[0];
 
   let text: string;
@@ -44,49 +53,92 @@ function RightNow({ brief, isGenerating }: { brief: IntelligenceBrief | null; is
   }
 
   return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-[#7A6B63] mb-3">
-        Right now
-      </p>
-      <div className="flex items-start gap-2">
-        <Loader2 size={12} className="animate-spin text-[#D8B07A] flex-shrink-0 mt-[1px]" />
-        <p className="text-xs text-[#3A2332] leading-relaxed">{text}</p>
+    <StatusCard title="What I'm doing right now">
+      <div className="flex items-start gap-2.5">
+        <Loader2 size={13} className="animate-spin text-[#D8B07A] flex-shrink-0 mt-px" />
+        <p className="text-sm text-[#3A2332] leading-relaxed">{text}</p>
       </div>
-    </div>
+    </StatusCard>
   );
 }
 
-function UpNext({ brief }: { brief: IntelligenceBrief | null }) {
-  const lines: string[] = [];
-
-  if (brief) {
-    const topProduct = brief.section_yesterday?.top_product;
-    const gap = brief.section_gap;
-
-    if (topProduct) {
-      lines.push(`Watching if ${topProduct} keeps selling`);
-    }
-    if (gap) {
-      lines.push(gap.gap.replace(/\.$/, ''));
-    }
+function CardYesterday({
+  revenue,
+  orders,
+  wow,
+}: {
+  revenue: number | null | undefined;
+  orders: number | null | undefined;
+  wow: { revenue_pct: number | null; orders_pct: number | null } | null | undefined;
+}) {
+  if (revenue == null) {
+    return (
+      <StatusCard title="What I found yesterday">
+        <p className="text-xs text-[#7A6B63]">No data yet — brief arrives tomorrow morning.</p>
+      </StatusCard>
+    );
   }
 
-  lines.push('Brief ready by 6am tomorrow');
+  return (
+    <StatusCard title="What I found yesterday">
+      <div className="flex flex-col gap-4">
+        {/* Revenue row */}
+        <div>
+          <p className="text-[10px] font-medium text-[#7A6B63] mb-0.5">Revenue</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[24px] font-bold text-[#3A2332] leading-none">
+              {fmt(revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+            </span>
+            {wow?.revenue_pct != null && <WowBadge pct={wow.revenue_pct} />}
+          </div>
+        </div>
+        {/* Orders row */}
+        <div>
+          <p className="text-[10px] font-medium text-[#7A6B63] mb-0.5">Orders</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[24px] font-bold text-[#3A2332] leading-none">{orders}</span>
+            {wow?.orders_pct != null && <WowBadge pct={wow.orders_pct} />}
+          </div>
+        </div>
+      </div>
+    </StatusCard>
+  );
+}
+
+function CardWhatsNext({ brief }: { brief: IntelligenceBrief | null }) {
+  const topProduct = brief?.section_yesterday?.top_product;
+  const gap = brief?.section_gap;
+
+  const items: { dot: string; text: string }[] = [];
+
+  if (topProduct) {
+    items.push({ dot: '#D8B07A', text: `Watching if ${topProduct} keeps selling` });
+  } else {
+    items.push({ dot: '#D8B07A', text: 'Checking today's order trends' });
+  }
+
+  items.push({ dot: '#34D399', text: 'Brief ready by 6am tomorrow' });
+
+  if (gap) {
+    items.push({ dot: '#B0A8A0', text: gap.gap.replace(/\.$/, '') });
+  } else {
+    items.push({ dot: '#B0A8A0', text: 'Tracking whether more visitors complete their purchase' });
+  }
 
   return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-[#7A6B63] mb-3">
-        Up next
-      </p>
-      <div className="flex flex-col gap-2.5">
-        {lines.slice(0, 3).map((line, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <span className="text-[#D8B07A] text-xs flex-shrink-0 leading-relaxed">·</span>
-            <p className="text-xs text-[#3A2332] leading-relaxed">{line}</p>
+    <StatusCard title="What's coming">
+      <div className="flex flex-col gap-3">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-start gap-2.5">
+            <span
+              className="flex-shrink-0 rounded-full mt-[5px]"
+              style={{ width: 7, height: 7, backgroundColor: item.dot }}
+            />
+            <p className="text-sm text-[#3A2332] leading-relaxed">{item.text}</p>
           </div>
         ))}
       </div>
-    </div>
+    </StatusCard>
   );
 }
 
@@ -192,26 +244,27 @@ export default function Dashboard() {
   const revenue = latest?.section_yesterday?.revenue;
   const orders = latest?.section_yesterday?.orders;
 
-  // Suppress unused variable warning — connection is used for last_synced_at in future
-  void connection;
+  const lastUpdatedLabel = connection?.last_synced_at
+    ? `Last updated ${formatDistanceToNow(parseISO(connection.last_synced_at), { addSuffix: true })}`
+    : null;
 
   return (
     <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col md:flex-row">
 
       {/* ── Left sidebar ── */}
-      <aside className="bg-[#E8DDD4] md:w-[280px] md:flex-shrink-0 flex flex-col p-8 md:overflow-y-auto md:h-full">
+      <aside className="bg-[#E8DDD4] md:w-[280px] md:flex-shrink-0 flex flex-col px-6 py-8 md:overflow-y-auto md:h-full">
 
         {/* Brand */}
-        <div className="mb-8">
+        <div className="mb-7">
           <p className="text-[#D8B07A] font-bold text-[18px] uppercase tracking-wider">
             Sillages
           </p>
           <p className="text-[#7A6B63] text-[13px] mt-0.5">Working for you.</p>
         </div>
 
-        {/* Agent avatar + status */}
-        <div className="mb-8">
-          <div className="w-14 h-14 rounded-full bg-[#D8B07A] flex items-center justify-center mb-3">
+        {/* Agent avatar */}
+        <div className="mb-7 flex flex-col items-start">
+          <div className="w-16 h-16 rounded-full bg-[#D8B07A] ring-2 ring-[#D8B07A] ring-offset-2 ring-offset-[#E8DDD4] flex items-center justify-center mb-3">
             <span className="text-white font-bold text-2xl">S</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -223,45 +276,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Right now */}
-        <div className="mb-8">
-          <RightNow brief={latest} isGenerating={isGenerating} />
-        </div>
-
-        {/* Up next */}
-        <div className="mb-8">
-          <UpNext brief={latest} />
-        </div>
+        {/* Three status cards */}
+        <CardRightNow brief={latest} isGenerating={isGenerating} />
+        <CardYesterday revenue={revenue} orders={orders} wow={wow} />
+        <CardWhatsNext brief={latest} />
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Metric cards */}
-        {revenue !== undefined && revenue !== null && (
-          <div className="flex gap-2 mt-4">
-            <div className="bg-white rounded-xl p-3 flex-1">
-              <p className="text-[#7A6B63] text-[10px] font-medium mb-1">Yesterday</p>
-              <p className="text-[#3A2332] font-semibold text-sm">
-                {fmt(revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-              </p>
-              {wow?.revenue_pct != null && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <WowBadge pct={wow.revenue_pct} />
-                  <span className="text-[#7A6B63] text-[10px]">vs last wk</span>
-                </div>
-              )}
-            </div>
-            <div className="bg-white rounded-xl p-3 flex-1">
-              <p className="text-[#7A6B63] text-[10px] font-medium mb-1">Orders</p>
-              <p className="text-[#3A2332] font-semibold text-sm">{orders}</p>
-              {wow?.orders_pct != null && (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <WowBadge pct={wow.orders_pct} />
-                  <span className="text-[#7A6B63] text-[10px]">vs last wk</span>
-                </div>
-              )}
-            </div>
-          </div>
+        {/* Last updated timestamp */}
+        {lastUpdatedLabel && (
+          <p className="text-[10px] text-[#B0A8A0] mt-4">{lastUpdatedLabel}</p>
         )}
       </aside>
 
