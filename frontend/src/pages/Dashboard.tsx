@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { parseISO, formatDistanceToNow } from 'date-fns';
 import { Navbar } from '../components/layout/Navbar';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
@@ -114,8 +114,6 @@ function NextActions({ brief }: { brief: IntelligenceBrief }) {
   const notWorking  = brief.section_whats_not_working?.items[0];
   const gap         = brief.section_gap;
   const topProduct  = s?.top_product;
-  const cancelled   = s ? (brief as unknown as { cancelled_orders?: number }) : null;
-
   const lines: string[] = [];
 
   if (topProduct) {
