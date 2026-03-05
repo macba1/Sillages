@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { Navbar } from '../components/layout/Navbar';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
+import { useShopifyConnection } from '../hooks/useShopify';
 import type { IntelligenceBrief } from '../types/index';
 
 function getGreeting() {
@@ -18,116 +19,134 @@ function fmt(n: number, opts?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat('en-US', opts).format(n);
 }
 
-// ── Agent status footer ─────────────────────────────────────────────────────
+function N({ children }: { children: React.ReactNode }) {
+  return <span className="text-[#D8B07A] font-semibold">{children}</span>;
+}
 
-function AgentStatus({ brief }: { brief: IntelligenceBrief }) {
-  const topProduct = brief.section_yesterday?.top_product;
-  const notWorking = brief.section_whats_not_working?.items[0];
-  const action     = brief.section_activation?.what;
+// ── Zone 1 — Agent status bar ───────────────────────────────────────────────
+
+function AgentStatusBar({
+  brief,
+  lastSyncedAt,
+}: {
+  brief: IntelligenceBrief | null;
+  lastSyncedAt: string | null;
+}) {
+  const syncLabel = lastSyncedAt
+    ? `Last sync: ${formatDistanceToNow(parseISO(lastSyncedAt), { addSuffix: true })}`
+    : 'Last sync: checking...';
+
+  const topIssue = brief?.section_whats_not_working?.items[0];
+  const focusLine = topIssue
+    ? `I'm watching ${topIssue.title.toLowerCase()} — ${topIssue.metric.toLowerCase()}.`
+    : "I'm watching your store data and getting tomorrow's brief ready.";
 
   return (
-    <div className="mt-10 flex flex-col gap-1.5">
-      <p className="text-xs text-[#7A6B63]">
-        Tonight I'll check whether{' '}
-        {topProduct ? <span className="text-[#3A2332]">{topProduct}</span> : 'your best seller'}{' '}
-        held through today and trace where orders came from.
-      </p>
-      {notWorking && (
-        <p className="text-xs text-[#7A6B63]">
-          I'm keeping an eye on{' '}
-          <span className="text-[#3A2332]">{notWorking.title.toLowerCase()}</span>
-          {' '}— that's the one I'm most focused on fixing right now.
-        </p>
-      )}
-      {action && (
-        <p className="text-xs text-[#7A6B63]">
-          If you haven't yet:{' '}
-          <span className="text-[#3A2332]">{action}</span>
-        </p>
-      )}
-      <p className="text-xs text-[#7A6B63]">Tomorrow's brief ready by 6am.</p>
+    <div className="mb-10 pb-8 border-b border-[#E8DDD6]">
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        </span>
+        <span className="text-xs font-semibold text-[#3A2332]">Sillages is active</span>
+        <span className="text-xs text-[#7A6B63]">·</span>
+        <span className="text-xs text-[#7A6B63]">{syncLabel}</span>
+      </div>
+      <p className="text-sm text-[#7A6B63] leading-relaxed">{focusLine}</p>
     </div>
   );
 }
 
-// ── Latest brief pulse ──────────────────────────────────────────────────────
+// ── Zone 2 — Today's snapshot ───────────────────────────────────────────────
 
-function LatestBrief({ brief }: { brief: IntelligenceBrief }) {
+function TodaySnapshot({
+  brief,
+  firstName,
+}: {
+  brief: IntelligenceBrief;
+  firstName: string | undefined;
+}) {
   const s = brief.section_yesterday;
+  const buyersPer100 = s ? Math.round(s.conversion_rate * 100) : null;
 
   return (
-    <div>
-      {/* Summary — analyst's opening statement */}
+    <div className="mb-10">
+      <h1 className="text-[#3A2332] text-4xl font-semibold tracking-tight leading-tight mb-5">
+        {getGreeting()}{firstName ? `, ${firstName}` : ''}.
+      </h1>
+
       {s?.summary && (
-        <p className="text-[#3A2332] text-lg leading-relaxed mb-8">
+        <p className="text-[#3A2332] text-base leading-relaxed mb-5">
           {s.summary}
         </p>
       )}
 
-      {/* 3 key metrics */}
       {s && (
-        <div className="flex items-start gap-10 mb-8">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-1">Revenue</p>
-            <p className="text-2xl font-semibold text-[#3A2332] tracking-tight tabular-nums">
-              {fmt(s.revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-1">Orders</p>
-            <p className="text-2xl font-semibold text-[#3A2332] tracking-tight tabular-nums">
-              {fmt(s.orders)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-1">Conversion</p>
-            <p className="text-2xl font-semibold text-[#3A2332] tracking-tight tabular-nums">
-              {(s.conversion_rate * 100).toFixed(2)}%
-            </p>
-          </div>
-        </div>
+        <p className="text-[#3A2332] text-sm leading-relaxed mb-8">
+          Yesterday:{' '}
+          <N>{fmt(s.revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}</N>
+          {' '}across{' '}
+          <N>{fmt(s.orders)} orders</N>
+          {buyersPer100 !== null && (
+            <>
+              {' '}—{' '}
+              <N>{buyersPer100} out of every 100</N>
+              {' '}visitors bought something.
+            </>
+          )}
+        </p>
       )}
 
-      {/* Read full brief */}
       <Link
         to={`/briefs/${brief.id}`}
-        className="text-sm font-medium text-[#D8B07A] hover:underline underline-offset-2 transition-colors"
+        className="inline-block bg-[#D8B07A] text-[#1A1A2E] text-sm font-semibold px-5 py-2.5 hover:bg-[#c9a06a] transition-colors"
       >
-        Read full brief →
+        Read this morning's brief →
       </Link>
     </div>
   );
 }
 
-// ── Past briefs list ────────────────────────────────────────────────────────
+// ── Zone 3 — What's happening next ─────────────────────────────────────────
 
-function PastBriefs({ briefs }: { briefs: IntelligenceBrief[] }) {
+function NextActions({ brief }: { brief: IntelligenceBrief }) {
+  const s           = brief.section_yesterday;
+  const notWorking  = brief.section_whats_not_working?.items[0];
+  const gap         = brief.section_gap;
+  const topProduct  = s?.top_product;
+  const cancelled   = s ? (brief as unknown as { cancelled_orders?: number }) : null;
+
+  const lines: string[] = [];
+
+  if (topProduct) {
+    lines.push(`Tonight — checking if ${topProduct} keeps selling or was a one-day spike`);
+  }
+
+  if (notWorking) {
+    lines.push(`Tonight — looking into ${notWorking.title.toLowerCase()} (${notWorking.metric.toLowerCase()})`);
+  } else if (s && s.orders > 0) {
+    lines.push(`Tonight — pulling today's orders and comparing against yesterday`);
+  }
+
+  lines.push(`Tomorrow — your brief will be ready by 6am`);
+
+  if (gap) {
+    lines.push(`This week — ${gap.gap.toLowerCase().replace(/\.$/, '')}`);
+  } else {
+    lines.push(`This week — tracking whether more people complete their purchase`);
+  }
+
   return (
-    <div className="mt-14 pt-10 border-t border-[#D8B07A]/30">
-      <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-6">
-        Past briefs
+    <div className="pt-8 border-t border-[#E8DDD6]">
+      <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-5">
+        What's happening next
       </p>
-      <div className="flex flex-col gap-5">
-        {briefs.map((brief) => (
-          <Link
-            key={brief.id}
-            to={`/briefs/${brief.id}`}
-            className="group flex items-start justify-between gap-4"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="text-[#3A2332] text-sm font-medium">
-                {format(parseISO(brief.brief_date), 'EEEE, MMMM d')}
-              </p>
-              {brief.section_yesterday?.summary && (
-                <p className="text-[#7A6B63] text-xs mt-0.5 line-clamp-1">
-                  {brief.section_yesterday.summary}
-                </p>
-              )}
-            </div>
-            <span className="text-[#D8B07A] text-xs flex-shrink-0 mt-0.5 group-hover:underline underline-offset-2">
-              Read →
-            </span>
-          </Link>
+      <div className="flex flex-col gap-3">
+        {lines.slice(0, 4).map((line, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <span className="text-[#D8B07A] flex-shrink-0 mt-px text-xs">◉</span>
+            <p className="text-sm text-[#3A2332] leading-relaxed">{line}</p>
+          </div>
         ))}
       </div>
     </div>
@@ -139,6 +158,7 @@ function PastBriefs({ briefs }: { briefs: IntelligenceBrief[] }) {
 export default function Dashboard() {
   const { account } = useAccount();
   const { briefs, loading, error, refetch } = useBriefs(account?.id);
+  const { connection } = useShopifyConnection();
   const firstName = account?.full_name?.split(' ')[0];
 
   const [searchParams] = useSearchParams();
@@ -162,22 +182,17 @@ export default function Dashboard() {
 
   const isGenerating = justConnected && !loading && briefs.length === 0;
   const latest = briefs[0] ?? null;
-  const past   = briefs.slice(1);
 
   return (
     <div className="min-h-screen bg-[#F7F1EC]">
       <Navbar />
       <main className="max-w-[680px] mx-auto px-6 pt-24 pb-24">
 
-        {/* Greeting + date */}
-        <div className="mb-10">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-3">
-            {format(new Date(), 'EEEE, MMMM d')}
-          </p>
-          <h1 className="text-[#3A2332] text-4xl font-semibold tracking-tight leading-tight">
-            {getGreeting()}{firstName ? `, ${firstName}` : ''}.
-          </h1>
-        </div>
+        {/* Zone 1 — always visible */}
+        <AgentStatusBar
+          brief={latest}
+          lastSyncedAt={connection?.last_synced_at ?? null}
+        />
 
         {/* Loading */}
         {loading && (
@@ -193,7 +208,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Generating — just connected, waiting */}
+        {/* Generating — just connected, waiting for first brief */}
         {!loading && !error && isGenerating && (
           <div className="flex flex-col items-center gap-4 text-center py-16">
             <Spinner size="lg" />
@@ -204,9 +219,12 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Empty */}
-        {!loading && !error && briefs.length === 0 && !isGenerating && (
+        {/* Empty — no brief yet */}
+        {!loading && !error && !latest && !isGenerating && (
           <div>
+            <h1 className="text-[#3A2332] text-4xl font-semibold tracking-tight leading-tight mb-5">
+              {getGreeting()}{firstName ? `, ${firstName}` : ''}.
+            </h1>
             <p className="text-[#7A6B63] text-sm leading-relaxed mb-4">
               Your first brief will arrive tomorrow morning, once your store data is ready.
             </p>
@@ -220,14 +238,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Latest brief pulse */}
+        {/* Zones 2 + 3 — brief exists */}
         {!loading && latest && (
           <>
-            <LatestBrief brief={latest} />
-
-            <AgentStatus brief={latest} />
-
-            {past.length > 0 && <PastBriefs briefs={past} />}
+            <TodaySnapshot brief={latest} firstName={firstName} />
+            <NextActions brief={latest} />
           </>
         )}
 
