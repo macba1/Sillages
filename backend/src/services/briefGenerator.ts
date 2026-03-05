@@ -1,6 +1,7 @@
 import { openai } from '../lib/openai.js';
 import { supabase } from '../lib/supabase.js';
 import { buildSystemPrompt, buildUserPrompt } from '../prompts/briefPrompt.js';
+import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
   UserIntelligenceConfig,
@@ -162,6 +163,30 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     }
 
     console.log(`[briefGenerator] Brief ready — account ${accountId} date ${briefDate}`);
+
+    // ── 6. Check alerts ───────────────────────────────────────────────────
+    try {
+      // Fetch previous snapshot (same weekday, 7 days prior)
+      const prevDate = new Date(briefDate);
+      prevDate.setUTCDate(prevDate.getUTCDate() - 7);
+      const prevDateStr = prevDate.toISOString().slice(0, 10);
+
+      const { data: prevSnapshot } = await supabase
+        .from('shopify_daily_snapshots')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('snapshot_date', prevDateStr)
+        .single();
+
+      await checkAlerts(
+        accountId,
+        account.email,
+        snapshot,
+        prevSnapshot ?? null,
+      );
+    } catch (alertErr) {
+      console.error(`[briefGenerator] Alert check failed (non-fatal): ${alertErr instanceof Error ? alertErr.message : alertErr}`);
+    }
   } catch (err) {
     // ── Mark failed ───────────────────────────────────────────────────────
     const message = err instanceof Error ? err.message : String(err);

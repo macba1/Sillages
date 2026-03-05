@@ -14,6 +14,7 @@ import shopifyRoutes from './routes/shopify.js';
 import briefsRoutes from './routes/briefs.js';
 import billingRoutes from './routes/billing.js';
 import webhooksRoutes from './routes/webhooks.js';
+import alertsRoutes from './routes/alerts.js';
 
 import { startScheduler } from './services/scheduler.js';
 
@@ -63,6 +64,7 @@ app.use('/api/shopify', shopifyRoutes);
 app.use('/api/briefs', briefsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/alerts', alertsRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((_req, res) => {

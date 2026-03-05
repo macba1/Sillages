@@ -1,12 +1,93 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
+import { supabase } from '../lib/supabase';
 import type { IntelligenceBrief } from '../types/index';
+
+// ── Alert types ───────────────────────────────────────────────────────────────
+
+interface Alert {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  severity: 'warning' | 'positive';
+  created_at: string;
+}
+
+function useAlerts(accountId: string | undefined) {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  const fetchAlerts = useCallback(async () => {
+    if (!accountId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return;
+      const { alerts: data } = await res.json() as { alerts: Alert[] };
+      setAlerts(data ?? []);
+    } catch {
+      // non-fatal
+    }
+  }, [accountId]);
+
+  useEffect(() => { void fetchAlerts(); }, [fetchAlerts]);
+
+  async function dismiss(id: string) {
+    setAlerts(prev => prev.filter(a => a.id !== id));
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await fetch(`${import.meta.env.VITE_API_URL}/api/alerts/${id}/read`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+  }
+
+  return { alerts, dismiss };
+}
+
+function AlertBanner({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
+  const isWarning = alert.severity === 'warning';
+  return (
+    <div
+      style={{
+        borderLeft: `3px solid ${isWarning ? 'var(--gold)' : 'var(--green)'}`,
+        background: isWarning ? 'var(--gold-faint)' : 'var(--green-bg)',
+        borderRadius: 8,
+        padding: '14px 16px',
+        marginBottom: 12,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: isWarning ? 'var(--gold)' : 'var(--green)', marginBottom: 4 }}>
+          {alert.title}
+        </p>
+        <p style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1.6 }}>
+          {alert.message}
+        </p>
+      </div>
+      <button
+        onClick={onDismiss}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--ink-faint)', flexShrink: 0 }}
+        title="Got it"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +204,7 @@ function PastBriefRow({ brief }: { brief: IntelligenceBrief }) {
 export default function Dashboard() {
   const { account } = useAccount();
   const { briefs, loading, error, refetch } = useBriefs(account?.id);
+  const { alerts, dismiss } = useAlerts(account?.id);
   const firstName = account?.full_name?.split(' ')[0] ?? '';
 
   const [searchParams] = useSearchParams();
@@ -214,6 +296,15 @@ export default function Dashboard() {
                 Sillages is active
               </span>
             </div>
+
+            {/* Alert banners */}
+            {alerts.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                {alerts.map(a => (
+                  <AlertBanner key={a.id} alert={a} onDismiss={() => void dismiss(a.id)} />
+                ))}
+              </div>
+            )}
 
             {/* Greeting */}
             <h1
