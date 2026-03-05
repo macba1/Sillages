@@ -1,11 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Settings } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Bell, Settings } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAccount } from '../../hooks/useAccount';
+import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 
 const NAV = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard', activeOn: '/dashboard' },
   { icon: BookOpen,         label: 'Briefs',    to: '/briefs',    activeOn: '/briefs'    },
+  { icon: Bell,             label: 'Alerts',    to: '/alerts',    activeOn: '/alerts'    },
   { icon: Settings,         label: 'Settings',  to: '/settings',  activeOn: '/settings'  },
 ] as const;
 
@@ -14,6 +16,7 @@ export function LeftNav() {
   const { signOut } = useAuth();
   const { account } = useAccount();
   const navigate = useNavigate();
+  const { hasUnread } = useUnreadAlerts(account?.id);
 
   async function handleSignOut() {
     await signOut();
@@ -49,12 +52,14 @@ export function LeftNav() {
         {NAV.map(({ icon: Icon, label, to, activeOn }) => {
           const active =
             pathname === activeOn || pathname.startsWith(activeOn + '/');
+          const showDot = label === 'Alerts' && hasUnread;
           return (
             <Link
               key={label}
               to={to}
               title={label}
               style={{
+                position: 'relative',
                 width: 40,
                 height: 40,
                 display: 'flex',
@@ -67,6 +72,20 @@ export function LeftNav() {
               }}
             >
               <Icon size={18} />
+              {showDot && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 7,
+                    right: 7,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#C9964A',
+                    border: '1.5px solid #2A1F14',
+                  }}
+                />
+              )}
             </Link>
           );
         })}

@@ -5,18 +5,25 @@ import { supabase } from '../lib/supabase.js';
 
 const router = Router();
 
-// GET /api/alerts — return unread alerts for authed account
+// GET /api/alerts          — all alerts for authed account, newest first
+// GET /api/alerts?unread=true — only unread alerts (for nav dot / dashboard)
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const accountId = req.accountId!;
+    const unreadOnly = req.query.unread === 'true';
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('alerts')
       .select('*')
       .eq('account_id', accountId)
-      .is('read_at', null)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(50);
+
+    if (unreadOnly) {
+      query = query.is('read_at', null);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw new AppError(500, error.message);
 

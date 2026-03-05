@@ -29,7 +29,7 @@ function useAlerts(accountId: string | undefined) {
     if (!session) return;
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts?unread=true`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (!res.ok) return;

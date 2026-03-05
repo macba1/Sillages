@@ -12,6 +12,7 @@ import Onboarding from './pages/Onboarding';
 import Settings from './pages/Settings';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Alerts from './pages/Alerts';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -97,6 +98,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Onboarding />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <RequireAuth>
+              <Alerts />
             </RequireAuth>
           }
         />
