@@ -99,7 +99,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         { role: 'system', content: buildSystemPrompt() },
         {
           role: 'user',
-          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate }),
+          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language: 'en' }),
         },
       ],
     });
