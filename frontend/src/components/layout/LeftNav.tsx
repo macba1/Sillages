@@ -5,7 +5,7 @@ import { useAccount } from '../../hooks/useAccount';
 
 const NAV = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard', activeOn: '/dashboard' },
-  { icon: BookOpen,         label: 'Briefs',    to: '/dashboard', activeOn: '/briefs'    },
+  { icon: BookOpen,         label: 'Briefs',    to: '/briefs',    activeOn: '/briefs'    },
   { icon: Settings,         label: 'Settings',  to: '/settings',  activeOn: '/settings'  },
 ] as const;
 

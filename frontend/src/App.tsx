@@ -7,6 +7,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import BriefDetail from './pages/BriefDetail';
+import Briefs from './pages/Briefs';
 import Onboarding from './pages/Onboarding';
 import Settings from './pages/Settings';
 import ForgotPassword from './pages/ForgotPassword';
@@ -72,6 +73,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/briefs"
+          element={
+            <RequireAuth>
+              <Briefs />
             </RequireAuth>
           }
         />
