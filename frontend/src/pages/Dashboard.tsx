@@ -18,6 +18,38 @@ function fmt(n: number, opts?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat('en-US', opts).format(n);
 }
 
+// ── Agent status footer ─────────────────────────────────────────────────────
+
+function AgentStatus({ brief }: { brief: IntelligenceBrief }) {
+  const topProduct = brief.section_yesterday?.top_product;
+  const notWorking = brief.section_whats_not_working?.items[0];
+  const action     = brief.section_activation?.what;
+
+  return (
+    <div className="mt-10 flex flex-col gap-1.5">
+      <p className="text-xs text-[#7A6B63]">
+        Tonight I'll check whether{' '}
+        {topProduct ? <span className="text-[#3A2332]">{topProduct}</span> : 'your best seller'}{' '}
+        held through today and trace where orders came from.
+      </p>
+      {notWorking && (
+        <p className="text-xs text-[#7A6B63]">
+          I'm keeping an eye on{' '}
+          <span className="text-[#3A2332]">{notWorking.title.toLowerCase()}</span>
+          {' '}— that's the one I'm most focused on fixing right now.
+        </p>
+      )}
+      {action && (
+        <p className="text-xs text-[#7A6B63]">
+          If you haven't yet:{' '}
+          <span className="text-[#3A2332]">{action}</span>
+        </p>
+      )}
+      <p className="text-xs text-[#7A6B63]">Tomorrow's brief ready by 6am.</p>
+    </div>
+  );
+}
+
 // ── Latest brief pulse ──────────────────────────────────────────────────────
 
 function LatestBrief({ brief }: { brief: IntelligenceBrief }) {
@@ -193,10 +225,7 @@ export default function Dashboard() {
           <>
             <LatestBrief brief={latest} />
 
-            {/* Agent status footer */}
-            <p className="text-xs text-[#7A6B63] mt-10">
-              Tonight I'll pull today's data. Tomorrow's brief ready by 6am.
-            </p>
+            <AgentStatus brief={latest} />
 
             {past.length > 0 && <PastBriefs briefs={past} />}
           </>
