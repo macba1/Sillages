@@ -114,7 +114,7 @@ function CardWhatsNext({ brief }: { brief: IntelligenceBrief | null }) {
   if (topProduct) {
     items.push({ dot: '#D8B07A', text: `Watching if ${topProduct} keeps selling` });
   } else {
-    items.push({ dot: '#D8B07A', text: 'Checking today's order trends' });
+    items.push({ dot: '#D8B07A', text: "Checking today's order trends" });
   }
 
   items.push({ dot: '#34D399', text: 'Brief ready by 6am tomorrow' });
