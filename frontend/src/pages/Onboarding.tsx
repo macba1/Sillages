@@ -75,20 +75,76 @@ function WelcomeScreen({ firstName, onNext }: { firstName: string; onNext: () =>
   );
 }
 
+function ShopifyAdminMock() {
+  return (
+    <div style={{
+      background: '#1a1310',
+      borderRadius: 10,
+      overflow: 'hidden',
+      border: '1px solid rgba(201,150,74,0.15)',
+      marginTop: 16,
+      fontSize: 12,
+    }}>
+      {/* Mock browser bar */}
+      <div style={{ background: '#111', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'inline-block' }} />
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'inline-block' }} />
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'inline-block' }} />
+        <span style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '3px 8px', marginLeft: 8, color: 'rgba(245,239,232,0.3)', fontSize: 10, letterSpacing: '0.02em' }}>
+          admin.shopify.com
+        </span>
+      </div>
+      {/* Mock Shopify header */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 10, color: 'rgba(245,239,232,0.4)' }}>S</span>
+          </div>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'rgba(245,239,232,0.7)', marginBottom: 2 }}>My Store</p>
+            <p style={{ fontSize: 10, color: '#C9964A', fontWeight: 500, letterSpacing: '0.02em' }}>
+              yourstore.myshopify.com
+              <span style={{ marginLeft: 6, background: 'rgba(201,150,74,0.15)', border: '1px solid rgba(201,150,74,0.3)', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#C9964A' }}>
+                copy this
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+      {/* Mock nav items */}
+      <div style={{ padding: '10px 16px', display: 'flex', gap: 16, opacity: 0.3 }}>
+        {['Home', 'Orders', 'Products', 'Customers'].map(item => (
+          <span key={item} style={{ fontSize: 11, color: 'rgba(245,239,232,0.6)' }}>{item}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ConnectScreen({ onBack }: { onBack: () => void }) {
   const { t } = useLanguage();
   const [shop, setShop] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  function handleShopChange(raw: string) {
+    // Auto-strip https://, http://, and .myshopify.com so user only sees the store name
+    let val = raw.trim().toLowerCase();
+    val = val.replace(/^https?:\/\//, '');
+    val = val.replace(/\.myshopify\.com.*$/, '');
+    setShop(val);
+  }
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    let domain = shop.trim().toLowerCase();
-    if (!domain.endsWith('.myshopify.com')) {
-      domain = `${domain}.myshopify.com`;
-    }
+    const storeName = shop.trim().toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\.myshopify\.com.*$/, '');
+
+    const domain = `${storeName}.myshopify.com`;
 
     setLoading(true);
     try {
@@ -131,11 +187,12 @@ function ConnectScreen({ onBack }: { onBack: () => void }) {
       </p>
 
       <form onSubmit={handleConnect}>
+        {/* Input row */}
         <div
           className="flex items-center overflow-hidden"
           style={{
             border: '1px solid rgba(201,150,74,0.3)',
-            borderRadius: 8, marginBottom: 16,
+            borderRadius: 8,
             background: 'rgba(245,239,232,0.04)',
           }}
         >
@@ -143,8 +200,8 @@ function ConnectScreen({ onBack }: { onBack: () => void }) {
             type="text"
             required
             value={shop}
-            onChange={e => setShop(e.target.value)}
-            placeholder="your-store"
+            onChange={e => handleShopChange(e.target.value)}
+            placeholder={t('onboarding.connect.placeholder')}
             style={{
               flex: 1, padding: '12px 14px',
               background: 'transparent', color: '#F5EFE8',
@@ -155,6 +212,65 @@ function ConnectScreen({ onBack }: { onBack: () => void }) {
           <span style={{ padding: '12px 14px', fontSize: 13, color: 'rgba(245,239,232,0.3)', borderLeft: '1px solid rgba(201,150,74,0.2)', whiteSpace: 'nowrap' }}>
             .myshopify.com
           </span>
+        </div>
+
+        {/* Helper text */}
+        <p style={{ fontSize: 12, color: 'rgba(245,239,232,0.3)', marginTop: 8, marginBottom: 4, lineHeight: 1.5 }}>
+          {t('onboarding.connect.helper')}
+        </p>
+
+        {/* Collapsible help */}
+        <div style={{ marginBottom: 20 }}>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(v => !v)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontSize: 13, color: '#C9964A', fontFamily: "'DM Sans', sans-serif",
+              display: 'flex', alignItems: 'center', gap: 4, marginTop: 4,
+            }}
+          >
+            <span style={{
+              display: 'inline-block', width: 12, height: 12,
+              borderRight: '1.5px solid #C9964A', borderBottom: '1.5px solid #C9964A',
+              transform: helpOpen ? 'rotate(-135deg) translateY(-2px)' : 'rotate(45deg)',
+              transition: 'transform 0.2s ease',
+              marginRight: 2,
+            }} />
+            {t('onboarding.connect.whereToggle')}
+          </button>
+
+          {helpOpen && (
+            <div style={{
+              marginTop: 16,
+              padding: '16px 18px',
+              background: 'rgba(245,239,232,0.04)',
+              border: '1px solid rgba(201,150,74,0.15)',
+              borderRadius: 10,
+            }}>
+              <p style={{ fontSize: 13, color: 'rgba(245,239,232,0.55)', lineHeight: 1.7, marginBottom: 14 }}>
+                {t('onboarding.connect.whereBody')}
+              </p>
+              <ol style={{ paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(['whereStep1', 'whereStep2', 'whereStep3', 'whereStep4'] as const).map((key, i) => (
+                  <li key={key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{
+                      flexShrink: 0, width: 20, height: 20, borderRadius: '50%',
+                      border: '1px solid rgba(201,150,74,0.35)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700, color: '#C9964A', marginTop: 1,
+                    }}>
+                      {i + 1}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'rgba(245,239,232,0.55)', lineHeight: 1.6 }}>
+                      {t(`onboarding.connect.${key}`)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <ShopifyAdminMock />
+            </div>
+          )}
         </div>
 
         {error && (

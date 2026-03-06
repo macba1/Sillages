@@ -150,8 +150,16 @@ export const en = {
   'onboarding.connect.back':   '\u2190 Back',
   'onboarding.connect.title':  'Connect our store',
   'onboarding.connect.desc':   "You\u2019ll be redirected to Shopify to approve read-only access. I never modify your data.",
-  'onboarding.connect.btn':    'Connect store',
-  'onboarding.connect.loading':'Connecting\u2026',
+  'onboarding.connect.btn':            'Connect store',
+  'onboarding.connect.loading':        'Connecting\u2026',
+  'onboarding.connect.placeholder':    'yourstore (not yourstore.com)',
+  'onboarding.connect.helper':         "Just the store name \u2014 we\u2019ll add .myshopify.com automatically if needed",
+  'onboarding.connect.whereToggle':    'Where do I find this?',
+  'onboarding.connect.whereBody':      "Your Shopify store has a private URL that\u2019s different from your public website address. It always ends in .myshopify.com and looks like this: yourstore.myshopify.com",
+  'onboarding.connect.whereStep1':     'Log into your Shopify admin (admin.shopify.com)',
+  'onboarding.connect.whereStep2':     'Click your store name in the top left corner',
+  'onboarding.connect.whereStep3':     'You\u2019ll see your store URL \u2014 it ends in .myshopify.com',
+  'onboarding.connect.whereStep4':     'Copy just the part before .myshopify.com and paste it here',
 };
 
 export type Translations = Record<string, string>;
