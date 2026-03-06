@@ -262,6 +262,14 @@ async function generateFirstBrief(accountId: string): Promise<void> {
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const snapshotDate = yesterday.toISOString().slice(0, 10);
 
+  // Fetch account language so we can confirm it reaches briefGenerator correctly
+  const { data: accountRow } = await supabase
+    .from('accounts')
+    .select('language')
+    .eq('id', accountId)
+    .single();
+  console.log(`[generateFirstBrief] account ${accountId} language=${accountRow?.language ?? 'undefined (column may be missing)'}`);
+
   try {
     const { snapshotDate: syncDate } = await syncYesterdayForAccount(accountId);
     await generateBrief({ accountId, briefDate: syncDate });
