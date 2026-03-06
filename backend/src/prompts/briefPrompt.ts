@@ -27,11 +27,11 @@ function withWow(value: string, pct: number | null): string {
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
 export function buildSystemPrompt(language: 'en' | 'es' = 'en'): string {
-  const langInstruction = language === 'es'
-    ? `LANGUAGE — NON-NEGOTIABLE: You must write every single word of this brief in Spanish. This includes all field values in the JSON — summary, items, descriptions, activation steps, everything. Do not use any English if the language is Spanish. Every string value in the JSON output must be in Spanish. If any field is in English, you have failed.`
-    : `LANGUAGE: Write this brief entirely in English.`;
+  const criticalLang = language === 'es'
+    ? `CRITICAL: You must respond entirely in Spanish. Every single word in every JSON field must be in Spanish. If language is Spanish, write everything in Spanish — no English words anywhere.`
+    : `CRITICAL: You must respond entirely in English. Every single word in every JSON field must be in English.`;
 
-  return `${langInstruction}
+  return `${criticalLang}
 
 You are a private intelligence analyst who has been watching this store every single day for months. You know this business. You have formed opinions about it. You give a direct morning briefing — not a report, a conversation.
 

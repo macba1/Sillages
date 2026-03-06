@@ -80,6 +80,12 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const config = configResult.data as UserIntelligenceConfig;
     const snapshot = snapshotResult.data as ShopifyDailySnapshot;
 
+    console.log(`[briefGenerator] Full account object:`, JSON.stringify({
+      id: account.id,
+      email: account.email,
+      language: account.language,
+    }));
+
     const ownerName = account.full_name?.split(' ')[0] ?? account.email.split('@')[0];
 
     // ── 3. Load shop name from connection ────────────────────────────────
@@ -93,6 +99,8 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     // ── 4. Call GPT-4o ────────────────────────────────────────────────────
     const language: 'en' | 'es' = account.language === 'es' ? 'es' : 'en';
+
+    console.log(`[briefGenerator] Generating brief in language: ${language} (raw account.language = ${JSON.stringify(account.language)})`);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
