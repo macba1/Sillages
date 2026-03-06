@@ -28,8 +28,8 @@ function withWow(value: string, pct: number | null): string {
 
 export function buildSystemPrompt(language: 'en' | 'es' = 'en'): string {
   const criticalLang = language === 'es'
-    ? `CRITICAL: You must respond entirely in Spanish. Every single word in every JSON field must be in Spanish. If language is Spanish, write everything in Spanish — no English words anywhere.`
-    : `CRITICAL: You must respond entirely in English. Every single word in every JSON field must be in English.`;
+    ? `CRITICAL INSTRUCTION: Every word of your response must be in Spanish. This means all JSON field values — summary, items, descriptions, what, why, how steps — must be written in Spanish. No exceptions.`
+    : `CRITICAL INSTRUCTION: Every word of your response must be in English. This means all JSON field values — summary, items, descriptions, what, why, how steps — must be written in English. No exceptions.`;
 
   return `${criticalLang}
 

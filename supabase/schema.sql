@@ -25,6 +25,7 @@ create table public.accounts (
                             )),
   trial_ends_at           timestamptz,
   subscription_ends_at    timestamptz,
+  language       text not null default 'en' check (language in ('en', 'es')),
 
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
