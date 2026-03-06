@@ -318,6 +318,9 @@ export default function Settings() {
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
+  const [runningScheduler, setRunningScheduler] = useState(false);
+  const [schedulerResult, setSchedulerResult] = useState<{ processed: string[]; count: number } | null>(null);
+  const [schedulerError, setSchedulerError] = useState<string | null>(null);
 
   async function handleDisconnect() {
     if (!confirm('Disconnect your Shopify store? This will stop brief generation.')) return;
@@ -343,6 +346,26 @@ export default function Settings() {
       setGenerateError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleRunScheduler() {
+    setRunningScheduler(true);
+    setSchedulerResult(null);
+    setSchedulerError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/run-scheduler`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+      });
+      const body = await res.json() as { ok?: boolean; processed?: string[]; count?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? 'Something went wrong.');
+      setSchedulerResult({ processed: body.processed ?? [], count: body.count ?? 0 });
+    } catch (err) {
+      setSchedulerError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setRunningScheduler(false);
     }
   }
 
@@ -463,15 +486,33 @@ export default function Settings() {
             <SettingRow
               label={t('settings.testing.seedLabel')}
               description={t('settings.testing.seedDesc')}
-              noBorder
             >
               <ActionButton loading={seeding} onClick={handleSeedAndGenerate}>
                 {seeding ? t('settings.testing.loading') : t('settings.testing.seedBtn')}
               </ActionButton>
             </SettingRow>
-            {(generateError || seedError) && (
+            <SettingRow
+              label="Run scheduler now"
+              description="Force-run the nightly brief pipeline for all accounts, ignoring send hour."
+              noBorder
+            >
+              <ActionButton loading={runningScheduler} onClick={handleRunScheduler}>
+                {runningScheduler ? 'Running…' : 'Run scheduler'}
+              </ActionButton>
+            </SettingRow>
+            {schedulerResult && (
+              <div style={{ fontSize: 12, color: 'var(--green)', paddingTop: 8, lineHeight: 1.6 }}>
+                ✓ Ran for {schedulerResult.count} account(s)
+                {schedulerResult.count > 0 && (
+                  <span style={{ color: 'var(--ink-faint)', marginLeft: 6 }}>
+                    — {schedulerResult.processed.join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
+            {(generateError || seedError || schedulerError) && (
               <p style={{ fontSize: 12, color: '#DC2626', paddingTop: 8 }}>
-                {generateError ?? seedError}
+                {generateError ?? seedError ?? schedulerError}
               </p>
             )}
           </SettingsSection>
