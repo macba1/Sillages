@@ -1,4 +1,88 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+
+const AGENT_LINES = [
+  { text: 'I tracked $4,820 across 38 orders yesterday...', color: '#F5EFE8' },
+  { text: 'Your Vitamin C Serum carried the day...', color: '#C9964A' },
+  { text: 'Only 3 out of 100 visitors bought something...', color: '#F5EFE8' },
+  { text: "Here's what I think is happening and what to do today.", color: '#F5EFE8' },
+];
+
+function AgentCard() {
+  const [visibleLines, setVisibleLines] = useState(0);
+  const [looping, setLooping] = useState(false);
+
+  useEffect(() => {
+    if (visibleLines < AGENT_LINES.length) {
+      const delay = visibleLines === 0 ? 600 : 1500;
+      const t = setTimeout(() => setVisibleLines(v => v + 1), delay);
+      return () => clearTimeout(t);
+    } else {
+      // pause then restart loop
+      const t = setTimeout(() => {
+        setLooping(true);
+        setVisibleLines(0);
+        setLooping(false);
+      }, 3500);
+      return () => clearTimeout(t);
+    }
+  }, [visibleLines, looping]);
+
+  return (
+    <div style={{
+      background: '#2A1F14',
+      borderRadius: 16,
+      padding: '28px 32px',
+      maxWidth: 520,
+      margin: '0 auto',
+      boxShadow: '0 32px 64px rgba(42,31,20,0.18)',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: '50%',
+          background: 'rgba(201,150,74,0.15)',
+          border: '1px solid rgba(201,150,74,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <span style={{ color: '#C9964A', fontSize: 15, fontWeight: 700, fontFamily: "'DM Serif Display', serif" }}>S</span>
+        </div>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#F5EFE8', marginBottom: 3 }}>Sillages</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="agent-pulse" style={{
+              display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#2D6A4F',
+            }} />
+            <span style={{ fontSize: 11, color: '#7A6A58', letterSpacing: '0.03em' }}>Writing your brief…</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Lines */}
+      <div style={{ minHeight: 120 }}>
+        {AGENT_LINES.slice(0, visibleLines).map((line, i) => (
+          <p
+            key={i}
+            style={{
+              fontSize: 15, color: line.color, lineHeight: 1.75, marginBottom: 10,
+              animation: 'fadeSlideIn 0.4s ease forwards',
+            }}
+          >
+            {line.text}
+            {i === visibleLines - 1 && visibleLines < AGENT_LINES.length && (
+              <span style={{
+                display: 'inline-block', width: 2, height: 14, background: '#C9964A',
+                marginLeft: 3, verticalAlign: 'middle',
+                animation: 'blink 1s step-end infinite',
+              }} />
+            )}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const VALUE_PROPS = [
   {
@@ -97,38 +181,9 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Brief Preview */}
+      {/* Agent card */}
       <section className="max-w-5xl mx-auto px-6 py-10 pb-20">
-        <div className="border border-[#E8DDD6] bg-white">
-          <div className="border-b border-[#E8DDD6] px-8 py-5 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-1">Intelligence Brief</p>
-              <p className="text-[#3A2332] font-semibold text-lg tracking-tight">Monday, March 2</p>
-            </div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] border border-[#D8B07A]/30 px-2.5 py-1">
-              Ready
-            </span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#E8DDD6]">
-            {[
-              { label: 'Revenue', value: '$4,820' },
-              { label: 'Orders', value: '38' },
-              { label: 'Conversion', value: '3.4%' },
-              { label: 'New customers', value: '22' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white px-6 py-5">
-                <p className="text-xs uppercase tracking-widest text-[#7A6B63] font-medium mb-2">{stat.label}</p>
-                <p className="text-2xl font-semibold text-[#3A2332] tracking-tight">{stat.value}</p>
-              </div>
-            ))}
-          </div>
-          <div className="px-8 py-6 border-t border-[#E8DDD6]">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-3">Today's Activation</p>
-            <p className="text-[#3A2332] font-semibold text-sm">
-              Re-engage the 14 customers who added to cart but didn't purchase in the last 48 hours with a targeted 10% discount.
-            </p>
-          </div>
-        </div>
+        <AgentCard />
       </section>
 
       {/* Beta pricing notice */}
@@ -155,9 +210,16 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-[#E8DDD6]">
-        <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
-          <span className="text-[#3A2332] font-semibold text-sm tracking-tight">sillages</span>
-          <p className="text-xs text-[#7A6B63]">© 2025 Sillages. All rights reserved.</p>
+        <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-[#7A6B63]">© 2026 Sillages. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <Link to="/privacy" className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors">
+              Terms of Service
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

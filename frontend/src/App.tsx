@@ -13,6 +13,8 @@ import Settings from './pages/Settings';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Alerts from './pages/Alerts';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -118,8 +120,10 @@ export default function App() {
           }
         />
 
-        {/* Public landing */}
+        {/* Public landing + legal */}
         <Route path="/" element={<Landing />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
 
         {/* Default */}
         <Route path="*" element={<Navigate to="/" replace />} />
