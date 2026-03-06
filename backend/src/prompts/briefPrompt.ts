@@ -28,8 +28,8 @@ function withWow(value: string, pct: number | null): string {
 
 export function buildSystemPrompt(language: 'en' | 'es' = 'en'): string {
   const langInstruction = language === 'es'
-    ? `LANGUAGE REQUIREMENT — mandatory, no exceptions: Respond entirely in Spanish. Every single word of the brief must be in Spanish — titles, summaries, activation steps, metric labels, everything. Do not mix languages. If you write a single word of English in the JSON output, you have failed this requirement.`
-    : `LANGUAGE REQUIREMENT: Respond entirely in English.`;
+    ? `LANGUAGE — NON-NEGOTIABLE: You must write every single word of this brief in Spanish. This includes all field values in the JSON — summary, items, descriptions, activation steps, everything. Do not use any English if the language is Spanish. Every string value in the JSON output must be in Spanish. If any field is in English, you have failed.`
+    : `LANGUAGE: Write this brief entirely in English.`;
 
   return `${langInstruction}
 
@@ -72,11 +72,7 @@ You produce a daily intelligence brief with exactly 6 sections. Return ONLY vali
 }
 
 export function buildUserPrompt(input: BriefPromptInput): string {
-  const { ownerName, storeName, snapshot, config, briefDate, language = 'en' } = input;
-
-  const languageInstruction = language === 'es'
-    ? `LANGUAGE: Write the entire brief in Spanish. All fields in the JSON must be in Spanish.`
-    : `LANGUAGE: Write the entire brief in English.`;
+  const { ownerName, storeName, snapshot, config, briefDate } = input;
 
   // ── Top products ───────────────────────────────────────────────────────────
   const topProductsText = snapshot.top_products.length > 0
@@ -121,9 +117,7 @@ export function buildUserPrompt(input: BriefPromptInput): string {
         ? 'Be energising. Acknowledge wins loudly. Frame problems as solvable.'
         : 'Be direct and concise. No fluff.';
 
-  return `${languageInstruction}
-
-Generate the daily intelligence brief for ${ownerName}, owner of ${storeName}.
+  return `Generate the daily intelligence brief for ${ownerName}, owner of ${storeName}.
 
 Brief date: ${briefDate} (this covers yesterday's performance)
 

@@ -7,8 +7,6 @@ import { Spinner } from '../components/ui/Spinner';
 import { useShopifyConnection } from '../hooks/useShopify';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
-import type { Lang } from '../contexts/LanguageContext';
-import api from '../lib/api';
 
 // ── Primitives ───────────────────────────────────────────────────────────────
 
@@ -110,16 +108,7 @@ export default function Settings() {
   const { connection, loading: connLoading, disconnect } = useShopifyConnection();
   const { signOut } = useAuth();
   const navigate = useNavigate();
-  const { lang, setLang, t } = useLanguage();
-
-  async function handleLangChange(l: Lang) {
-    setLang(l);
-    try {
-      await api.patch('/api/accounts/language', { language: l });
-    } catch {
-      // non-fatal: UI already updated
-    }
-  }
+  const { t } = useLanguage();
 
   // Email / isTony
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -235,32 +224,8 @@ export default function Settings() {
 
         {/* ── Section 2: Brief preferences ── */}
         <SettingsSection label={t('settings.section.preferences')}>
-          <SettingRow label={t('settings.delivery.label')} description={t('settings.delivery.desc')}>
+          <SettingRow label={t('settings.delivery.label')} description={t('settings.delivery.desc')} noBorder>
             <Badge label={t('settings.badge.comingSoon')} color="var(--ink-faint)" bg="var(--cream-dark)" />
-          </SettingRow>
-          <SettingRow label={t('settings.lang.label')} description={t('settings.lang.desc')} noBorder>
-            <div className="flex items-center gap-1">
-              {(['en', 'es'] as Lang[]).map(l => (
-                <button
-                  key={l}
-                  onClick={() => void handleLangChange(l)}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontFamily: "'DM Sans', sans-serif",
-                    cursor: 'pointer',
-                    border: lang === l ? '1px solid var(--gold)' : '1px solid rgba(201,150,74,0.25)',
-                    background: lang === l ? 'var(--gold)' : 'transparent',
-                    color: lang === l ? '#2A1F14' : 'var(--ink-faint)',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {l.toUpperCase()}
-                </button>
-              ))}
-            </div>
           </SettingRow>
         </SettingsSection>
 

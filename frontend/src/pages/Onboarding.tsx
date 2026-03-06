@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAccount } from '../hooks/useAccount';
+import { useLanguage } from '../contexts/LanguageContext';
+import type { Lang } from '../contexts/LanguageContext';
+import api from '../lib/api';
 
 // ── Step sub-components ───────────────────────────────────────────────────────
 
@@ -187,6 +190,12 @@ export default function Onboarding() {
   const { account } = useAccount();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const { lang, setLang } = useLanguage();
+
+  async function handleLangChange(l: Lang) {
+    setLang(l);
+    try { await api.patch('/api/accounts/language', { language: l }); } catch { /* non-fatal */ }
+  }
 
   // Handle legacy ?connected=true redirects
   if (new URLSearchParams(window.location.search).get('connected') === 'true') {
@@ -205,8 +214,37 @@ export default function Onboarding() {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '48px 24px',
+        position: 'relative',
       }}
     >
+      {/* Language toggle — top right */}
+      <div
+        className="flex items-center gap-1"
+        style={{ position: 'absolute', top: 24, right: 24 }}
+      >
+        {(['en', 'es'] as Lang[]).map(l => (
+          <button
+            key={l}
+            onClick={() => void handleLangChange(l)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 5,
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              border: 'none',
+              background: lang === l ? 'rgba(201,150,74,0.2)' : 'transparent',
+              color: lang === l ? '#C9964A' : 'rgba(245,239,232,0.3)',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
       <div style={{ width: '100%', maxWidth: 520 }}>
         {step === 0 ? (
           <WelcomeScreen firstName={firstName} onNext={() => setStep(1)} />

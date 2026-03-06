@@ -5,6 +5,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAccount } from '../../hooks/useAccount';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useLanguage } from '../../contexts/LanguageContext';
+import type { Lang } from '../../contexts/LanguageContext';
+import api from '../../lib/api';
 
 const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
   { icon: LayoutDashboard, tKey: 'nav.dashboard', to: '/dashboard', activeOn: '/dashboard' },
@@ -19,7 +21,12 @@ export function LeftNav() {
   const { account } = useAccount();
   const navigate = useNavigate();
   const { hasUnread } = useUnreadAlerts(account?.id);
-  const { t } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
+
+  async function handleLangChange(l: Lang) {
+    setLang(l);
+    try { await api.patch('/api/accounts/language', { language: l }); } catch { /* non-fatal */ }
+  }
 
   async function handleSignOut() {
     await signOut();
@@ -93,6 +100,32 @@ export function LeftNav() {
           );
         })}
       </nav>
+
+      {/* Language toggle */}
+      <div className="flex flex-col items-center gap-1" style={{ marginBottom: 12 }}>
+        {(['en', 'es'] as Lang[]).map(l => (
+          <button
+            key={l}
+            onClick={() => void handleLangChange(l)}
+            style={{
+              width: 32,
+              height: 20,
+              borderRadius: 4,
+              fontSize: 9,
+              fontWeight: 700,
+              fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              border: 'none',
+              background: lang === l ? 'rgba(201,150,74,0.2)' : 'transparent',
+              color: lang === l ? '#C9964A' : '#A89880',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       {/* User avatar — click to sign out */}
       <button
