@@ -16,6 +16,7 @@ import billingRoutes from './routes/billing.js';
 import webhooksRoutes from './routes/webhooks.js';
 import alertsRoutes from './routes/alerts.js';
 import accountsRoutes from './routes/accounts.js';
+import adminRoutes from './routes/admin.js';
 
 import { startScheduler } from './services/scheduler.js';
 
@@ -67,6 +68,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/accounts', accountsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((_req, res) => {

@@ -7,9 +7,13 @@ import { sendBriefEmail } from './emailSender.js';
 
 // Runs every hour at :05 — checks which accounts are due for their brief
 // based on their configured timezone and send_hour
+export async function runSchedulerForced(): Promise<string[]> {
+  return runHourlyCheck(true);
+}
+
 export function startScheduler(): void {
   cron.schedule('5 * * * *', () => {
-    runHourlyCheck().catch((err) => {
+    runHourlyCheck(false).catch((err) => {
       console.error('[scheduler] Unhandled error in hourly check:', err);
     });
   });
@@ -17,9 +21,9 @@ export function startScheduler(): void {
   console.log('[scheduler] Started — checking every hour at :05 for due briefs');
 }
 
-async function runHourlyCheck(): Promise<void> {
+async function runHourlyCheck(force: boolean): Promise<string[]> {
   const now = new Date();
-  console.log(`[scheduler] Hourly check at ${now.toISOString()}`);
+  console.log(`[scheduler] ${force ? 'FORCED run' : 'Hourly check'} at ${now.toISOString()}`);
 
   // Step 1: get all eligible accounts — active, trialing, beta, or null (beta fallback)
   const { data: accounts, error: accountsError } = await supabase
@@ -29,12 +33,12 @@ async function runHourlyCheck(): Promise<void> {
 
   if (accountsError) {
     console.error('[scheduler] Failed to load accounts:', accountsError.message);
-    return;
+    return [];
   }
 
   if (!accounts || accounts.length === 0) {
     console.log('[scheduler] No eligible accounts found');
-    return;
+    return [];
   }
 
   const eligibleIds = accounts.map(a => a.id);
@@ -49,12 +53,12 @@ async function runHourlyCheck(): Promise<void> {
 
   if (configsError) {
     console.error('[scheduler] Failed to load configs:', configsError.message);
-    return;
+    return [];
   }
 
   if (!configs || configs.length === 0) {
     console.log('[scheduler] No send-enabled configs found');
-    return;
+    return [];
   }
 
   console.log(`[scheduler] ${configs.length} send-enabled config(s) to check`);
@@ -63,15 +67,15 @@ async function runHourlyCheck(): Promise<void> {
 
   for (const config of configs) {
     const localHour = getLocalHour(config.timezone, now);
-    console.log(`[scheduler] Account ${config.account_id} — localHour=${localHour} send_hour=${config.send_hour} timezone=${config.timezone}`);
-    if (localHour === config.send_hour) {
+    console.log(`[scheduler] Account ${config.account_id} — localHour=${localHour} send_hour=${config.send_hour} timezone=${config.timezone} force=${force}`);
+    if (force || localHour === config.send_hour) {
       due.push(config.account_id);
     }
   }
 
   if (due.length === 0) {
     console.log('[scheduler] No accounts due this hour');
-    return;
+    return [];
   }
 
   console.log(`[scheduler] ${due.length} account(s) due — running pipelines`);
@@ -81,6 +85,8 @@ async function runHourlyCheck(): Promise<void> {
     console.log(`[scheduler] Account ${accountId} is due — running pipeline`);
     await runBriefPipeline(accountId);
   }
+
+  return due;
 }
 
 async function runBriefPipeline(accountId: string): Promise<void> {
