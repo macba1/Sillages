@@ -5,6 +5,8 @@ import type { Lang } from '../contexts/LanguageContext';
 // ── Mock brief card ───────────────────────────────────────────────────────────
 
 function BriefCard() {
+  const { t } = useLanguage();
+
   return (
     <div style={{
       width: 360,
@@ -37,7 +39,7 @@ function BriefCard() {
             display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#2D6A4F',
           }} />
           <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#2D6A4F' }}>
-            Active
+            {t('landing.card.active')}
           </span>
         </div>
       </div>
@@ -47,17 +49,17 @@ function BriefCard() {
 
       {/* Date */}
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,239,232,0.35)', marginBottom: 12 }}>
-        Friday, March 6 · 2026
+        {t('landing.card.date')}
       </p>
 
       {/* Greeting */}
       <p style={{ fontSize: 22, color: '#F5EFE8', lineHeight: 1.3, marginBottom: 16, fontFamily: "'DM Serif Display', serif", fontWeight: 400 }}>
-        Good morning, Tony.
+        {t('landing.card.greeting')}
       </p>
 
       {/* Body */}
       <p style={{ fontSize: 14, color: 'rgba(245,239,232,0.6)', lineHeight: 1.75, fontWeight: 300, marginBottom: 24 }}>
-        I tracked $4,820 across 38 orders yesterday — your Vitamin C Serum carried the day, but only 3 out of every 100 visitors actually bought something, and I think I know exactly why.
+        {t('landing.card.body')}
       </p>
 
       {/* Divider */}
@@ -65,46 +67,32 @@ function BriefCard() {
 
       {/* Section label */}
       <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#C9964A', marginBottom: 10 }}>
-        One Thing to Do Today
+        {t('landing.card.sectionLabel')}
       </p>
 
       {/* Action */}
       <p style={{ fontSize: 13, color: 'rgba(245,239,232,0.7)', lineHeight: 1.7, marginBottom: 24 }}>
-        Send a follow-up email to everyone who looked at the Serum page yesterday but didn't buy. I'll tell you exactly what to write.
+        {t('landing.card.action')}
       </p>
 
       {/* Footer note */}
       <p style={{ fontSize: 11, color: 'rgba(245,239,232,0.25)', lineHeight: 1.6 }}>
-        Tonight I'll pull today's data. Tomorrow's brief ready by 6am.
+        {t('landing.card.footer')}
       </p>
     </div>
   );
 }
 
-// ── Value props ───────────────────────────────────────────────────────────────
-
-const VALUE_PROPS = [
-  {
-    label: 'Daily Intelligence Brief',
-    description:
-      "Six focused sections delivered every morning: performance, momentum, friction, signal, gap, and today's activation. Clear thinking, not dashboards.",
-  },
-  {
-    label: 'Actionable Signals',
-    description:
-      'Not a report. A decision. Each brief ends with one specific action — what to do, why it matters, how to execute in under 30 minutes.',
-  },
-  {
-    label: 'Built for Operators',
-    description:
-      'For founders and store managers who need to move fast and move right. No charts to interpret. No filters to configure. Just clarity.',
-  },
-];
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Landing() {
-  const { lang, setLang } = useLanguage();
+  const { lang, setLang, t } = useLanguage();
+
+  const valueProps = [
+    { label: t('landing.prop1.label'), description: t('landing.prop1.desc') },
+    { label: t('landing.prop2.label'), description: t('landing.prop2.desc') },
+    { label: t('landing.prop3.label'), description: t('landing.prop3.desc') },
+  ];
 
   return (
     <div className="min-h-screen bg-[#F7F1EC]">
@@ -139,17 +127,11 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <span className="text-[#3A2332] font-semibold tracking-tight text-base">sillages</span>
           <div className="flex items-center gap-6">
-            <Link
-              to="/login"
-              className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors"
-            >
-              Sign in
+            <Link to="/login" className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors">
+              {t('landing.nav.signIn')}
             </Link>
-            <Link
-              to="/login"
-              className="bg-[#D8B07A] text-[#1A1A2E] text-sm font-medium px-4 py-2 hover:bg-[#c9a06a] transition-colors"
-            >
-              Get started
+            <Link to="/login" className="bg-[#D8B07A] text-[#1A1A2E] text-sm font-medium px-4 py-2 hover:bg-[#c9a06a] transition-colors">
+              {t('landing.nav.getStarted')}
             </Link>
           </div>
         </div>
@@ -161,29 +143,22 @@ export default function Landing() {
           {/* Left: text */}
           <div style={{ flex: '1 1 340px', minWidth: 280 }}>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-6">
-              Intelligence for Shopify operators
+              {t('landing.badge')}
             </p>
             <h1 className="text-[#3A2332] text-5xl font-semibold tracking-tight leading-[1.1] mb-6">
-              Your store worked yesterday.
+              {t('landing.hero.title1')}
               <br />
-              Do you know what it told you?
+              {t('landing.hero.title2')}
             </h1>
             <p className="text-[#7A6B63] text-lg leading-relaxed mb-10">
-              Sillages analyzes your Shopify store every night and delivers a clear morning brief —
-              what moved, what stalled, and exactly what to do today.
+              {t('landing.hero.body')}
             </p>
             <div className="flex items-center gap-4">
-              <Link
-                to="/login"
-                className="bg-[#D8B07A] text-[#1A1A2E] font-medium px-6 py-3 text-sm hover:bg-[#c9a06a] transition-colors"
-              >
-                Start free trial
+              <Link to="/login" className="bg-[#D8B07A] text-[#1A1A2E] font-medium px-6 py-3 text-sm hover:bg-[#c9a06a] transition-colors">
+                {t('landing.cta.trial')}
               </Link>
-              <a
-                href="#how-it-works"
-                className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors"
-              >
-                See how it works →
+              <a href="#how-it-works" className="text-sm text-[#7A6B63] hover:text-[#3A2332] transition-colors">
+                {t('landing.cta.howItWorks')}
               </a>
             </div>
           </div>
@@ -203,10 +178,10 @@ export default function Landing() {
       {/* Value Props */}
       <section id="how-it-works" className="max-w-5xl mx-auto px-6 py-20">
         <p className="text-xs font-semibold uppercase tracking-widest text-[#7A6B63] mb-12">
-          What you get
+          {t('landing.what.label')}
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[#E8DDD6]">
-          {VALUE_PROPS.map((prop) => (
+          {valueProps.map((prop) => (
             <div key={prop.label} className="bg-[#F7F1EC] p-8">
               <h3 className="text-[#3A2332] font-semibold text-base mb-3 tracking-tight">
                 {prop.label}
@@ -222,19 +197,18 @@ export default function Landing() {
         <div className="border-t border-[#E8DDD6]" />
         <div className="mt-16 border border-[#E8DDD6] bg-white px-10 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-2">Beta</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-2">
+              {t('landing.beta.badge')}
+            </p>
             <p className="text-[#3A2332] font-semibold text-lg tracking-tight">
-              Sillages is free during beta.
+              {t('landing.beta.title')}
             </p>
             <p className="text-[#7A6B63] text-sm mt-1">
-              Pricing starts at $9/month when we launch. No credit card required.
+              {t('landing.beta.desc')}
             </p>
           </div>
-          <Link
-            to="/login"
-            className="flex-shrink-0 bg-[#D8B07A] text-[#1A1A2E] font-medium px-6 py-3 text-sm hover:bg-[#c9a06a] transition-colors text-center"
-          >
-            Get free access
+          <Link to="/login" className="flex-shrink-0 bg-[#D8B07A] text-[#1A1A2E] font-medium px-6 py-3 text-sm hover:bg-[#c9a06a] transition-colors text-center">
+            {t('landing.beta.cta')}
           </Link>
         </div>
       </div>
@@ -242,13 +216,13 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-[#E8DDD6]">
         <div className="max-w-5xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-[#7A6B63]">© 2026 Sillages. All rights reserved.</p>
+          <p className="text-xs text-[#7A6B63]">{t('landing.footer.copyright')}</p>
           <div className="flex items-center gap-6">
             <Link to="/privacy" className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors">
-              Privacy Policy
+              {t('landing.footer.privacy')}
             </Link>
             <Link to="/terms" className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors">
-              Terms of Service
+              {t('landing.footer.terms')}
             </Link>
           </div>
         </div>

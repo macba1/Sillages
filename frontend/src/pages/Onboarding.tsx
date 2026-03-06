@@ -29,29 +29,28 @@ function NumberedStep({ n, text }: { n: number; text: string }) {
 }
 
 function WelcomeScreen({ firstName, onNext }: { firstName: string; onNext: () => void }) {
+  const { t } = useLanguage();
+
   return (
     <>
       <h1
         className="font-display fade-up"
         style={{ fontSize: 42, color: '#F5EFE8', lineHeight: 1.15, marginBottom: 24 }}
       >
-        Hi {firstName}, I'm Sillages —<br />your personal store agent.
+        {t('onboarding.welcome.hi', { firstName })}<br />{t('onboarding.welcome.sub')}
       </h1>
 
       <p
         className="fade-up-2"
         style={{ fontSize: 16, fontWeight: 300, color: 'rgba(245,239,232,0.6)', lineHeight: 1.75, marginBottom: 48 }}
       >
-        I know exactly how you feel. We have a store, we see the numbers, but we
-        don't really understand why some days go well and others don't. Too much
-        data, too many screens, too many things we're supposedly supposed to be
-        doing. I take care of that.
+        {t('onboarding.welcome.body')}
       </p>
 
       <div className="flex flex-col gap-5 fade-up-3" style={{ marginBottom: 48 }}>
-        <NumberedStep n={1} text="Every morning I'll tell you what happened in our store" />
-        <NumberedStep n={2} text="I work every night while you sleep — no setup needed" />
-        <NumberedStep n={3} text="I just need read-only access to our Shopify store to get started" />
+        <NumberedStep n={1} text={t('onboarding.step1')} />
+        <NumberedStep n={2} text={t('onboarding.step2')} />
+        <NumberedStep n={3} text={t('onboarding.step3')} />
       </div>
 
       <div className="fade-up-4">
@@ -65,11 +64,11 @@ function WelcomeScreen({ firstName, onNext }: { firstName: string; onNext: () =>
             cursor: 'pointer', transition: 'opacity 0.15s',
           }}
         >
-          Let's get to work →
+          {t('onboarding.cta')}
         </button>
 
         <p style={{ marginTop: 16, fontSize: 12, color: 'rgba(245,239,232,0.3)' }}>
-          Free during beta · No credit card · Cancel anytime
+          {t('onboarding.beta')}
         </p>
       </div>
     </>
@@ -77,6 +76,7 @@ function WelcomeScreen({ firstName, onNext }: { firstName: string; onNext: () =>
 }
 
 function ConnectScreen({ onBack }: { onBack: () => void }) {
+  const { t } = useLanguage();
   const [shop, setShop] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,17 +117,17 @@ function ConnectScreen({ onBack }: { onBack: () => void }) {
           fontFamily: "'DM Sans', sans-serif",
         }}
       >
-        ← Back
+        {t('onboarding.connect.back')}
       </button>
 
       <h2
         className="font-display"
         style={{ fontSize: 32, color: '#F5EFE8', marginBottom: 12, lineHeight: 1.2 }}
       >
-        Connect our store
+        {t('onboarding.connect.title')}
       </h2>
       <p style={{ fontSize: 14, fontWeight: 300, color: 'rgba(245,239,232,0.5)', marginBottom: 32, lineHeight: 1.65 }}>
-        You'll be redirected to Shopify to approve read-only access. I never modify your data.
+        {t('onboarding.connect.desc')}
       </p>
 
       <form onSubmit={handleConnect}>
@@ -177,7 +177,7 @@ function ConnectScreen({ onBack }: { onBack: () => void }) {
           {loading && (
             <span style={{ width: 14, height: 14, border: '2px solid #2A1F14', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
           )}
-          {loading ? 'Connecting…' : 'Connect store'}
+          {loading ? t('onboarding.connect.loading') : t('onboarding.connect.btn')}
         </button>
       </form>
     </div>
