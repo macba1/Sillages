@@ -153,6 +153,7 @@ function WorkingItem({
 }
 
 function PastBriefRow({ brief }: { brief: IntelligenceBrief }) {
+  const { t } = useLanguage();
   const date = parseISO(brief.brief_date);
   const s = brief.section_yesterday;
   return (

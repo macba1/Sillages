@@ -106,5 +106,5 @@ export const en = {
   'settings.testing.loading':        'Loading\u2026',
 } as const;
 
-export type Translations = typeof en;
-export type TranslationKey = keyof Translations;
+export type TranslationKey = keyof typeof en;
+export type Translations = Record<TranslationKey, string>;
