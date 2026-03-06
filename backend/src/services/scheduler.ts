@@ -21,45 +21,64 @@ async function runHourlyCheck(): Promise<void> {
   const now = new Date();
   console.log(`[scheduler] Hourly check at ${now.toISOString()}`);
 
-  // Load all configs for accounts with an active/trialing subscription
-  const { data: configs, error } = await supabase
-    .from('user_intelligence_config')
-    .select(
-      `
-      account_id,
-      timezone,
-      send_hour,
-      accounts!inner (
-        subscription_status
-      )
-    `,
-    )
-    .eq('send_enabled', true)
-    .in('accounts.subscription_status', ['active', 'trialing']);
+  // Step 1: get all eligible accounts — active, trialing, beta, or null (beta fallback)
+  const { data: accounts, error: accountsError } = await supabase
+    .from('accounts')
+    .select('id, subscription_status')
+    .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
 
-  if (error) {
-    console.error('[scheduler] Failed to load configs:', error.message);
+  if (accountsError) {
+    console.error('[scheduler] Failed to load accounts:', accountsError.message);
+    return;
+  }
+
+  if (!accounts || accounts.length === 0) {
+    console.log('[scheduler] No eligible accounts found');
+    return;
+  }
+
+  const eligibleIds = accounts.map(a => a.id);
+  console.log(`[scheduler] ${eligibleIds.length} eligible account(s) — statuses: ${accounts.map(a => a.subscription_status ?? 'null').join(', ')}`);
+
+  // Step 2: get send-enabled configs for those accounts
+  const { data: configs, error: configsError } = await supabase
+    .from('user_intelligence_config')
+    .select('account_id, timezone, send_hour')
+    .eq('send_enabled', true)
+    .in('account_id', eligibleIds);
+
+  if (configsError) {
+    console.error('[scheduler] Failed to load configs:', configsError.message);
     return;
   }
 
   if (!configs || configs.length === 0) {
-    console.log('[scheduler] No enabled accounts found');
+    console.log('[scheduler] No send-enabled configs found');
     return;
   }
+
+  console.log(`[scheduler] ${configs.length} send-enabled config(s) to check`);
 
   const due: string[] = [];
 
   for (const config of configs) {
     const localHour = getLocalHour(config.timezone, now);
+    console.log(`[scheduler] Account ${config.account_id} — localHour=${localHour} send_hour=${config.send_hour} timezone=${config.timezone}`);
     if (localHour === config.send_hour) {
       due.push(config.account_id);
     }
   }
 
-  console.log(`[scheduler] ${due.length} account(s) due for brief generation`);
+  if (due.length === 0) {
+    console.log('[scheduler] No accounts due this hour');
+    return;
+  }
+
+  console.log(`[scheduler] ${due.length} account(s) due — running pipelines`);
 
   // Process each account sequentially to avoid overloading external APIs
   for (const accountId of due) {
+    console.log(`[scheduler] Account ${accountId} is due — running pipeline`);
     await runBriefPipeline(accountId);
   }
 }
