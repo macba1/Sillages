@@ -8,6 +8,7 @@ export interface Account {
   avatar_url: string | null;
   subscription_status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid';
   trial_ends_at: string | null;
+  language: 'en' | 'es';
 }
 
 // ── Brief sections ────────────────────────────────────────────────────────────

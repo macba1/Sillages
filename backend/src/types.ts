@@ -11,6 +11,7 @@ export interface Account {
   subscription_status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid';
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
+  language: 'en' | 'es';
   created_at: string;
   updated_at: string;
 }

@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useBrief } from '../hooks/useBriefs';
+import { useLanguage } from '../contexts/LanguageContext';
 import type { IntelligenceBrief } from '../types/index';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ function BriefSection({ label, children }: { label: string; children: React.Reac
 
 // ── Brief conversation ────────────────────────────────────────────────────────
 
-function BriefBody({ brief }: { brief: IntelligenceBrief }) {
+function BriefBody({ brief, t }: { brief: IntelligenceBrief; t: ReturnType<typeof useLanguage>['t'] }) {
   const w   = brief.section_whats_working;
   const n   = brief.section_whats_not_working;
   const sig = brief.section_signal;
@@ -53,7 +54,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
     <div>
       {/* What worked */}
       {w && w.items.length > 0 && (
-        <BriefSection label="What worked yesterday">
+        <BriefSection label={t('brief.section.worked')}>
           <div className="flex flex-col" style={{ gap: 20 }}>
             {w.items.map((item, i) => (
               <p key={i} style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.7 }}>
@@ -70,7 +71,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
 
       {/* What didn't */}
       {n && n.items.length > 0 && (
-        <BriefSection label="What didn't">
+        <BriefSection label={t('brief.section.notWorked')}>
           <div className="flex flex-col" style={{ gap: 20 }}>
             {n.items.map((item, i) => (
               <p key={i} style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.7 }}>
@@ -87,7 +88,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
 
       {/* Signal */}
       {sig && (
-        <BriefSection label="What I'm watching">
+        <BriefSection label={t('brief.section.watching')}>
           <p style={{ fontSize: 16, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.5, marginBottom: 14 }}>
             {sig.headline}
           </p>
@@ -102,7 +103,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
 
       {/* Gap */}
       {gap && (
-        <BriefSection label="The gap">
+        <BriefSection label={t('brief.section.gap')}>
           <p style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.75, marginBottom: 10 }}>
             <HighlightNumbers text={gap.gap} />
           </p>
@@ -110,14 +111,14 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
             <HighlightNumbers text={gap.opportunity} />
           </p>
           <p style={{ fontSize: 14, color: 'var(--ink-muted)' }}>
-            Upside: <Gold>{gap.estimated_upside}</Gold>
+            {t('brief.upside')} <Gold>{gap.estimated_upside}</Gold>
           </p>
         </BriefSection>
       )}
 
       {/* Activation */}
       {act && (
-        <BriefSection label="One thing to do today">
+        <BriefSection label={t('brief.section.activation')}>
           <div style={{ background: 'var(--white)', borderRadius: 16, padding: 24 }}>
             <p
               className="font-display"
@@ -139,7 +140,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
               ))}
             </ol>
             <p style={{ fontSize: 13, color: 'var(--ink-muted)' }}>
-              Expected: <Gold>{act.expected_impact}</Gold>
+              {t('brief.expected')} <Gold>{act.expected_impact}</Gold>
             </p>
           </div>
         </BriefSection>
@@ -147,7 +148,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
 
       {/* Footer */}
       <p style={{ fontSize: 12, color: 'var(--ink-faint)', paddingTop: 8 }}>
-        Tonight I'll pull today's data. Tomorrow's brief ready by 6am.
+        {t('brief.footer')}
       </p>
     </div>
   );
@@ -158,6 +159,7 @@ function BriefBody({ brief }: { brief: IntelligenceBrief }) {
 export default function BriefDetail() {
   const { id } = useParams<{ id: string }>();
   const { brief, loading, error } = useBrief(id);
+  const { t } = useLanguage();
 
   return (
     <AppShell>
@@ -170,7 +172,7 @@ export default function BriefDetail() {
           style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', textDecoration: 'none', marginBottom: 40, transition: 'color 0.15s' }}
         >
           <ArrowLeft size={12} />
-          Back
+          {t('brief.back')}
         </Link>
 
         {loading && (
@@ -207,7 +209,7 @@ export default function BriefDetail() {
             {/* Divider */}
             <div style={{ height: 1, background: 'rgba(201,150,74,0.2)', marginBottom: 48 }} />
 
-            <BriefBody brief={brief} />
+            <BriefBody brief={brief} t={t} />
           </>
         )}
       </div>

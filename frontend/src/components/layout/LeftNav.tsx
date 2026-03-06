@@ -3,13 +3,15 @@ import { LayoutDashboard, BookOpen, Bell, Settings } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAccount } from '../../hooks/useAccount';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
+import { useLanguage } from '../../contexts/LanguageContext';
+import type { TranslationKey } from '../../locales/en';
 
-const NAV = [
-  { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard', activeOn: '/dashboard' },
-  { icon: BookOpen,         label: 'Briefs',    to: '/briefs',    activeOn: '/briefs'    },
-  { icon: Bell,             label: 'Alerts',    to: '/alerts',    activeOn: '/alerts'    },
-  { icon: Settings,         label: 'Settings',  to: '/settings',  activeOn: '/settings'  },
-] as const;
+const NAV: { icon: React.ComponentType<{ size: number }>; tKey: TranslationKey; to: string; activeOn: string }[] = [
+  { icon: LayoutDashboard, tKey: 'nav.dashboard', to: '/dashboard', activeOn: '/dashboard' },
+  { icon: BookOpen,        tKey: 'nav.briefs',    to: '/briefs',    activeOn: '/briefs'    },
+  { icon: Bell,            tKey: 'nav.alerts',    to: '/alerts',    activeOn: '/alerts'    },
+  { icon: Settings,        tKey: 'nav.settings',  to: '/settings',  activeOn: '/settings'  },
+];
 
 export function LeftNav() {
   const { pathname } = useLocation();
@@ -17,6 +19,7 @@ export function LeftNav() {
   const { account } = useAccount();
   const navigate = useNavigate();
   const { hasUnread } = useUnreadAlerts(account?.id);
+  const { t } = useLanguage();
 
   async function handleSignOut() {
     await signOut();
@@ -49,15 +52,15 @@ export function LeftNav() {
 
       {/* Nav icons */}
       <nav className="flex flex-col items-center gap-1 flex-1">
-        {NAV.map(({ icon: Icon, label, to, activeOn }) => {
+        {NAV.map(({ icon: Icon, tKey, to, activeOn }) => {
           const active =
             pathname === activeOn || pathname.startsWith(activeOn + '/');
-          const showDot = label === 'Alerts' && hasUnread;
+          const showDot = tKey === 'nav.alerts' && hasUnread;
           return (
             <Link
-              key={label}
+              key={tKey}
               to={to}
-              title={label}
+              title={t(tKey)}
               style={{
                 position: 'relative',
                 width: 40,
@@ -94,7 +97,7 @@ export function LeftNav() {
       {/* User avatar — click to sign out */}
       <button
         onClick={handleSignOut}
-        title="Sign out"
+        title={t('nav.signOut')}
         style={{
           width: 32,
           height: 32,

@@ -6,6 +6,8 @@ import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useShopifyConnection } from '../hooks/useShopify';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../contexts/LanguageContext';
+import type { Lang } from '../contexts/LanguageContext';
 import api from '../lib/api';
 
 // ── Primitives ───────────────────────────────────────────────────────────────
@@ -108,6 +110,16 @@ export default function Settings() {
   const { connection, loading: connLoading, disconnect } = useShopifyConnection();
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const { lang, setLang, t } = useLanguage();
+
+  async function handleLangChange(l: Lang) {
+    setLang(l);
+    try {
+      await api.patch('/api/accounts/language', { language: l });
+    } catch {
+      // non-fatal: UI already updated
+    }
+  }
 
   // Email / isTony
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -180,11 +192,11 @@ export default function Settings() {
           className="font-display fade-up"
           style={{ fontSize: 32, color: 'var(--ink)', marginBottom: 48 }}
         >
-          Settings
+          {t('settings.title')}
         </h1>
 
         {/* ── Section 1: Shopify connection ── */}
-        <SettingsSection label="Shopify connection">
+        <SettingsSection label={t('settings.section.shopify')}>
           {connLoading ? (
             <div className="flex" style={{ padding: '20px 0' }}>
               <Spinner size="sm" />
@@ -196,79 +208,100 @@ export default function Settings() {
                 description={connection.shop_domain}
               >
                 <div className="flex items-center gap-3">
-                  <Badge label="Connected" color="var(--green)" bg="var(--green-bg)" />
+                  <Badge label={t('settings.shopify.connected')} color="var(--green)" bg="var(--green-bg)" />
                   <ActionButton variant="danger" onClick={handleDisconnect}>
-                    Disconnect
+                    {t('settings.shopify.disconnect')}
                   </ActionButton>
                 </div>
               </SettingRow>
               <SettingRow
-                label="Briefs are generated nightly"
-                description="I pull your store data every night and have your brief ready by 6am."
+                label={t('settings.shopify.briefsNightly')}
+                description={t('settings.shopify.briefsDesc')}
                 noBorder
               />
             </>
           ) : (
             <SettingRow
-              label="No store connected"
-              description="Connect your Shopify store to start receiving daily briefs."
+              label={t('settings.shopify.noStore')}
+              description={t('settings.shopify.noStoreDesc')}
               noBorder
             >
               <ActionButton onClick={() => navigate('/onboarding')}>
-                Connect store
+                {t('settings.shopify.connect')}
               </ActionButton>
             </SettingRow>
           )}
         </SettingsSection>
 
         {/* ── Section 2: Brief preferences ── */}
-        <SettingsSection label="Brief preferences">
-          <SettingRow label="Delivery time" description="When you receive your morning brief.">
-            <Badge label="Coming soon" color="var(--ink-faint)" bg="var(--cream-dark)" />
+        <SettingsSection label={t('settings.section.preferences')}>
+          <SettingRow label={t('settings.delivery.label')} description={t('settings.delivery.desc')}>
+            <Badge label={t('settings.badge.comingSoon')} color="var(--ink-faint)" bg="var(--cream-dark)" />
           </SettingRow>
-          <SettingRow label="Language" description="English or Spanish." noBorder>
-            <Badge label="Coming soon" color="var(--ink-faint)" bg="var(--cream-dark)" />
+          <SettingRow label={t('settings.lang.label')} description={t('settings.lang.desc')} noBorder>
+            <div className="flex items-center gap-1">
+              {(['en', 'es'] as Lang[]).map(l => (
+                <button
+                  key={l}
+                  onClick={() => void handleLangChange(l)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: "'DM Sans', sans-serif",
+                    cursor: 'pointer',
+                    border: lang === l ? '1px solid var(--gold)' : '1px solid rgba(201,150,74,0.25)',
+                    background: lang === l ? 'var(--gold)' : 'transparent',
+                    color: lang === l ? '#2A1F14' : 'var(--ink-faint)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </SettingRow>
         </SettingsSection>
 
         {/* ── Section 3: Plan ── */}
-        <SettingsSection label="Plan">
+        <SettingsSection label={t('settings.section.plan')}>
           <SettingRow
-            label="Free during beta"
-            description="Full access, no credit card required. Pricing starts at $9/month at launch."
+            label={t('settings.plan.free')}
+            description={t('settings.plan.freeDesc')}
             noBorder
           >
-            <Badge label="Beta" color="var(--green)" bg="var(--green-bg)" />
+            <Badge label={t('settings.badge.beta')} color="var(--green)" bg="var(--green-bg)" />
           </SettingRow>
         </SettingsSection>
 
         {/* ── Section 4: Account ── */}
-        <SettingsSection label="Account">
-          <SettingRow label={userEmail ?? '—'} description="Your account email." noBorder>
+        <SettingsSection label={t('settings.section.account')}>
+          <SettingRow label={userEmail ?? '—'} description={t('settings.account.emailDesc')} noBorder>
             <ActionButton onClick={handleSignOut}>
-              Sign out
+              {t('settings.account.signOut')}
             </ActionButton>
           </SettingRow>
         </SettingsSection>
 
         {/* ── Admin: Testing (isTony only) ── */}
         {isTony && (
-          <SettingsSection label="Testing">
+          <SettingsSection label={t('settings.section.testing')}>
             <SettingRow
-              label="Generate brief now"
-              description="Sync yesterday's store data and generate a brief immediately."
+              label={t('settings.testing.generateLabel')}
+              description={t('settings.testing.generateDesc')}
             >
               <ActionButton loading={generating} onClick={handleGenerateNow}>
-                {generating ? 'Generating…' : 'Generate brief'}
+                {generating ? t('settings.testing.generating') : t('settings.testing.generateBtn')}
               </ActionButton>
             </SettingRow>
             <SettingRow
-              label="Load test data & generate"
-              description="Insert realistic store data and generate a brief without Shopify."
+              label={t('settings.testing.seedLabel')}
+              description={t('settings.testing.seedDesc')}
               noBorder
             >
               <ActionButton loading={seeding} onClick={handleSeedAndGenerate}>
-                {seeding ? 'Loading…' : 'Load & generate'}
+                {seeding ? t('settings.testing.loading') : t('settings.testing.seedBtn')}
               </ActionButton>
             </SettingRow>
             {(generateError || seedError) && (

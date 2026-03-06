@@ -92,15 +92,17 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const storeName = connection?.shop_name ?? connection?.shop_domain ?? 'your store';
 
     // ── 4. Call GPT-4o ────────────────────────────────────────────────────
+    const language: 'en' | 'es' = account.language === 'es' ? 'es' : 'en';
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.4,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildSystemPrompt(language) },
         {
           role: 'user',
-          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language: 'en' }),
+          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language }),
         },
       ],
     });

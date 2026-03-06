@@ -4,6 +4,7 @@ import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { supabase } from '../lib/supabase';
 import { useAccount } from '../hooks/useAccount';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Alert {
   id: string;
@@ -34,6 +35,7 @@ function AlertCard({
   example?: boolean;
   onDismiss?: () => void;
 }) {
+  const { t, lang } = useLanguage();
   const accentColor = severity === 'warning' ? 'var(--gold)' : 'var(--green)';
 
   return (
@@ -66,7 +68,7 @@ function AlertCard({
                 padding: '2px 6px',
                 flexShrink: 0,
               }}>
-                Example
+                {lang === 'es' ? 'Ejemplo' : 'Example'}
               </span>
             )}
           </div>
@@ -80,7 +82,7 @@ function AlertCard({
               </span>
               {!unread && (
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
-                  read
+                  {lang === 'es' ? 'leído' : 'read'}
                 </span>
               )}
             </div>
@@ -104,7 +106,7 @@ function AlertCard({
               whiteSpace: 'nowrap',
             }}
           >
-            Got it
+            {t('alerts.gotIt')}
           </button>
         )}
       </div>
@@ -114,30 +116,30 @@ function AlertCard({
 
 // ── Empty state with examples ─────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ t }: { t: ReturnType<typeof useLanguage>['t'] }) {
   return (
     <div>
       <p style={{ fontSize: 15, color: 'var(--ink-muted)', lineHeight: 1.7, marginBottom: 32 }}>
-        Nothing to flag right now.
+        {t('alerts.empty')}
       </p>
       <div style={{ marginBottom: 24 }}>
         <AlertCard
-          title="Something's off with our visitors"
-          message="A lot of people came to our store but very few actually bought something. I traced it back to the product page — something there is creating hesitation. I'll tell you exactly what to fix."
+          title={t('alerts.example1.title')}
+          message={t('alerts.example1.message')}
           severity="warning"
           unread={true}
           example={true}
         />
         <AlertCard
-          title="Our best product deserves more visibility"
-          message="The same product has been our top seller for 3 days in a row but it's not the first thing people see when they land on our store. Moving it to the top of the page takes 5 minutes and will probably sell more today."
+          title={t('alerts.example2.title')}
+          message={t('alerts.example2.message')}
           severity="positive"
           unread={true}
           example={true}
         />
       </div>
       <p style={{ fontSize: 13, color: 'var(--ink-faint)', lineHeight: 1.65 }}>
-        These are examples. Real alerts will appear here when I notice something worth telling you about.
+        {t('alerts.exampleNote')}
       </p>
     </div>
   );
@@ -147,6 +149,7 @@ function EmptyState() {
 
 export default function Alerts() {
   const { account } = useAccount();
+  const { t } = useLanguage();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -202,13 +205,13 @@ export default function Alerts() {
           className="font-display fade-up"
           style={{ fontSize: 44, color: 'var(--ink)', lineHeight: 1.15, marginBottom: 12 }}
         >
-          Alerts.
+          {t('alerts.title')}
         </h1>
         <p
           className="fade-up-2"
           style={{ fontSize: 15, color: 'var(--ink-faint)', lineHeight: 1.65, marginBottom: 48 }}
         >
-          Things I noticed that I thought you should know about.
+          {t('alerts.subtitle')}
         </p>
 
         {loading && (
@@ -217,7 +220,7 @@ export default function Alerts() {
           </div>
         )}
 
-        {!loading && alerts.length === 0 && <EmptyState />}
+        {!loading && alerts.length === 0 && <EmptyState t={t} />}
 
         {!loading && alerts.length > 0 && (
           <div>

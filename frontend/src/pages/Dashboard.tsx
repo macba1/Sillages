@@ -7,6 +7,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
 import { supabase } from '../lib/supabase';
+import { useLanguage } from '../contexts/LanguageContext';
 import type { IntelligenceBrief } from '../types/index';
 
 // ── Alert types ───────────────────────────────────────────────────────────────
@@ -95,9 +96,9 @@ function fmt(n: number, opts?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat('en-US', opts).format(n);
 }
 
-function greeting() {
+function greetingKey() {
   const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  return h < 12 ? 'dash.greeting.morning' : h < 17 ? 'dash.greeting.afternoon' : 'dash.greeting.evening';
 }
 
 /** Wrap dollar amounts in the text with a gold span. */
@@ -191,7 +192,7 @@ function PastBriefRow({ brief }: { brief: IntelligenceBrief }) {
             className="ml-auto"
             style={{ fontSize: 13, color: 'var(--gold)', fontWeight: 500 }}
           >
-            Read →
+            {t('dash.readArrow')}
           </Link>
         </div>
       </div>
@@ -205,6 +206,7 @@ export default function Dashboard() {
   const { account } = useAccount();
   const { briefs, loading, error, refetch } = useBriefs(account?.id);
   const { alerts, dismiss } = useAlerts(account?.id);
+  const { t } = useLanguage();
   const firstName = account?.full_name?.split(' ')[0] ?? '';
 
   const [searchParams] = useSearchParams();
@@ -237,26 +239,26 @@ export default function Dashboard() {
 
   const workingItems = [
     {
-      when: 'Tonight', whenColor: 'var(--gold)', spinning: true,
+      when: t('when.tonight'), whenColor: 'var(--gold)', spinning: true,
       text: topProduct
-        ? `Watching if ${topProduct} keeps selling`
-        : "Pulling today's orders and comparing against yesterday",
+        ? t('work.watching', { product: topProduct })
+        : t('work.watchingDefault'),
     },
     {
-      when: 'Tonight', whenColor: 'var(--gold)', spinning: true,
+      when: t('when.tonight'), whenColor: 'var(--gold)', spinning: true,
       text: issue
-        ? `Looking into ${issue.title.toLowerCase()} — ${issue.metric.toLowerCase()}`
-        : "Checking whether abandoned carts closed today",
+        ? t('work.checking', { issue: issue.title.toLowerCase(), metric: issue.metric.toLowerCase() })
+        : t('work.checkingDefault'),
     },
     {
-      when: 'Tomorrow', whenColor: 'var(--green)', spinning: false,
-      text: 'Brief ready by 6am',
+      when: t('when.tomorrow'), whenColor: 'var(--green)', spinning: false,
+      text: t('work.briefReady'),
     },
     {
-      when: 'This week', whenColor: 'var(--ink-faint)', spinning: false,
+      when: t('when.thisWeek'), whenColor: 'var(--ink-faint)', spinning: false,
       text: gap
         ? gap.gap.replace(/\.$/, '')
-        : 'Tracking whether more visitors complete their purchase',
+        : t('work.gapDefault'),
     },
   ];
 
@@ -293,7 +295,7 @@ export default function Dashboard() {
                   <span className="agent-pulse absolute inline-flex rounded-full" style={{ width: '100%', height: '100%', background: '#2D6A4F', opacity: 0.5 }} />
                   <span className="relative inline-flex rounded-full" style={{ width: 7, height: 7, background: '#2D6A4F' }} />
                 </span>
-                Sillages is active
+                {t('dash.statusPill')}
               </span>
             </div>
 
@@ -311,7 +313,7 @@ export default function Dashboard() {
               className="font-display fade-up"
               style={{ fontSize: 44, color: 'var(--ink)', lineHeight: 1.15, marginBottom: 20 }}
             >
-              {greeting()}{firstName ? `, ${firstName}` : ''}.
+              {t(greetingKey())}{firstName ? `, ${firstName}` : ''}.
             </h1>
 
             {/* Generating state */}
@@ -320,11 +322,11 @@ export default function Dashboard() {
                 <div className="flex items-center gap-3" style={{ marginBottom: 8 }}>
                   <Loader2 size={16} className="animate-spin" style={{ color: 'var(--gold)' }} />
                   <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65 }}>
-                    Generating your first brief…
+                    {t('dash.generating.title')}
                   </p>
                 </div>
                 <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
-                  Pulling your store data now. This usually takes under a minute.
+                  {t('dash.generating.body')}
                 </p>
               </div>
             )}
@@ -333,11 +335,11 @@ export default function Dashboard() {
             {!latest && !isGenerating && (
               <div className="fade-up-2">
                 <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65, marginBottom: 16 }}>
-                  Your first brief will arrive tomorrow morning, once your store data is ready.
+                  {t('dash.empty.title')}
                 </p>
                 <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
                   Make sure your Shopify store is connected in{' '}
-                  <a href="/settings" style={{ color: 'var(--gold)' }}>Settings</a>.
+                  <a href="/settings" style={{ color: 'var(--gold)' }}>{t('dash.empty.settingsWord')}</a>.
                 </p>
               </div>
             )}
@@ -371,15 +373,15 @@ export default function Dashboard() {
                       transition: 'opacity 0.15s',
                     }}
                   >
-                    Read this morning's brief →
+                    {t('dash.cta')}
                   </Link>
-                  <span style={{ fontSize: 13, color: 'var(--ink-faint)' }}>5 min read</span>
+                  <span style={{ fontSize: 13, color: 'var(--ink-faint)' }}>{t('dash.readTime')}</span>
                 </div>
               </>
             )}
 
             {/* What I'm working on */}
-            <SectionDivider label="What I'm working on" />
+            <SectionDivider label={t('dash.section.working')} />
             <div>
               {workingItems.map((item, i) => (
                 <WorkingItem key={i} {...item} />
@@ -389,7 +391,7 @@ export default function Dashboard() {
             {/* Previous briefings */}
             {past.length > 0 && (
               <>
-                <SectionDivider label="Previous briefings" />
+                <SectionDivider label={t('dash.section.previous')} />
                 <div>
                   {past.map(b => (
                     <PastBriefRow key={b.id} brief={b} />

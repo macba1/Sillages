@@ -4,13 +4,14 @@ import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
+import { useLanguage } from '../contexts/LanguageContext';
 import type { IntelligenceBrief } from '../types/index';
 
 function fmt(n: number, opts?: Intl.NumberFormatOptions) {
   return new Intl.NumberFormat('en-US', opts).format(n);
 }
 
-function BriefRow({ brief }: { brief: IntelligenceBrief }) {
+function BriefRow({ brief, readLabel }: { brief: IntelligenceBrief; readLabel: string }) {
   const date = parseISO(brief.brief_date);
   const s = brief.section_yesterday;
 
@@ -60,7 +61,7 @@ function BriefRow({ brief }: { brief: IntelligenceBrief }) {
             className="ml-auto"
             style={{ fontSize: 13, color: 'var(--gold)', fontWeight: 500, textDecoration: 'none' }}
           >
-            Read →
+            {readLabel}
           </Link>
         </div>
       </div>
@@ -71,6 +72,7 @@ function BriefRow({ brief }: { brief: IntelligenceBrief }) {
 export default function Briefs() {
   const { account } = useAccount();
   const { briefs, loading, error } = useBriefs(account?.id);
+  const { t } = useLanguage();
 
   return (
     <AppShell>
@@ -80,7 +82,7 @@ export default function Briefs() {
           className="font-display fade-up"
           style={{ fontSize: 44, color: 'var(--ink)', lineHeight: 1.15, marginBottom: 48 }}
         >
-          Your briefings.
+          {t('briefs.title')}
         </h1>
 
         {loading && (
@@ -97,14 +99,14 @@ export default function Briefs() {
 
         {!loading && !error && briefs.length === 0 && (
           <p style={{ fontSize: 15, color: 'var(--ink-muted)', lineHeight: 1.7 }}>
-            No briefs yet. Your first one will arrive tomorrow morning.
+            {t('briefs.empty')}
           </p>
         )}
 
         {!loading && briefs.length > 0 && (
           <div>
             {briefs.map(b => (
-              <BriefRow key={b.id} brief={b} />
+              <BriefRow key={b.id} brief={b} readLabel={t('briefs.readArrow')} />
             ))}
           </div>
         )}
