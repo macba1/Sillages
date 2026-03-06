@@ -5,9 +5,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAccount } from '../../hooks/useAccount';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useLanguage } from '../../contexts/LanguageContext';
-import type { TranslationKey } from '../../locales/en';
 
-const NAV: { icon: LucideIcon; tKey: TranslationKey; to: string; activeOn: string }[] = [
+const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
   { icon: LayoutDashboard, tKey: 'nav.dashboard', to: '/dashboard', activeOn: '/dashboard' },
   { icon: BookOpen,        tKey: 'nav.briefs',    to: '/briefs',    activeOn: '/briefs'    },
   { icon: Bell,            tKey: 'nav.alerts',    to: '/alerts',    activeOn: '/alerts'    },

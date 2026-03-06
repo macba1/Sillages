@@ -1,6 +1,6 @@
 import type { Translations } from './en';
 
-export const es: Translations = {
+export const translations: Translations = {
   // ── Navigation ──────────────────────────────────────────────────────────────
   'nav.dashboard':   'Inicio',
   'nav.briefs':      'Informes',

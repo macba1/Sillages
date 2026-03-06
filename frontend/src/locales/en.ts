@@ -104,7 +104,7 @@ export const en = {
   'settings.testing.seedDesc':       'Insert realistic store data and generate a brief without Shopify.',
   'settings.testing.seedBtn':        'Load & generate',
   'settings.testing.loading':        'Loading\u2026',
-} as const;
+};
 
-export type TranslationKey = keyof typeof en;
-export type Translations = Record<TranslationKey, string>;
+export type Translations = Record<string, string>;
+export const translations: Translations = en;

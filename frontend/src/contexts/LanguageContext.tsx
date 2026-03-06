@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback } from 'react';
-import { en } from '../locales/en';
-import { es } from '../locales/es';
-import type { TranslationKey } from '../locales/en';
+import { translations as en } from '../locales/en';
+import { translations as es } from '../locales/es';
+import type { Translations } from '../locales/en';
 
 export type Lang = 'en' | 'es';
 
@@ -14,12 +14,12 @@ function detectLang(): Lang {
   return browser.startsWith('es') ? 'es' : 'en';
 }
 
-const strings: Record<Lang, typeof en> = { en, es };
+const strings: Record<Lang, Translations> = { en, es };
 
 interface LanguageContextValue {
   lang: Lang;
   setLang: (l: Lang) => void;
-  t: (key: TranslationKey, vars?: Record<string, string>) => string;
+  t: (key: string, vars?: Record<string, string>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -33,7 +33,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const t = useCallback(
-    (key: TranslationKey, vars?: Record<string, string>): string => {
+    (key: string, vars?: Record<string, string>): string => {
       let str: string = strings[lang][key] ?? strings.en[key] ?? key;
       if (vars) {
         for (const [k, v] of Object.entries(vars)) {
