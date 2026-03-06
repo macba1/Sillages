@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import type { AxiosError } from 'axios';
 import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useShopifyConnection } from '../hooks/useShopify';
@@ -141,12 +140,18 @@ export default function Settings() {
     setGenerating(true);
     setGenerateError(null);
     try {
-      await api.post('/api/briefs/trigger-now');
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/briefs/trigger-now`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+      });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? 'Something went wrong.');
+      }
       navigate('/dashboard');
     } catch (err) {
-      setGenerateError(
-        (err as AxiosError<{ error: string }>)?.response?.data?.error ?? 'Something went wrong.'
-      );
+      setGenerateError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setGenerating(false);
     }
@@ -156,12 +161,18 @@ export default function Settings() {
     setSeeding(true);
     setSeedError(null);
     try {
-      await api.post('/api/briefs/seed-test-data');
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/briefs/seed-test-data`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+      });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? 'Something went wrong.');
+      }
       navigate('/dashboard');
     } catch (err) {
-      setSeedError(
-        (err as AxiosError<{ error: string }>)?.response?.data?.error ?? 'Something went wrong.'
-      );
+      setSeedError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSeeding(false);
     }

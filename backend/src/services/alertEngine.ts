@@ -32,7 +32,7 @@ function checkTrafficNotConverting(
   const dropPct = Math.round(drop * 100);
   return {
     type: 'TRAFFIC_NOT_CONVERTING',
-    title: 'Traffic is up but we're not converting it',
+    title: "Traffic is up but we're not converting it",
     message: `Our conversion rate dropped ${dropPct}% vs last week (from ${(previousSnapshot.conversion_rate * 100).toFixed(1)}% to ${(snapshot.conversion_rate * 100).toFixed(1)}%). We're getting visitors but fewer of them are buying. Something in the checkout path or product pages may have changed.`,
     severity: 'warning',
   };
