@@ -15,6 +15,8 @@ router.patch('/language', requireAuth, async (req, res, next) => {
       throw new AppError(400, 'language must be "en" or "es"');
     }
 
+    console.log('Saving language:', language, 'for account:', accountId);
+
     const { error } = await supabase
       .from('accounts')
       .update({ language })
