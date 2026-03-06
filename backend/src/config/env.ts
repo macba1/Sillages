@@ -18,12 +18,12 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1),
   RESEND_FROM_EMAIL: z.string().email().default('briefs@sillages.co'),
 
-  // Stripe
-  STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1),
-  STRIPE_PRICE_ID_STARTER: z.string().min(1),   // $29/mo
-  STRIPE_PRICE_ID_GROWTH: z.string().min(1),    // $79/mo
-  STRIPE_PRICE_ID_SCALE: z.string().min(1),     // $149/mo
+  // Stripe (price IDs optional during beta — billing not yet active)
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  STRIPE_PRICE_ID_STARTER: z.string().min(1).optional(),
+  STRIPE_PRICE_ID_GROWTH: z.string().min(1).optional(),
+  STRIPE_PRICE_ID_SCALE: z.string().min(1).optional(),
 
   // Supabase webhook
   SUPABASE_WEBHOOK_SECRET: z.string().min(1).optional(),

@@ -26,7 +26,7 @@ router.post(
       event = stripe.webhooks.constructEvent(
         req.body as Buffer,
         sig,
-        env.STRIPE_WEBHOOK_SECRET,
+        env.STRIPE_WEBHOOK_SECRET ?? '',
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Webhook signature verification failed';
