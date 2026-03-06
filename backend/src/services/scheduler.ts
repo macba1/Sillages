@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import axios from 'axios';
 import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
@@ -92,11 +93,39 @@ async function runHourlyCheck(force: boolean): Promise<string[]> {
 async function runBriefPipeline(accountId: string): Promise<void> {
   console.log(`[scheduler] Starting brief pipeline for account: ${accountId}`);
 
-  try {
-    // Step 1: Sync yesterday's Shopify data
-    console.log(`[scheduler] [${accountId}] Step 1/3 — Shopify sync`);
-    const { snapshotDate } = await syncYesterdayForAccount(accountId);
+  // Step 1: Sync yesterday's Shopify data — with 403 fallback
+  console.log(`[scheduler] [${accountId}] Step 1/3 — Shopify sync`);
+  let snapshotDate: string;
 
+  try {
+    const result = await syncYesterdayForAccount(accountId);
+    snapshotDate = result.snapshotDate;
+  } catch (syncErr) {
+    const is403 = axios.isAxiosError(syncErr) && syncErr.response?.status === 403;
+
+    if (is403) {
+      console.log(`[scheduler] Shopify 403 — falling back to last available snapshot for account ${accountId}`);
+
+      const { data: lastSnapshot } = await supabase
+        .from('shopify_daily_snapshots')
+        .select('snapshot_date')
+        .eq('account_id', accountId)
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!lastSnapshot) {
+        console.log(`[scheduler] No data available for account ${accountId} — skipping until Shopify access is confirmed`);
+        return;
+      }
+
+      snapshotDate = lastSnapshot.snapshot_date;
+    } else {
+      throw syncErr;
+    }
+  }
+
+  try {
     // Step 2: Generate the AI brief
     console.log(`[scheduler] [${accountId}] Step 2/3 — Brief generation`);
     await generateBrief({ accountId, briefDate: snapshotDate });
