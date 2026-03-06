@@ -248,7 +248,7 @@ export default function Dashboard() {
     {
       when: t('when.tonight'), whenColor: 'var(--gold)', spinning: true,
       text: issue
-        ? t('work.checking', { issue: issue.title.toLowerCase(), metric: issue.metric.toLowerCase() })
+        ? `${issue.title} — ${issue.metric}`
         : t('work.checkingDefault'),
     },
     {

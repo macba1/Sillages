@@ -80,6 +80,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const config = configResult.data as UserIntelligenceConfig;
     const snapshot = snapshotResult.data as ShopifyDailySnapshot;
 
+    console.log('LANGUAGE DEBUG:', account.language, account.id);
     console.log(`[briefGenerator] Full account object:`, JSON.stringify({
       id: account.id,
       email: account.email,
