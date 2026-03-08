@@ -163,7 +163,12 @@ interface ChatMessage {
   content: string;
 }
 
-function ChatPanel({ briefId, onClose }: { briefId: string; onClose: () => void }) {
+const GREETING: Record<'en' | 'es', string> = {
+  es: 'Hola. Estoy aquí para ayudarte a actuar sobre lo que vimos hoy. Puedes preguntarme cómo escribir el email, qué poner en el post, cómo cambiar la descripción del producto — lo que necesites para ejecutar el experimento de hoy.',
+  en: "Hi. I'm here to help you act on what we saw today. Ask me how to write the email, what to post, how to change the product description — whatever you need to execute today's experiment.",
+};
+
+function ChatPanel({ brief, lang, onClose }: { brief: IntelligenceBrief; lang: 'en' | 'es'; onClose: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -183,10 +188,10 @@ function ChatPanel({ briefId, onClose }: { briefId: string; onClose: () => void 
     setLoading(true);
 
     try {
-      const { data } = await api.post(`/briefs/${briefId}/chat`, { messages: next });
+      const { data } = await api.post('/chat/brief', { messages: next, briefData: brief });
       setMessages([...next, { role: 'assistant', content: data.reply }]);
     } catch {
-      setMessages([...next, { role: 'assistant', content: 'Something went wrong. Try again.' }]);
+      setMessages([...next, { role: 'assistant', content: lang === 'es' ? 'Algo salió mal. Intenta de nuevo.' : 'Something went wrong. Try again.' }]);
     } finally {
       setLoading(false);
     }
@@ -236,11 +241,21 @@ function ChatPanel({ briefId, onClose }: { briefId: string; onClose: () => void 
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {messages.length === 0 && (
-          <p style={{ fontSize: 13, color: 'var(--ink-faint)', textAlign: 'center', marginTop: 24 }}>
-            Ask me anything about today's brief.
-          </p>
-        )}
+        {/* Greeting — always shown, not sent to API */}
+        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <div style={{
+            maxWidth: '82%',
+            padding: '10px 14px',
+            borderRadius: '14px 14px 14px 4px',
+            background: '#FFFFFF',
+            color: 'var(--ink)',
+            fontSize: 14,
+            lineHeight: 1.6,
+            border: '1px solid rgba(201,150,74,0.2)',
+          }}>
+            {GREETING[lang]}
+          </div>
+        </div>
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{
@@ -325,6 +340,7 @@ export default function BriefDetail() {
   const { id } = useParams<{ id: string }>();
   const { brief, loading, error } = useBrief(id);
   const { t } = useLanguage();
+  const { lang } = useLanguage();
   const [chatOpen, setChatOpen] = useState(false);
 
   return (
@@ -406,7 +422,7 @@ export default function BriefDetail() {
         )}
       </div>
 
-      {chatOpen && id && <ChatPanel briefId={id} onClose={() => setChatOpen(false)} />}
+      {chatOpen && brief && <ChatPanel brief={brief} lang={lang} onClose={() => setChatOpen(false)} />}
     </AppShell>
   );
 }
