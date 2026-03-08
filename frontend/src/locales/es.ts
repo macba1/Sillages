@@ -26,6 +26,7 @@ export const translations: Translations = {
   'dash.section.working':      'En qué estoy trabajando',
   'dash.section.previous':     'Informes anteriores',
   'dash.readArrow':            'Leer \u2192',
+  'dash.orders':               'pedidos',
 
   // Working item timing labels
   'when.tonight':   'Esta noche',

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { Loader2, X } from 'lucide-react';
@@ -6,89 +6,10 @@ import { AppShell } from '../components/layout/LeftNav';
 import { Spinner } from '../components/ui/Spinner';
 import { useBriefs } from '../hooks/useBriefs';
 import { useAccount } from '../hooks/useAccount';
-import { supabase } from '../lib/supabase';
+import { useAlerts } from '../hooks/useAlerts';
+import type { Alert } from '../hooks/useAlerts';
 import { useLanguage } from '../contexts/LanguageContext';
 import type { IntelligenceBrief } from '../types/index';
-
-// ── Alert types ───────────────────────────────────────────────────────────────
-
-interface Alert {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  severity: 'warning' | 'positive';
-  created_at: string;
-}
-
-function useAlerts(accountId: string | undefined) {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-
-  const fetchAlerts = useCallback(async () => {
-    if (!accountId) return;
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/alerts?unread=true`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (!res.ok) return;
-      const { alerts: data } = await res.json() as { alerts: Alert[] };
-      setAlerts(data ?? []);
-    } catch {
-      // non-fatal
-    }
-  }, [accountId]);
-
-  useEffect(() => { void fetchAlerts(); }, [fetchAlerts]);
-
-  async function dismiss(id: string) {
-    setAlerts(prev => prev.filter(a => a.id !== id));
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    await fetch(`${import.meta.env.VITE_API_URL}/api/alerts/${id}/read`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-  }
-
-  return { alerts, dismiss };
-}
-
-function AlertBanner({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
-  const isWarning = alert.severity === 'warning';
-  return (
-    <div
-      style={{
-        borderLeft: `3px solid ${isWarning ? 'var(--gold)' : 'var(--green)'}`,
-        background: isWarning ? 'var(--gold-faint)' : 'var(--green-bg)',
-        borderRadius: 8,
-        padding: '14px 16px',
-        marginBottom: 12,
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 12,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 13, fontWeight: 600, color: isWarning ? 'var(--gold)' : 'var(--green)', marginBottom: 4 }}>
-          {alert.title}
-        </p>
-        <p style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1.6 }}>
-          {alert.message}
-        </p>
-      </div>
-      <button
-        onClick={onDismiss}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--ink-faint)', flexShrink: 0 }}
-        title="Got it"
-      >
-        <X size={14} />
-      </button>
-    </div>
-  );
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -101,29 +22,180 @@ function greetingKey() {
   return h < 12 ? 'dash.greeting.morning' : h < 17 ? 'dash.greeting.afternoon' : 'dash.greeting.evening';
 }
 
-/** Wrap dollar amounts in the text with a gold span. */
 function HighlightNumbers({ text }: { text: string }) {
   const parts = text.split(/(\$[\d,]+(?:\.\d+)?)/g);
   return (
     <>
       {parts.map((part, i) =>
-        part.startsWith('$') ? (
-          <span key={i} style={{ color: 'var(--gold)', fontWeight: 500 }}>{part}</span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
+        part.startsWith('$')
+          ? <span key={i} style={{ color: 'var(--gold)', fontWeight: 500 }}>{part}</span>
+          : <span key={i}>{part}</span>
       )}
     </>
   );
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────
+// ── Alert banner ──────────────────────────────────────────────────────────────
 
-function SectionDivider({ label }: { label: string }) {
+function AlertBanner({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
+  const isWarning = alert.severity === 'warning';
   return (
-    <div className="flex items-center gap-4" style={{ margin: '48px 0 32px' }}>
-      <div style={{ flex: 1, height: 1, background: 'rgba(201,150,74,0.2)' }} />
-      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>
+    <div style={{
+      borderLeft: `3px solid ${isWarning ? 'var(--gold)' : 'var(--green)'}`,
+      background: isWarning ? 'var(--gold-faint)' : 'var(--green-bg)',
+      borderRadius: 8,
+      padding: '14px 16px',
+      marginBottom: 12,
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 12,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: isWarning ? 'var(--gold)' : 'var(--green)', marginBottom: 4 }}>
+          {alert.title}
+        </p>
+        <p style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1.6 }}>{alert.message}</p>
+      </div>
+      <button
+        onClick={onDismiss}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--ink-faint)', flexShrink: 0 }}
+        title="Got it"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ── Metric tile ───────────────────────────────────────────────────────────────
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{
+      background: 'var(--cream-dark)',
+      borderRadius: 16,
+      padding: 20,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+    }}>
+      <span style={{
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: 'var(--gold)',
+      }}>
+        {label}
+      </span>
+      <span className="font-display" style={{ fontSize: 36, color: 'var(--ink)', lineHeight: 1.1 }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ── Working card ──────────────────────────────────────────────────────────────
+
+function WorkingCard({ when, whenColor, text, spinning }: {
+  when: string; whenColor: string; text: string; spinning: boolean;
+}) {
+  return (
+    <div style={{
+      background: 'var(--white)',
+      borderRadius: 16,
+      padding: '16px 20px',
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 16,
+      flexShrink: 0,
+      width: 280,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
+        {spinning && <Loader2 size={10} className="animate-spin" style={{ color: whenColor }} />}
+        <span style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: whenColor,
+          whiteSpace: 'nowrap',
+        }}>
+          {when}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6, margin: 0 }}>{text}</p>
+    </div>
+  );
+}
+
+// ── Past brief card ───────────────────────────────────────────────────────────
+
+function PastBriefCard({ brief }: { brief: IntelligenceBrief }) {
+  const { t } = useLanguage();
+  const date = parseISO(brief.brief_date);
+  const s = brief.section_yesterday;
+  return (
+    <div style={{
+      background: 'var(--white)',
+      borderRadius: 16,
+      padding: '20px 24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
+      flexShrink: 0,
+      width: 260,
+    }}>
+      {/* Date number */}
+      <span className="font-display" style={{ fontSize: 44, color: 'var(--ink-faint)', lineHeight: 1 }}>
+        {format(date, 'd')}
+      </span>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', margin: 0 }}>
+        {format(date, 'EEEE, MMMM')}
+      </p>
+      {/* Summary — stored at generation time; old briefs show original text */}
+      {s?.summary && (
+        <p className="line-clamp-2" style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1.6, margin: 0 }}>
+          {s.summary}
+        </p>
+      )}
+      {/* Stats row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 'auto' }}>
+        {s?.revenue != null && (
+          <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
+            {fmt(s.revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+          </span>
+        )}
+        {s?.orders != null && (
+          <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
+            {s.orders} {t('dash.orders')}
+          </span>
+        )}
+        <Link
+          to={`/briefs/${brief.id}`}
+          style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--gold)', fontWeight: 600, textDecoration: 'none' }}
+        >
+          {t('dash.readArrow')}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Section header ────────────────────────────────────────────────────────────
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+      <span style={{
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.15em',
+        textTransform: 'uppercase',
+        color: 'var(--ink-faint)',
+        whiteSpace: 'nowrap',
+      }}>
         {label}
       </span>
       <div style={{ flex: 1, height: 1, background: 'rgba(201,150,74,0.2)' }} />
@@ -131,86 +203,13 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-function WorkingItem({
-  when, whenColor, text, spinning,
-}: {
-  when: string; whenColor: string; text: string; spinning: boolean;
-}) {
-  return (
-    <div
-      className="flex items-start gap-5"
-      style={{ padding: '14px 0', borderBottom: '1px solid rgba(201,150,74,0.1)' }}
-    >
-      <div className="flex items-center gap-1.5 flex-shrink-0" style={{ width: 88 }}>
-        {spinning && <Loader2 size={11} className="animate-spin" style={{ color: whenColor }} />}
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: whenColor }}>
-          {when}
-        </span>
-      </div>
-      <p style={{ fontSize: 14, color: 'var(--ink)', lineHeight: 1.65 }}>{text}</p>
-    </div>
-  );
-}
-
-function PastBriefRow({ brief }: { brief: IntelligenceBrief }) {
-  const { t } = useLanguage();
-  const date = parseISO(brief.brief_date);
-  const s = brief.section_yesterday;
-  return (
-    <div className="flex gap-5" style={{ padding: '20px 0', borderBottom: '1px solid rgba(201,150,74,0.1)' }}>
-      {/* Day number */}
-      <div className="flex-shrink-0" style={{ width: 48, paddingTop: 4 }}>
-        <span
-          className="font-display"
-          style={{ fontSize: 40, color: 'var(--ink-faint)', lineHeight: 1 }}
-        >
-          {format(date, 'd')}
-        </span>
-      </div>
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 6 }}>
-          {format(date, 'EEEE, MMMM')}
-        </p>
-        {/* Summary comes from brief.section_yesterday.summary as stored in DB at generation time.
-            Old briefs generated before the language/prompt fix will show their original text — this is expected.
-            Only newly generated briefs will reflect prompt or language changes. */}
-        {s?.summary && (
-          <p className="line-clamp-2" style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65, marginBottom: 8 }}>
-            {s.summary}
-          </p>
-        )}
-        <div className="flex items-center gap-4">
-          {s?.revenue != null && (
-            <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
-              {fmt(s.revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-            </span>
-          )}
-          {s?.orders != null && (
-            <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
-              {s.orders} orders
-            </span>
-          )}
-          <Link
-            to={`/briefs/${brief.id}`}
-            className="ml-auto"
-            style={{ fontSize: 13, color: 'var(--gold)', fontWeight: 500 }}
-          >
-            {t('dash.readArrow')}
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { account } = useAccount();
   const { briefs, loading, error, refetch } = useBriefs(account?.id);
   const { alerts, dismiss } = useAlerts(account?.id);
-  const { t } = useLanguage();
+  const { t, lang, setLang } = useLanguage();
   const firstName = account?.full_name?.split(' ')[0] ?? '';
 
   const [searchParams] = useSearchParams();
@@ -220,23 +219,17 @@ export default function Dashboard() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!justConnected || loading || briefs.length > 0) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
       return;
     }
     intervalRef.current = setInterval(() => { void refetch(); }, 5000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [justConnected, loading, briefs.length, refetch]);
 
   const isGenerating = justConnected && !loading && briefs.length === 0;
   const latest = briefs[0] ?? null;
   const past = briefs.slice(1);
 
-  // Build "What I'm working on" items (always 4)
   const topProduct = latest?.section_yesterday?.top_product;
   const issue = latest?.section_whats_not_working?.items[0];
   const gap = latest?.section_gap;
@@ -244,15 +237,11 @@ export default function Dashboard() {
   const workingItems = [
     {
       when: t('when.tonight'), whenColor: 'var(--gold)', spinning: true,
-      text: topProduct
-        ? t('work.watching', { product: topProduct })
-        : t('work.watchingDefault'),
+      text: topProduct ? t('work.watching', { product: topProduct }) : t('work.watchingDefault'),
     },
     {
       when: t('when.tonight'), whenColor: 'var(--gold)', spinning: true,
-      text: issue
-        ? `${issue.title} — ${issue.metric}`
-        : t('work.checkingDefault'),
+      text: issue ? `${issue.title} — ${issue.metric}` : t('work.checkingDefault'),
     },
     {
       when: t('when.tomorrow'), whenColor: 'var(--green)', spinning: false,
@@ -260,15 +249,29 @@ export default function Dashboard() {
     },
     {
       when: t('when.thisWeek'), whenColor: 'var(--ink-faint)', spinning: false,
-      text: gap
-        ? gap.gap.replace(/\.$/, '')
-        : t('work.gapDefault'),
+      text: gap ? gap.gap.replace(/\.$/, '') : t('work.gapDefault'),
     },
+  ];
+
+  // Metric labels by language
+  const metricLabels = lang === 'es'
+    ? { revenue: 'Ingresos', orders: 'Pedidos', sessions: 'Visitantes', conversion: 'Conversión' }
+    : { revenue: 'Revenue', orders: 'Orders', sessions: 'Visitors', conversion: 'Conversion' };
+
+  const y = latest?.section_yesterday;
+  const metrics = [
+    {
+      label: metricLabels.revenue,
+      value: y ? fmt(y.revenue, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : '—',
+    },
+    { label: metricLabels.orders,  value: y ? fmt(y.orders) : '—' },
+    { label: metricLabels.sessions, value: y ? fmt(y.sessions) : '—' },
+    { label: metricLabels.conversion, value: y ? `${(y.conversion_rate * 100).toFixed(1)}%` : '—' },
   ];
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '64px 32px 80px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 48px 80px' }}>
 
         {/* ── Loading ── */}
         {loading && (
@@ -286,122 +289,164 @@ export default function Dashboard() {
 
         {!loading && !error && (
           <>
-            {/* Top line: date + status pill */}
-            <div className="flex items-center justify-between" style={{ marginBottom: 32 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
-                {format(new Date(), 'EEEE, MMMM d')}
-              </span>
-              <span
-                className="flex items-center gap-2"
-                style={{ background: 'var(--green-bg)', color: 'var(--green)', fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 999 }}
-              >
-                <span className="relative flex" style={{ width: 7, height: 7 }}>
-                  <span className="agent-pulse absolute inline-flex rounded-full" style={{ width: '100%', height: '100%', background: '#2D6A4F', opacity: 0.5 }} />
-                  <span className="relative inline-flex rounded-full" style={{ width: 7, height: 7, background: '#2D6A4F' }} />
+            {/* ── TOP ROW ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 56 }}>
+              {/* Left: date + status pill */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+                  {format(new Date(), 'EEEE, MMMM d')}
                 </span>
-                {t('dash.statusPill')}
-              </span>
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  background: 'var(--green-bg)', color: 'var(--green)',
+                  fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 999,
+                }}>
+                  <span style={{ position: 'relative', display: 'flex', width: 7, height: 7 }}>
+                    <span className="agent-pulse" style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#2D6A4F', opacity: 0.5 }} />
+                    <span style={{ position: 'relative', width: 7, height: 7, borderRadius: '50%', background: '#2D6A4F', display: 'inline-flex' }} />
+                  </span>
+                  {t('dash.statusPill')}
+                </span>
+              </div>
+
+              {/* Right: language toggle */}
+              <div style={{ display: 'flex', gap: 2, background: 'var(--cream-dark)', borderRadius: 8, padding: 3 }}>
+                {(['en', 'es'] as const).map(l => (
+                  <button
+                    key={l}
+                    onClick={() => setLang(l)}
+                    style={{
+                      background: lang === l ? 'var(--white)' : 'transparent',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '5px 12px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: lang === l ? 'var(--ink)' : 'var(--ink-faint)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Alert banners */}
+            {/* ── Alert banners ── */}
             {alerts.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
+              <div style={{ marginBottom: 32 }}>
                 {alerts.map(a => (
                   <AlertBanner key={a.id} alert={a} onDismiss={() => void dismiss(a.id)} />
                 ))}
               </div>
             )}
 
-            {/* Greeting */}
-            <h1
-              className="font-display fade-up"
-              style={{ fontSize: 44, color: 'var(--ink)', lineHeight: 1.15, marginBottom: 20 }}
-            >
-              {t(greetingKey())}{firstName ? `, ${firstName}` : ''}.
-            </h1>
+            {/* ── HERO SECTION — 60/40 split ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 48, marginBottom: 72, alignItems: 'center' }}>
 
-            {/* Generating state */}
-            {isGenerating && (
-              <div className="fade-up-2" style={{ marginBottom: 32 }}>
-                <div className="flex items-center gap-3" style={{ marginBottom: 8 }}>
-                  <Loader2 size={16} className="animate-spin" style={{ color: 'var(--gold)' }} />
-                  <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65 }}>
-                    {t('dash.generating.title')}
-                  </p>
-                </div>
-                <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
-                  {t('dash.generating.body')}
-                </p>
-              </div>
-            )}
+              {/* Left: greeting + analyst message + CTA */}
+              <div>
+                <h1 className="font-display fade-up" style={{ fontSize: 48, color: 'var(--ink)', lineHeight: 1.1, marginBottom: 20 }}>
+                  {t(greetingKey())}{firstName ? `, ${firstName.toLowerCase()}` : ''}.
+                </h1>
 
-            {/* Empty state */}
-            {!latest && !isGenerating && (
-              <div className="fade-up-2">
-                <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65, marginBottom: 16 }}>
-                  {t('dash.empty.title')}
-                </p>
-                <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
-                  Make sure your Shopify store is connected in{' '}
-                  <a href="/settings" style={{ color: 'var(--gold)' }}>{t('dash.empty.settingsWord')}</a>.
-                </p>
-              </div>
-            )}
-
-            {/* Latest brief */}
-            {latest && (
-              <>
-                {/* Analyst message */}
-                {latest.section_yesterday?.summary && (
-                  <p
-                    className="fade-up-2"
-                    style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.7, marginBottom: 32 }}
-                  >
-                    <HighlightNumbers text={latest.section_yesterday.summary} />
-                  </p>
+                {isGenerating && (
+                  <div className="fade-up-2" style={{ marginBottom: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <Loader2 size={16} className="animate-spin" style={{ color: 'var(--gold)' }} />
+                      <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65, margin: 0 }}>
+                        {t('dash.generating.title')}
+                      </p>
+                    </div>
+                    <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
+                      {t('dash.generating.body')}
+                    </p>
+                  </div>
                 )}
 
-                {/* CTA */}
-                <div className="flex items-center gap-5 fade-up-3" style={{ marginBottom: 0 }}>
-                  <Link
-                    to={`/briefs/${latest.id}`}
-                    style={{
-                      display: 'inline-block',
-                      background: 'var(--ink)',
-                      color: 'var(--cream)',
-                      borderRadius: 8,
-                      padding: '12px 22px',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      transition: 'opacity 0.15s',
-                    }}
-                  >
-                    {t('dash.cta')}
-                  </Link>
-                  <span style={{ fontSize: 13, color: 'var(--ink-faint)' }}>{t('dash.readTime')}</span>
-                </div>
-              </>
-            )}
+                {!latest && !isGenerating && (
+                  <div className="fade-up-2">
+                    <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.65, marginBottom: 12 }}>
+                      {t('dash.empty.title')}
+                    </p>
+                    <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65 }}>
+                      <a href="/settings" style={{ color: 'var(--gold)' }}>{t('dash.empty.settingsWord')}</a>
+                    </p>
+                  </div>
+                )}
 
-            {/* What I'm working on */}
-            <SectionDivider label={t('dash.section.working')} />
-            <div>
-              {workingItems.map((item, i) => (
-                <WorkingItem key={i} {...item} />
-              ))}
-            </div>
+                {latest && (
+                  <div className="fade-up-2">
+                    {latest.section_yesterday?.summary && (
+                      <p style={{ fontSize: 19, fontWeight: 300, color: 'var(--ink)', lineHeight: 1.7, marginBottom: 32 }}>
+                        <HighlightNumbers text={latest.section_yesterday.summary} />
+                      </p>
+                    )}
+                    <Link
+                      to={`/briefs/${latest.id}`}
+                      style={{
+                        display: 'inline-block',
+                        background: 'var(--ink)',
+                        color: 'var(--cream)',
+                        borderRadius: 10,
+                        padding: '13px 24px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      {t('dash.cta')}
+                    </Link>
+                  </div>
+                )}
+              </div>
 
-            {/* Previous briefings */}
-            {past.length > 0 && (
-              <>
-                <SectionDivider label={t('dash.section.previous')} />
-                <div>
-                  {past.map(b => (
-                    <PastBriefRow key={b.id} brief={b} />
+              {/* Right: 2x2 metric tiles */}
+              {latest && y && (
+                <div className="fade-up-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {metrics.map(m => (
+                    <MetricTile key={m.label} label={m.label} value={m.value} />
                   ))}
                 </div>
-              </>
+              )}
+            </div>
+
+            {/* ── MIDDLE ROW: What I'm working on ── */}
+            <div style={{ marginBottom: 64 }}>
+              <SectionHeader label={t('dash.section.working')} />
+              <div style={{
+                display: 'flex',
+                gap: 12,
+                overflowX: 'auto',
+                paddingBottom: 8,
+                scrollbarWidth: 'none',
+              }}>
+                {workingItems.map((item, i) => (
+                  <WorkingCard key={i} {...item} />
+                ))}
+              </div>
+            </div>
+
+            {/* ── BOTTOM ROW: Previous briefs ── */}
+            {past.length > 0 && (
+              <div>
+                <SectionHeader label={t('dash.section.previous')} />
+                <div style={{
+                  display: 'flex',
+                  gap: 12,
+                  overflowX: 'auto',
+                  paddingBottom: 8,
+                  scrollbarWidth: 'none',
+                }}>
+                  {past.map(b => (
+                    <PastBriefCard key={b.id} brief={b} />
+                  ))}
+                </div>
+              </div>
             )}
           </>
         )}

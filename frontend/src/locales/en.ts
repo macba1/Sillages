@@ -24,6 +24,7 @@ export const en = {
   'dash.section.working':      "What I\u2019m working on",
   'dash.section.previous':     'Previous briefings',
   'dash.readArrow':            'Read \u2192',
+  'dash.orders':               'orders',
 
   // Working item timing labels
   'when.tonight':   'Tonight',
