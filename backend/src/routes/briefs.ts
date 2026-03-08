@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { syncYesterdayForAccount } from '../services/shopifySync.js';
 import { generateBrief } from '../services/briefGenerator.js';
 import { supabase } from '../lib/supabase.js';
+import { openai } from '../lib/openai.js';
 
 const router = Router();
 
@@ -125,6 +126,63 @@ router.post('/seed-test-data', requireAuth, async (req, res, next) => {
     }
 
     res.json({ brief, snapshotDate });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/briefs/:id/chat
+// Auth-protected. Accepts a conversation and returns the assistant's next reply
+// using the full brief JSON as context. Scoped strictly to the authed account.
+router.post('/:id/chat', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.accountId!;
+    const briefId = req.params.id;
+
+    const { messages } = req.body as {
+      messages: { role: 'user' | 'assistant'; content: string }[];
+    };
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new AppError(400, 'messages array is required');
+    }
+
+    // Fetch brief — verify it belongs to the authed account
+    const { data: brief, error: briefErr } = await supabase
+      .from('intelligence_briefs')
+      .select('*')
+      .eq('id', briefId)
+      .eq('account_id', accountId)
+      .single();
+
+    if (briefErr || !brief) {
+      throw new AppError(404, 'Brief not found');
+    }
+
+    const systemPrompt = `You are Sillages, a store intelligence agent. You have just delivered the morning brief for this store. The merchant wants to go deeper on something specific from the brief. Here is today's brief data:
+
+${JSON.stringify(brief, null, 2)}
+
+STRICT RULES for this chat:
+- Only answer questions directly related to this store, these products, and today's brief data
+- If asked anything outside of: improving this store, acting on today's data, writing specific copy or content for this store — respond: I can only help with things directly related to our store and today's data.
+- Never give generic marketing advice — always reference the specific products, numbers, and situations from the brief
+- You can help write: exact email copy, exact social captions, exact product description changes, exact ad copy — always using the real product names and numbers from the brief
+- Always respond in the same language as the brief
+- Keep responses short and actionable — this is a quick consultation, not a lecture`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages,
+      ],
+      max_tokens: 600,
+      temperature: 0.7,
+    });
+
+    const reply = completion.choices[0]?.message?.content ?? '';
+    res.json({ reply });
   } catch (err) {
     next(err);
   }
