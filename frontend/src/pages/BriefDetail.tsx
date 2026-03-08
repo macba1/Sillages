@@ -188,7 +188,7 @@ function ChatPanel({ brief, lang, onClose }: { brief: IntelligenceBrief; lang: '
     setLoading(true);
 
     try {
-      const { data } = await api.post('/chat/brief', { messages: next, briefData: brief });
+      const { data } = await api.post('/chat/brief', { messages: next, briefData: brief, language: lang });
       setMessages([...next, { role: 'assistant', content: data.reply }]);
     } catch {
       setMessages([...next, { role: 'assistant', content: lang === 'es' ? 'Algo salió mal. Intenta de nuevo.' : 'Something went wrong. Try again.' }]);
