@@ -18,16 +18,22 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
   const b = brief as IntelligenceBrief;
   if (b.status !== 'ready') throw new Error(`Brief ${briefId} is not ready (status: ${b.status})`);
 
-  const { data: account, error: accErr } = await supabase
-    .from('accounts')
-    .select('email, full_name')
-    .eq('id', b.account_id)
-    .single();
+  const [{ data: account, error: accErr }, { data: shopConn }] = await Promise.all([
+    supabase.from('accounts').select('email, full_name').eq('id', b.account_id).single(),
+    supabase.from('shopify_connections').select('shop_name').eq('account_id', b.account_id).single(),
+  ]);
 
   if (accErr || !account) throw new Error(`Account not found: ${accErr?.message}`);
 
   const acc = account as Pick<Account, 'email' | 'full_name'>;
   const ownerName = acc.full_name?.split(' ')[0] ?? acc.email.split('@')[0];
+
+  const rawShopName: string = (shopConn as { shop_name: string | null } | null)?.shop_name ?? ownerName;
+  const emailSlug = rawShopName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const fromAddress = `${emailSlug}@sillages.app`;
+  const fromField = `${rawShopName} via Sillages <${fromAddress}>`;
+
+  console.log(`[emailSender] Sending from: ${fromField}`);
 
   const subjectHeadline = b.section_signal?.headline ?? b.section_yesterday?.summary ?? 'Your daily brief';
   const subject = `${ownerName}, ${subjectHeadline}`;
@@ -35,7 +41,7 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
   const html = buildEmailHtml({ brief: b, ownerName });
 
   const { data: sent, error: sendErr } = await resend.emails.send({
-    from: env.RESEND_FROM_EMAIL,
+    from: fromField,
     to: acc.email,
     subject,
     html,
