@@ -24,7 +24,8 @@
       "Bash(python3:*)",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git:*)"
     ]
   }
 }

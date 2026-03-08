@@ -26,14 +26,25 @@ router.post('/brief', requireAuth, async (req, res, next) => {
       throw new AppError(400, 'briefData is required');
     }
 
-    const { data: accountRow } = await supabase
-      .from('accounts')
-      .select('full_name, email')
-      .eq('id', req.accountId!)
-      .single();
+    const [{ data: accountRow }, { data: shopConn }] = await Promise.all([
+      supabase.from('accounts').select('full_name, email').eq('id', req.accountId!).single(),
+      supabase.from('shopify_connections').select('shop_name').eq('account_id', req.accountId!).single(),
+    ]);
     const accountName = accountRow?.full_name?.split(' ')[0]
       ?? accountRow?.email?.split('@')[0]
       ?? 'there';
+
+    // Extract real values from briefData to make the example fully concrete
+    const brief = briefData as Record<string, unknown>;
+    const storeName: string = (shopConn as { shop_name: string | null } | null)?.shop_name ?? 'our store';
+    const yesterday = brief.section_yesterday as Record<string, unknown> | undefined;
+    const topProduct: string = (yesterday?.top_product as string | undefined) ?? 'our top product';
+    const topProductRevenue = (() => {
+      const products = (brief.top_products as { revenue?: number; title?: string }[] | undefined);
+      const match = products?.find(p => p.title === topProduct);
+      return match?.revenue ?? null;
+    })();
+    const totalOrders = yesterday?.orders as number | undefined;
 
     const respondInLang = language === 'es' ? 'Spanish' : 'English';
 
@@ -43,17 +54,22 @@ You have full context about our store from today's brief. Here it is:
 
 ${JSON.stringify(briefData, null, 2)}
 
+Store name: ${storeName}
+Top product today: ${topProduct}${topProductRevenue ? ` (€${topProductRevenue.toFixed(2)} revenue yesterday)` : ''}
+Total orders yesterday: ${totalOrders ?? 'see brief data'}
+
 CRITICAL RULES:
-Never use the merchant's name (${accountName}) more than once — only in the very first message if at all. After that, no name.
+Never use the merchant's name more than once — only in the very first reply if at all. Never again after that.
 Never say YOUR store, YOUR products — always OUR store, OUR products.
-When suggesting a message, email, caption or any content — always write the actual content using real product names, real prices, real store name from the brief data. Never say: send a message about your product. Say: here is the exact message to send.
+Never suggest creating ads, going to Facebook, setting a budget, or anything that requires money or technical setup. These are useless without specifics.
+When someone says they don't know advertising, immediately ask: ¿Tienes WhatsApp? ¿Tienes una lista de emails aunque sea pequeña? — then use their answer to write something concrete.
+When suggesting any message, email, caption, or content — write the exact text using real values. Never describe what to write. Write it.
 
-WRONG: "Te recomiendo enviar un mensaje a tus contactos sobre tus productos"
-RIGHT: "¿Tienes WhatsApp? Manda este mensaje ahora a 10 personas que conozcas: Hola! En [store name from brief] acabamos de hornear nuestra [top product from brief] de €[price from brief]. Si quieres una para este finde dime y te la reservo. — corto, directo, sin presión."
+WRONG response: "Te recomiendo enviar un mensaje a tus contactos sobre tus productos"
+RIGHT response: "¿Tienes WhatsApp? Manda este mensaje ahora a 10 personas que conozcas: Hola! En ${storeName} acabamos de preparar nuestra ${topProduct}. Si quieres una para este finde dime y te la reservo. — corto, directo, sin presión."
 
-Always inject the actual store name, actual product names, actual prices, actual numbers from the brief into every concrete suggestion. Never use placeholders — use the real values.
-
-If you need information from the merchant to personalize further, ask ONE specific question, then use their answer to write something concrete.
+Always use: ${storeName}, ${topProduct}, and real numbers from the brief. Never use placeholders like [product name] or [price] — use the actual values.
+If you need one more detail from the merchant to make it concrete, ask exactly one question, then write the content.
 
 Respond in ${respondInLang}. Plain text only, no bullet points, no bold, no markdown. Max 4 sentences per response.`;
 
