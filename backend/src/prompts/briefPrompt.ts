@@ -185,7 +185,7 @@ OUTPUT FORMAT — return exactly this JSON structure:
       {
         "title": "<short plain-English label, 2-4 words — no jargon, no category assumptions>",
         "metric": "<the number WITH week-over-week change — format: '38 orders ↑12% vs last week' or '$4,820 ↑8% vs last week'. Omit WoW only if no prior data.>",
-        "insight": "<1-2 sentences in first person. Use 'I think', 'I traced this to', 'What this tells me is'. Explain in plain language what the number means and why it matters. No jargon.>"
+        "insight": "<1-2 sentences in first person. Use 'I think', 'I traced this to', 'What this tells me is'. Reference the specific product name or number from the data. Say exactly what happened and why it matters. NEVER write generic trend observations like 'we are not capitalizing on skincare trends' — if it is not a specific product name and a specific number from yesterday's data, do not write it. No jargon.>"
       }
     ]
   },
@@ -194,7 +194,7 @@ OUTPUT FORMAT — return exactly this JSON structure:
       {
         "title": "<short plain-English label, 2-4 words — no jargon, no category assumptions>",
         "metric": "<the number WITH week-over-week change — same format as above. Omit WoW only if no prior data.>",
-        "insight": "<1-2 sentences in first person. Say in plain language what you think is causing it and what happens if it stays broken. 'I traced this to...', 'My read is that...', 'I think what's happening is...'. No softening, no jargon.>"
+        "insight": "<1-2 sentences in first person. Say in plain language what you think is causing it and what happens if it stays broken. 'I traced this to...', 'My read is that...', 'I think what's happening is...'. Reference the specific metric and product name from the data — never write vague category trends. No softening, no jargon.>"
       }
     ]
   },

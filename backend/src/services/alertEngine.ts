@@ -18,6 +18,7 @@ interface AlertCandidate {
 function checkTrafficNotConverting(
   snapshot: ShopifyDailySnapshot,
   previousSnapshot: ShopifyDailySnapshot | null,
+  language: 'en' | 'es',
 ): AlertCandidate | null {
   if (!previousSnapshot) return null;
   if (snapshot.total_orders <= 5) return null;
@@ -30,10 +31,22 @@ function checkTrafficNotConverting(
   if (drop < 0.25) return null;
 
   const dropPct = Math.round(drop * 100);
+  const fromPct = (previousSnapshot.conversion_rate * 100).toFixed(1);
+  const toPct = (snapshot.conversion_rate * 100).toFixed(1);
+
+  if (language === 'es') {
+    return {
+      type: 'TRAFFIC_NOT_CONVERTING',
+      title: 'Recibimos visitas pero no estamos convirtiendo',
+      message: `Nuestra tasa de conversión cayó ${dropPct}% respecto a la semana pasada (de ${fromPct}% a ${toPct}%). Estamos recibiendo visitas pero menos personas están comprando. Algo en el proceso de pago o en las páginas de producto puede haber cambiado.`,
+      severity: 'warning',
+    };
+  }
+
   return {
     type: 'TRAFFIC_NOT_CONVERTING',
     title: "Traffic is up but we're not converting it",
-    message: `Our conversion rate dropped ${dropPct}% vs last week (from ${(previousSnapshot.conversion_rate * 100).toFixed(1)}% to ${(snapshot.conversion_rate * 100).toFixed(1)}%). We're getting visitors but fewer of them are buying. Something in the checkout path or product pages may have changed.`,
+    message: `Our conversion rate dropped ${dropPct}% vs last week (from ${fromPct}% to ${toPct}%). We're getting visitors but fewer of them are buying. Something in the checkout path or product pages may have changed.`,
     severity: 'warning',
   };
 }
@@ -41,6 +54,7 @@ function checkTrafficNotConverting(
 async function checkStarProductOpportunity(
   accountId: string,
   snapshot: ShopifyDailySnapshot,
+  language: 'en' | 'es',
 ): Promise<AlertCandidate | null> {
   const topProduct = snapshot.top_products?.[0];
   if (!topProduct) return null;
@@ -63,6 +77,15 @@ async function checkStarProductOpportunity(
 
   if (!allSameTop) return null;
 
+  if (language === 'es') {
+    return {
+      type: 'STAR_PRODUCT_OPPORTUNITY',
+      title: `${topProduct.title} lleva 3 días seguidos como nuestro producto #1`,
+      message: `"${topProduct.title}" ha sido nuestro producto más vendido tres días consecutivos. Esta demanda constante es una señal — considera destacarlo más en nuestra tienda, crear un bundle o revisar el inventario para no quedarnos sin stock.`,
+      severity: 'positive',
+    };
+  }
+
   return {
     type: 'STAR_PRODUCT_OPPORTUNITY',
     title: `${topProduct.title} has been our #1 product for 3 days straight`,
@@ -76,10 +99,13 @@ async function checkStarProductOpportunity(
 async function sendAlertEmail(
   toEmail: string,
   alert: AlertCandidate,
+  language: 'en' | 'es' = 'en',
 ): Promise<void> {
   const borderColor = alert.severity === 'warning' ? '#C9964A' : '#2D6A4F';
   const labelColor = alert.severity === 'warning' ? '#C9964A' : '#2D6A4F';
-  const label = alert.severity === 'warning' ? 'ALERT' : 'OPPORTUNITY';
+  const label = alert.severity === 'warning'
+    ? (language === 'es' ? 'ALERTA' : 'ALERT')
+    : (language === 'es' ? 'OPORTUNIDAD' : 'OPPORTUNITY');
 
   await resend.emails.send({
     from: env.RESEND_FROM_EMAIL,
@@ -117,13 +143,14 @@ export async function checkAlerts(
   toEmail: string,
   snapshot: ShopifyDailySnapshot,
   previousSnapshot: ShopifyDailySnapshot | null,
+  language: 'en' | 'es' = 'en',
 ): Promise<void> {
   const candidates: AlertCandidate[] = [];
 
-  const trafficAlert = checkTrafficNotConverting(snapshot, previousSnapshot);
+  const trafficAlert = checkTrafficNotConverting(snapshot, previousSnapshot, language);
   if (trafficAlert) candidates.push(trafficAlert);
 
-  const starAlert = await checkStarProductOpportunity(accountId, snapshot);
+  const starAlert = await checkStarProductOpportunity(accountId, snapshot, language);
   if (starAlert) candidates.push(starAlert);
 
   for (const candidate of candidates) {
@@ -157,7 +184,7 @@ export async function checkAlerts(
 
     // Send email (non-fatal)
     try {
-      await sendAlertEmail(toEmail, candidate);
+      await sendAlertEmail(toEmail, candidate, language);
     } catch (err) {
       console.error(`[alertEngine] Failed to send alert email: ${err instanceof Error ? err.message : err}`);
     }

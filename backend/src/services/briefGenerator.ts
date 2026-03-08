@@ -194,6 +194,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         account.email,
         snapshot,
         prevSnapshot ?? null,
+        language,
       );
     } catch (alertErr) {
       console.error(`[briefGenerator] Alert check failed (non-fatal): ${alertErr instanceof Error ? alertErr.message : alertErr}`);

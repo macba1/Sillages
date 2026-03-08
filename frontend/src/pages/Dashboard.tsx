@@ -172,6 +172,9 @@ function PastBriefRow({ brief }: { brief: IntelligenceBrief }) {
         <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 6 }}>
           {format(date, 'EEEE, MMMM')}
         </p>
+        {/* Summary comes from brief.section_yesterday.summary as stored in DB at generation time.
+            Old briefs generated before the language/prompt fix will show their original text — this is expected.
+            Only newly generated briefs will reflect prompt or language changes. */}
         {s?.summary && (
           <p className="line-clamp-2" style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.65, marginBottom: 8 }}>
             {s.summary}
