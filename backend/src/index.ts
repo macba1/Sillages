@@ -17,6 +17,7 @@ import webhooksRoutes from './routes/webhooks.js';
 import alertsRoutes from './routes/alerts.js';
 import accountsRoutes from './routes/accounts.js';
 import adminRoutes from './routes/admin.js';
+import chatRoutes from './routes/chat.js';
 
 import { startScheduler } from './services/scheduler.js';
 
@@ -69,6 +70,7 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/alerts', alertsRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/chat', chatRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((_req, res) => {
