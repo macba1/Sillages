@@ -16,6 +16,8 @@ router.post('/brief', requireAuth, async (req, res, next) => {
       language?: string;
     };
 
+    console.log('[chat] Request received', JSON.stringify({ messageCount: messages?.length, hasBreifData: !!briefData, language }));
+
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new AppError(400, 'messages array is required');
     }
