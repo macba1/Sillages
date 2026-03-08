@@ -110,7 +110,7 @@ function WorkingCard({ when, whenColor, text, spinning }: {
       alignItems: 'flex-start',
       gap: 16,
       flexShrink: 0,
-      width: 280,
+      minWidth: 300,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
         {spinning && <Loader2 size={10} className="animate-spin" style={{ color: whenColor }} />}
@@ -271,7 +271,7 @@ export default function Dashboard() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 48px 80px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 32px 80px' }}>
 
         {/* ── Loading ── */}
         {loading && (
@@ -345,7 +345,7 @@ export default function Dashboard() {
             )}
 
             {/* ── HERO SECTION — 60/40 split ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 48, marginBottom: 72, alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 32, marginBottom: 72, alignItems: 'center' }}>
 
               {/* Left: greeting + analyst message + CTA */}
               <div>
