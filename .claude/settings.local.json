@@ -23,7 +23,8 @@
       "Bash(npm run:*)",
       "Bash(python3:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(cat:*)"
     ]
   }
 }
