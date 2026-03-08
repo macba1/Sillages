@@ -109,8 +109,7 @@ function WorkingCard({ when, whenColor, text, spinning }: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: 16,
-      flexShrink: 0,
-      minWidth: 300,
+      flex: '1 1 280px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, paddingTop: 2 }}>
         {spinning && <Loader2 size={10} className="animate-spin" style={{ color: whenColor }} />}
@@ -271,7 +270,7 @@ export default function Dashboard() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '48px 32px 80px' }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '48px 40px 80px' }}>
 
         {/* ── Loading ── */}
         {loading && (
@@ -420,10 +419,8 @@ export default function Dashboard() {
               <SectionHeader label={t('dash.section.working')} />
               <div style={{
                 display: 'flex',
+                flexWrap: 'wrap',
                 gap: 12,
-                overflowX: 'auto',
-                paddingBottom: 8,
-                scrollbarWidth: 'none',
               }}>
                 {workingItems.map((item, i) => (
                   <WorkingCard key={i} {...item} />
