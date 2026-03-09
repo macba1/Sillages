@@ -92,11 +92,12 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     // ── 3. Load shop name from connection ────────────────────────────────
     const { data: connection } = await supabase
       .from('shopify_connections')
-      .select('shop_name, shop_domain')
+      .select('shop_name, shop_domain, shop_currency')
       .eq('account_id', accountId)
       .single();
 
     const storeName = connection?.shop_name ?? connection?.shop_domain ?? 'your store';
+    const currency = connection?.shop_currency ?? 'USD';
 
     // ── 4. Call GPT-4o ────────────────────────────────────────────────────
     const language: 'en' | 'es' = account.language === 'es' ? 'es' : 'en';
@@ -111,7 +112,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         { role: 'system', content: buildSystemPrompt(language) },
         {
           role: 'user',
-          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language }),
+          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language, currency }),
         },
       ],
     });

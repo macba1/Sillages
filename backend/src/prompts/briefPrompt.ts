@@ -7,6 +7,7 @@ export interface BriefPromptInput {
   config: UserIntelligenceConfig;
   briefDate: string; // YYYY-MM-DD, the date being briefed (yesterday)
   language?: 'en' | 'es'; // defaults to 'en'
+  currency?: string; // ISO 4217 code, e.g. 'EUR', defaults to 'USD'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -132,6 +133,11 @@ You produce a daily intelligence brief with exactly 6 sections. Return ONLY vali
 
 export function buildUserPrompt(input: BriefPromptInput): string {
   const { ownerName, storeName, snapshot, config, briefDate } = input;
+  const cur = input.currency ?? 'USD';
+
+  // Currency symbol for inline display
+  const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
+  const cs = sym[cur] ?? `${cur} `;
 
   // ── Top products ───────────────────────────────────────────────────────────
   const topProductsText = snapshot.top_products.length > 0
@@ -139,7 +145,7 @@ export function buildUserPrompt(input: BriefPromptInput): string {
         .slice(0, 5)
         .map(
           (p, i) =>
-            `  ${i + 1}. ${p.title} — ${p.quantity_sold} units sold — $${p.revenue.toFixed(2)} revenue`,
+            `  ${i + 1}. ${p.title} — ${p.quantity_sold} units sold — ${cs}${p.revenue.toFixed(2)} revenue`,
         )
         .join('\n')
     : '  No product data available';
@@ -149,9 +155,9 @@ export function buildUserPrompt(input: BriefPromptInput): string {
   // ── Formatted metrics with WoW ─────────────────────────────────────────────
   const returningPct = (snapshot.returning_customer_rate * 100).toFixed(2);
 
-  const revenueStr = withWow(`$${snapshot.total_revenue.toFixed(2)}`, snapshot.wow_revenue_pct ?? null);
+  const revenueStr = withWow(`${cs}${snapshot.total_revenue.toFixed(2)}`, snapshot.wow_revenue_pct ?? null);
   const ordersStr  = withWow(`${snapshot.total_orders}`, snapshot.wow_orders_pct ?? null);
-  const aovStr     = withWow(`$${snapshot.average_order_value.toFixed(2)}`, snapshot.wow_aov_pct ?? null);
+  const aovStr     = withWow(`${cs}${snapshot.average_order_value.toFixed(2)}`, snapshot.wow_aov_pct ?? null);
   const newCustStr = withWow(`${snapshot.new_customers}`, snapshot.wow_new_customers_pct ?? null);
 
   // ── Sessions block — only include if we have real data ─────────────────────
@@ -196,13 +202,13 @@ Brief date: ${briefDate} (this covers yesterday's performance)
 
 STORE DATA — YESTERDAY (with week-over-week comparison where available):
 - Total revenue: ${revenueStr}
-- Revenue after refunds: $${snapshot.net_revenue.toFixed(2)}
+- Revenue after refunds: ${cs}${snapshot.net_revenue.toFixed(2)}
 - Orders placed: ${ordersStr}
 - Average spend per order: ${aovStr}
 ${sessionsBlock}
 - First-time buyers: ${newCustStr}
 - Repeat buyers: ${snapshot.returning_customers} (${returningPct}% of all buyers)
-- Refunds: $${snapshot.total_refunds.toFixed(2)}
+- Refunds: ${cs}${snapshot.total_refunds.toFixed(2)}
 - Cancelled orders: ${snapshot.cancelled_orders}
 
 ${customerPattern}
@@ -215,6 +221,9 @@ ${competitorNote}
 ${focusNote}
 ${toneNote}
 
+CURRENCY RULE — mandatory:
+This store uses ${cur}. Always use the symbol "${cs}" for all monetary amounts in your response. Never use $ unless the store currency is USD.
+
 OUTPUT FORMAT — return exactly this JSON structure:
 
 {
@@ -226,7 +235,7 @@ OUTPUT FORMAT — return exactly this JSON structure:
     "conversion_rate": <decimal 0–1 — return the raw decimal, e.g. 0.0235 for 2.35%. If not available, use 0>,
     "new_customers": <number — must match exactly>,
     "top_product": "${topProductName ?? '<product name from TOP PRODUCTS list above>'}",
-    "summary": "<ONE sentence. Start with the owner's name ONLY ONCE, then go straight to what happened. Name the revenue, name the top product, and the most important thing that happened. Be specific and warm. Example: '${ownerName}, ayer generamos €114 con 3 pedidos — la Tarta de Limón volvió a ser la estrella, pero todos los compradores ya nos conocían.' Do NOT mention sessions/visits/traffic if that data is not available.>"
+    "summary": "<ONE sentence. Start with the owner's name ONLY ONCE, then go straight to what happened. Name the revenue (using ${cs}), name the top product, and the most important thing that happened. Be specific and warm. Example: '${ownerName}, ayer generamos ${cs}114 con 3 pedidos — la Tarta de Limón volvió a ser la estrella, pero todos los compradores ya nos conocían.' Do NOT mention sessions/visits/traffic if that data is not available.>"
   },
   "section_whats_working": {
     "items": [
@@ -248,13 +257,13 @@ OUTPUT FORMAT — return exactly this JSON structure:
   },
   "section_signal": {
     "headline": "<A specific insight about THIS store's data, not a generic market trend. 8-15 words. Example: 'La Tarta de Limón engancha a quien la prueba, pero no atrae gente nueva'>",
-    "market_context": "<2-3 sentences analyzing what the DATA tells us about this specific business. NOT market trends. Look at the numbers: who's buying, what they buy, how much they spend, whether they come back. Find the story in the data. Example: 'All our customers yesterday were people who've bought before. That tells me our products are good enough to bring people back, but we're not doing enough to reach new people. The Tarta de Limón at €38 average is clearly our star product, but only existing fans know about it.'>",
-    "store_implication": "<2-3 sentences about what this means and the one thing to focus on. Be specific to this store. Example: 'What I'd focus on is getting the Tarta de Limón in front of people who haven't tried it yet. Right now it's our best-kept secret — only regulars buy it. If we can get even 2-3 new people a week to try it, that's €75-115 in extra revenue.'>",
+    "market_context": "<2-3 sentences analyzing what the DATA tells us about this specific business. NOT market trends. Look at the numbers: who's buying, what they buy, how much they spend, whether they come back. Find the story in the data. Example: 'All our customers yesterday were people who've bought before. That tells me our products are good enough to bring people back, but we're not doing enough to reach new people. The Tarta de Limón at ${cs}38 average is clearly our star product, but only existing fans know about it.'>",
+    "store_implication": "<2-3 sentences about what this means and the one thing to focus on. Be specific to this store. Example: 'What I'd focus on is getting the Tarta de Limón in front of people who haven't tried it yet. Right now it's our best-kept secret — only regulars buy it. If we can get even 2-3 new people a week to try it, that's ${cs}75-115 in extra revenue.'>",
   },
   "section_gap": {
     "gap": "<1-2 sentences. The single biggest thing holding this store back right now, based on the data. Be specific. If sessions data is unavailable, don't say 'no traffic' — focus on customer mix, order patterns, etc.>",
     "opportunity": "<1-2 sentences. What would it look like in concrete terms if we fixed this?>",
-    "estimated_upside": "<A specific, realistic number based on the data. E.g. '+€75-100 extra per week' or '3-5 more orders per week'. Must be credible given the current numbers.>"
+    "estimated_upside": "<A specific, realistic number based on the data. E.g. '+${cs}75-100 extra per week' or '3-5 more orders per week'. Must be credible given the current numbers.>"
   },
   "section_activation": {
     "what": "<One simple sentence. What exactly to do today. Use the real product name. Example: 'Send a WhatsApp to your best customers about the Tarta de Limón' or 'Post a photo of the Hogaza de Pasas y Nueces on Instagram with a limited-stock message'>",
@@ -266,7 +275,7 @@ OUTPUT FORMAT — return exactly this JSON structure:
       "<Step 4>",
       "<Step 5 — wrap up. What to look for tomorrow to know if it worked. Keep it simple: 'Check if you got any new followers or DMs' not 'monitor your engagement rate'>"
     ],
-    "expected_impact": "<One sentence with a realistic, specific prediction. Example: 'If 2-3 new people see this and one of them orders, that's €30-40 in new revenue this week.' Base it on actual order values from the data.>"
+    "expected_impact": "<One sentence with a realistic, specific prediction. Example: 'If 2-3 new people see this and one of them orders, that's ${cs}30-40 in new revenue this week.' Base it on actual order values from the data.>"
   }
 }
 
