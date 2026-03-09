@@ -4,6 +4,7 @@ import {
   buildInstallUrl,
   generateState,
   validateHmac,
+  validateHmacMultiApp,
   validateShopDomain,
   exchangeCodeForToken,
   shopifyClient,
@@ -70,48 +71,70 @@ router.get(
       const query = req.query as Record<string, string>;
       const { shop, code, state, hmac } = query;
 
-      // Resolve credentials based on which Shopify app initiated the OAuth flow
-      const credentials = resolveShopifyCredentials(query.client_id);
-      console.log(`[shopify/callback] using app client_id=${credentials.clientId}`);
-
       // Validate shop domain
       if (!shop || !validateShopDomain(shop)) {
         throw new AppError(400, 'Invalid shop domain');
       }
 
-      // Validate HMAC
-      if (!hmac || !validateHmac(query, credentials)) {
+      // Validate HMAC — try all known app credentials (Shopify doesn't send client_id in callback)
+      if (!hmac) {
+        throw new AppError(400, 'Missing HMAC');
+      }
+      const credentials = validateHmacMultiApp(query);
+      if (!credentials) {
         throw new AppError(400, 'Invalid HMAC signature');
       }
+      console.log(`[shopify/callback] HMAC matched app client_id=${credentials.clientId}`);
 
-      // Validate state nonce — clean up expired rows first, then look up
-      if (!state) {
+      // Resolve account — two paths:
+      // 1. State exists in our DB → install initiated from Sillages dashboard (our /auth flow)
+      // 2. State NOT in our DB → Shopify-initiated install (custom distribution), look up by shop_domain
+      let accountId: string;
+
+      if (state) {
+        // Garbage-collect expired states
+        await supabase
+          .from('shopify_oauth_states')
+          .delete()
+          .lt('expires_at', new Date().toISOString());
+
+        const { data: stateRow, error: stateError } = await supabase
+          .from('shopify_oauth_states')
+          .select('account_id')
+          .eq('state', state)
+          .maybeSingle();
+
+        if (stateError) {
+          throw new AppError(500, `State lookup failed: ${stateError.message}`);
+        }
+
+        if (stateRow) {
+          // Path 1: state found — Sillages-initiated install
+          await supabase.from('shopify_oauth_states').delete().eq('state', state);
+          accountId = stateRow.account_id;
+          console.log(`[shopify/callback] resolved account from state: ${accountId}`);
+        } else {
+          // Path 2: state not in our DB — Shopify-initiated install (custom distribution)
+          // Look up existing connection by shop_domain, or create a new account
+          const { data: existingConn } = await supabase
+            .from('shopify_connections')
+            .select('account_id')
+            .eq('shop_domain', shop)
+            .maybeSingle();
+
+          if (existingConn) {
+            accountId = existingConn.account_id;
+            console.log(`[shopify/callback] Shopify-initiated install — found existing account by shop_domain: ${accountId}`);
+          } else {
+            // No state in our DB and no existing connection — redirect to sign-up flow
+            console.warn(`[shopify/callback] Shopify-initiated install for unknown shop ${shop} — no account to link`);
+            res.redirect(`${env.FRONTEND_URL}/signup?shop=${encodeURIComponent(shop)}&source=shopify`);
+            return;
+          }
+        }
+      } else {
         throw new AppError(400, 'Missing state parameter');
       }
-
-      // Garbage-collect any expired states
-      await supabase
-        .from('shopify_oauth_states')
-        .delete()
-        .lt('expires_at', new Date().toISOString());
-
-      // Look up and immediately delete the state (one-time use)
-      const { data: stateRow, error: stateError } = await supabase
-        .from('shopify_oauth_states')
-        .select('account_id')
-        .eq('state', state)
-        .maybeSingle();
-
-      if (stateError) {
-        throw new AppError(500, `State lookup failed: ${stateError.message}`);
-      }
-      if (!stateRow) {
-        throw new AppError(400, 'Invalid or expired state parameter — please try connecting again');
-      }
-
-      await supabase.from('shopify_oauth_states').delete().eq('state', state);
-
-      const accountId = stateRow.account_id;
 
       // ── DEBUG ─────────────────────────────────────────────────────────────
       console.log(`[shopify/callback] shop=${shop} state=${state} accountId=${accountId}`);

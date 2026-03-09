@@ -9,6 +9,17 @@ export interface ShopifyCredentials {
   clientSecret: string;
 }
 
+/** All known credential sets (primary first, then beta if configured). */
+export function getAllShopifyCredentials(): ShopifyCredentials[] {
+  const all: ShopifyCredentials[] = [
+    { clientId: env.SHOPIFY_API_KEY, clientSecret: env.SHOPIFY_API_SECRET },
+  ];
+  if (env.SHOPIFY_BETA_API_KEY && env.SHOPIFY_BETA_API_SECRET) {
+    all.push({ clientId: env.SHOPIFY_BETA_API_KEY, clientSecret: env.SHOPIFY_BETA_API_SECRET });
+  }
+  return all;
+}
+
 /**
  * Resolves the correct Shopify app credentials based on the client_id.
  * Falls back to the primary app if no clientId is provided or it doesn't match beta.
@@ -30,6 +41,19 @@ export function resolveShopifyCredentials(clientId?: string): ShopifyCredentials
     clientId: env.SHOPIFY_API_KEY,
     clientSecret: env.SHOPIFY_API_SECRET,
   };
+}
+
+/**
+ * Tries HMAC validation against all known credential sets.
+ * Returns the matching credentials, or null if none match.
+ */
+export function validateHmacMultiApp(query: Record<string, string>): ShopifyCredentials | null {
+  for (const creds of getAllShopifyCredentials()) {
+    if (validateHmac(query, creds)) {
+      return creds;
+    }
+  }
+  return null;
 }
 
 // ── OAuth helpers ────────────────────────────────────────────────────────────
