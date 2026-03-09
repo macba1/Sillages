@@ -41,8 +41,10 @@ router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError(400, 'Invalid or missing shop domain');
     }
 
-    // Resolve credentials — allows starting OAuth with the beta app via ?client_id=
-    const credentials = resolveShopifyCredentials(req.query.client_id as string | undefined);
+    // Resolve credentials — ?app=beta selects Sillages Beta, ?client_id=xxx also works
+    const appParam = req.query.app as string | undefined;
+    const clientIdHint = appParam === 'beta' ? env.SHOPIFY_BETA_API_KEY : (req.query.client_id as string | undefined);
+    const credentials = resolveShopifyCredentials(clientIdHint);
 
     const state = generateState();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
