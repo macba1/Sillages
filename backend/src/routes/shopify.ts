@@ -7,6 +7,7 @@ import {
   validateShopDomain,
   exchangeCodeForToken,
   shopifyClient,
+  resolveShopifyCredentials,
 } from '../lib/shopify.js';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
@@ -39,6 +40,9 @@ router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError(400, 'Invalid or missing shop domain');
     }
 
+    // Resolve credentials — allows starting OAuth with the beta app via ?client_id=
+    const credentials = resolveShopifyCredentials(req.query.client_id as string | undefined);
+
     const state = generateState();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
@@ -50,7 +54,7 @@ router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError(500, `Failed to store OAuth state: ${insertError.message}`);
     }
 
-    const installUrl = buildInstallUrl(shop, state);
+    const installUrl = buildInstallUrl(shop, state, credentials);
     res.redirect(installUrl);
   } catch (err) {
     next(err);
@@ -66,13 +70,17 @@ router.get(
       const query = req.query as Record<string, string>;
       const { shop, code, state, hmac } = query;
 
+      // Resolve credentials based on which Shopify app initiated the OAuth flow
+      const credentials = resolveShopifyCredentials(query.client_id);
+      console.log(`[shopify/callback] using app client_id=${credentials.clientId}`);
+
       // Validate shop domain
       if (!shop || !validateShopDomain(shop)) {
         throw new AppError(400, 'Invalid shop domain');
       }
 
       // Validate HMAC
-      if (!hmac || !validateHmac(query)) {
+      if (!hmac || !validateHmac(query, credentials)) {
         throw new AppError(400, 'Invalid HMAC signature');
       }
 
@@ -109,7 +117,7 @@ router.get(
       console.log(`[shopify/callback] shop=${shop} state=${state} accountId=${accountId}`);
 
       // Exchange code for token
-      const tokenData = await exchangeCodeForToken(shop, code);
+      const tokenData = await exchangeCodeForToken(shop, code, credentials);
 
       // 1) Verify token exchange
       console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}...`);

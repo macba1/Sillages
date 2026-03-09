@@ -2,11 +2,42 @@ import crypto from 'crypto';
 import axios from 'axios';
 import { env } from '../config/env.js';
 
+// ── Multi-app credential resolution ─────────────────────────────────────────
+
+export interface ShopifyCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * Resolves the correct Shopify app credentials based on the client_id.
+ * Falls back to the primary app if no clientId is provided or it doesn't match beta.
+ */
+export function resolveShopifyCredentials(clientId?: string): ShopifyCredentials {
+  if (
+    clientId &&
+    env.SHOPIFY_BETA_API_KEY &&
+    env.SHOPIFY_BETA_API_SECRET &&
+    clientId === env.SHOPIFY_BETA_API_KEY
+  ) {
+    return {
+      clientId: env.SHOPIFY_BETA_API_KEY,
+      clientSecret: env.SHOPIFY_BETA_API_SECRET,
+    };
+  }
+
+  return {
+    clientId: env.SHOPIFY_API_KEY,
+    clientSecret: env.SHOPIFY_API_SECRET,
+  };
+}
+
 // ── OAuth helpers ────────────────────────────────────────────────────────────
 
-export function buildInstallUrl(shop: string, state: string): string {
+export function buildInstallUrl(shop: string, state: string, credentials?: ShopifyCredentials): string {
+  const creds = credentials ?? resolveShopifyCredentials();
   const params = new URLSearchParams({
-    client_id: env.SHOPIFY_API_KEY,
+    client_id: creds.clientId,
     scope: env.SHOPIFY_SCOPES,
     redirect_uri: `${env.SHOPIFY_APP_URL}/api/shopify/callback`,
     state,
@@ -19,7 +50,8 @@ export function generateState(): string {
   return crypto.randomBytes(16).toString('hex');
 }
 
-export function validateHmac(query: Record<string, string>): boolean {
+export function validateHmac(query: Record<string, string>, credentials?: ShopifyCredentials): boolean {
+  const creds = credentials ?? resolveShopifyCredentials();
   const { hmac, ...rest } = query;
   if (!hmac) return false;
 
@@ -29,7 +61,7 @@ export function validateHmac(query: Record<string, string>): boolean {
     .join('&');
 
   const digest = crypto
-    .createHmac('sha256', env.SHOPIFY_API_SECRET)
+    .createHmac('sha256', creds.clientSecret)
     .update(message)
     .digest('hex');
 
@@ -59,12 +91,14 @@ export interface AccessTokenResponse {
 export async function exchangeCodeForToken(
   shop: string,
   code: string,
+  credentials?: ShopifyCredentials,
 ): Promise<AccessTokenResponse> {
+  const creds = credentials ?? resolveShopifyCredentials();
   const response = await axios.post<AccessTokenResponse>(
     `https://${shop}/admin/oauth/access_token`,
     {
-      client_id: env.SHOPIFY_API_KEY,
-      client_secret: env.SHOPIFY_API_SECRET,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       code,
     },
   );
@@ -206,9 +240,10 @@ export interface ShopifyOrder {
 
 // ── HMAC webhook verification ────────────────────────────────────────────────
 
-export function verifyShopifyWebhook(rawBody: Buffer, hmacHeader: string): boolean {
+export function verifyShopifyWebhook(rawBody: Buffer, hmacHeader: string, credentials?: ShopifyCredentials): boolean {
+  const creds = credentials ?? resolveShopifyCredentials();
   const digest = crypto
-    .createHmac('sha256', env.SHOPIFY_API_SECRET)
+    .createHmac('sha256', creds.clientSecret)
     .update(rawBody)
     .digest('base64');
   return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmacHeader));

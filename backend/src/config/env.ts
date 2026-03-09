@@ -28,11 +28,15 @@ const envSchema = z.object({
   // Supabase webhook
   SUPABASE_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-  // Shopify OAuth
+  // Shopify OAuth — primary app
   SHOPIFY_API_KEY: z.string().min(1),
   SHOPIFY_API_SECRET: z.string().min(1),
   SHOPIFY_SCOPES: z.string().default('read_all_orders,read_products,read_analytics,read_customers,read_pixels,read_orders,read_inventory,read_reports'),
   SHOPIFY_APP_URL: z.string().url(),
+
+  // Shopify OAuth — beta app (custom distribution)
+  SHOPIFY_BETA_API_KEY: z.string().min(1).optional(),
+  SHOPIFY_BETA_API_SECRET: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -25,7 +25,13 @@
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
       "Bash(cat:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(npx tsx:*)",
+      "Bash(set:*)",
+      "Bash(__NEW_LINE_820f668bd6ccdb46__:*)",
+      "Bash(__NEW_LINE_f2bb7d909b66e18b__ echo:*)"
     ]
   }
 }
