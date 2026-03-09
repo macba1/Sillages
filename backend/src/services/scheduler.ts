@@ -101,10 +101,11 @@ async function runBriefPipeline(accountId: string): Promise<void> {
     const result = await syncYesterdayForAccount(accountId);
     snapshotDate = result.snapshotDate;
   } catch (syncErr) {
-    const is403 = axios.isAxiosError(syncErr) && syncErr.response?.status === 403;
+    const httpStatus = axios.isAxiosError(syncErr) ? syncErr.response?.status : null;
+    const is403or401 = httpStatus === 403 || httpStatus === 401;
 
-    if (is403) {
-      console.log(`[scheduler] Shopify 403 — falling back to last available snapshot for account ${accountId}`);
+    if (is403or401) {
+      console.log(`[scheduler] Shopify ${httpStatus} — falling back to last available snapshot for account ${accountId}`);
 
       const { data: lastSnapshot } = await supabase
         .from('shopify_daily_snapshots')
@@ -121,7 +122,11 @@ async function runBriefPipeline(accountId: string): Promise<void> {
 
       snapshotDate = lastSnapshot.snapshot_date;
     } else {
-      throw syncErr;
+      const msg = axios.isAxiosError(syncErr)
+        ? `HTTP ${syncErr.response?.status}: ${JSON.stringify(syncErr.response?.data)}`
+        : String(syncErr);
+      console.error(`[scheduler] Shopify sync failed for account ${accountId}: ${msg}`);
+      return;
     }
   }
 
