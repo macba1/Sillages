@@ -110,9 +110,10 @@ router.post(
 );
 
 // ── POST /api/webhooks/shopify/customers-data-request ────────────────────────
+// Also mounted at /customers-data-request (without /shopify prefix) for Dev Dashboard compliance URLs
 // GDPR: Shopify asks what customer data we hold
 router.post(
-  '/shopify/customers-data-request',
+  ['/shopify/customers-data-request', '/customers-data-request'],
   async (req: Request, res: Response) => {
     const rawBody = req.body as Buffer;
     const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
@@ -156,9 +157,10 @@ router.post(
 );
 
 // ── POST /api/webhooks/shopify/customers-redact ──────────────────────────────
+// Also mounted at /customers-redact (without /shopify prefix)
 // GDPR: Shopify requests we delete all data for a specific customer
 router.post(
-  '/shopify/customers-redact',
+  ['/shopify/customers-redact', '/customers-redact'],
   async (req: Request, res: Response) => {
     const rawBody = req.body as Buffer;
     const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
@@ -186,9 +188,10 @@ router.post(
 );
 
 // ── POST /api/webhooks/shopify/shop-redact ───────────────────────────────────
+// Also mounted at /shop-redact (without /shopify prefix)
 // GDPR: Shopify requests we delete ALL data for a shop (48h after uninstall)
 router.post(
-  '/shopify/shop-redact',
+  ['/shopify/shop-redact', '/shop-redact'],
   async (req: Request, res: Response) => {
     const rawBody = req.body as Buffer;
     const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
