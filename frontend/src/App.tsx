@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Alerts from './pages/Alerts';
+import Chat from './pages/Chat';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 
@@ -108,6 +109,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Alerts />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <RequireAuth>
+              <Chat />
             </RequireAuth>
           }
         />

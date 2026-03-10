@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useIsPWA } from '../hooks/useIsPWA';
 import { Button } from '../components/ui/Button';
 
 export default function Login() {
   const { signInWithEmail, signUpWithEmail } = useAuth();
   const navigate = useNavigate();
+  const isPWA = useIsPWA();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -36,11 +38,33 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F1EC] flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-[#F7F1EC] flex flex-col items-center justify-center px-4"
+      style={{ paddingTop: isPWA ? 'env(safe-area-inset-top, 20px)' : undefined }}
+    >
       {/* Logo */}
-      <Link to="/" className="text-[#3A2332] font-semibold text-base tracking-tight mb-10">
-        sillages
-      </Link>
+      <div style={{ marginBottom: isPWA ? 40 : 40, textAlign: 'center' }}>
+        {isPWA ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 16,
+              background: '#2A1F14',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ color: '#C9964A', fontSize: 28, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>S</span>
+            </div>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.25em', textTransform: 'uppercase',
+              color: '#A89880', fontFamily: "'DM Sans', sans-serif",
+            }}>
+              Sillages
+            </span>
+          </div>
+        ) : (
+          <Link to="/" className="text-[#3A2332] font-semibold text-base tracking-tight">
+            sillages
+          </Link>
+        )}
+      </div>
 
       <div className="w-full max-w-sm">
         {signupSuccess ? (

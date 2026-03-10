@@ -6,6 +6,8 @@ import { useAccount } from '../../hooks/useAccount';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { Lang } from '../../contexts/LanguageContext';
+import { useIsPWA } from '../../hooks/useIsPWA';
+import { MobileTabBar } from './MobileTabBar';
 import api from '../../lib/api';
 
 const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
@@ -154,6 +156,27 @@ export function LeftNav() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const isPWA = useIsPWA();
+
+  if (isPWA) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+        <main
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            background: 'var(--cream)',
+            WebkitOverflowScrolling: 'touch',
+            paddingBottom: 72,
+          }}
+        >
+          {children}
+        </main>
+        <MobileTabBar />
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
       <LeftNav />

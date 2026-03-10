@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { Loader2, X } from 'lucide-react';
@@ -11,6 +11,7 @@ import type { Alert } from '../hooks/useAlerts';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { useIsPWA } from '../hooks/useIsPWA';
 import type { IntelligenceBrief } from '../types/index';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -308,6 +309,39 @@ export default function Dashboard() {
   const { alerts, dismiss } = useAlerts(account?.id);
   const { t, lang, setLang } = useLanguage();
   const firstName = account?.full_name?.split(' ')[0] ?? '';
+  const isPWA = useIsPWA();
+
+  // Pull-to-refresh for PWA
+  const [refreshing, setRefreshing] = useState(false);
+  const pullRef = useRef<{ startY: number; pulling: boolean }>({ startY: 0, pulling: false });
+  const [pullDistance, setPullDistance] = useState(0);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isPWA) return;
+    const scrollEl = e.currentTarget;
+    if (scrollEl.scrollTop <= 0) {
+      pullRef.current = { startY: e.touches[0].clientY, pulling: true };
+    }
+  }, [isPWA]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isPWA || !pullRef.current.pulling) return;
+    const delta = e.touches[0].clientY - pullRef.current.startY;
+    if (delta > 0) {
+      setPullDistance(Math.min(delta * 0.4, 80));
+    }
+  }, [isPWA]);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (!isPWA || !pullRef.current.pulling) return;
+    pullRef.current.pulling = false;
+    if (pullDistance > 50) {
+      setRefreshing(true);
+      await refetch();
+      setRefreshing(false);
+    }
+    setPullDistance(0);
+  }, [isPWA, pullDistance, refetch]);
 
   // Push notifications
   const push = usePushNotifications();
@@ -389,7 +423,27 @@ export default function Dashboard() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '48px 40px 80px' }}>
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ maxWidth: 1440, margin: '0 auto', padding: isPWA ? '24px 16px 24px' : '48px 40px 80px' }}
+      >
+
+        {/* Pull-to-refresh indicator */}
+        {isPWA && (pullDistance > 0 || refreshing) && (
+          <div style={{
+            display: 'flex', justifyContent: 'center', padding: '8px 0',
+            opacity: refreshing ? 1 : Math.min(pullDistance / 50, 1),
+            transition: refreshing ? 'none' : 'opacity 0.1s',
+          }}>
+            <Loader2
+              size={20}
+              className={refreshing ? 'animate-spin' : ''}
+              style={{ color: 'var(--gold)', transform: `rotate(${pullDistance * 3}deg)` }}
+            />
+          </div>
+        )}
 
         {/* ── Loading ── */}
         {loading && (
@@ -408,9 +462,9 @@ export default function Dashboard() {
         {!loading && !error && (
           <>
             {/* ── TOP ROW ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 56 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isPWA ? 32 : 56, flexWrap: 'wrap', gap: 12 }}>
               {/* Left: date + status pill */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isPWA ? 10 : 16, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
                   {format(new Date(), 'EEEE, MMMM d')}
                 </span>
@@ -484,12 +538,12 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── HERO SECTION — 60/40 split ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 32, marginBottom: 72, alignItems: 'center' }}>
+            {/* ── HERO SECTION — 60/40 split on desktop, stacked on mobile ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: isPWA ? '1fr' : '3fr 2fr', gap: isPWA ? 20 : 32, marginBottom: isPWA ? 40 : 72, alignItems: 'center' }}>
 
               {/* Left: greeting + analyst message + CTA */}
               <div>
-                <h1 className="font-display fade-up" style={{ fontSize: 48, color: 'var(--ink)', lineHeight: 1.1, marginBottom: 20 }}>
+                <h1 className="font-display fade-up" style={{ fontSize: isPWA ? 32 : 48, color: 'var(--ink)', lineHeight: 1.1, marginBottom: isPWA ? 14 : 20 }}>
                   {t(greetingKey())}{firstName ? `, ${firstName.toLowerCase()}` : ''}.
                 </h1>
 
@@ -556,7 +610,7 @@ export default function Dashboard() {
             </div>
 
             {/* ── MIDDLE ROW: What I'm working on ── */}
-            <div style={{ marginBottom: 64 }}>
+            <div style={{ marginBottom: isPWA ? 32 : 64 }}>
               <SectionHeader label={t('dash.section.working')} />
               <div style={{
                 display: 'flex',
