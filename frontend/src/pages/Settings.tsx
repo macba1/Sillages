@@ -6,6 +6,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { useShopifyConnection } from '../hooks/useShopify';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 // ── Shopify connect form (inline in Settings) ─────────────────────────────────
 
@@ -297,6 +298,7 @@ export default function Settings() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const push = usePushNotifications();
 
   // Email / isTony
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -450,6 +452,32 @@ export default function Settings() {
           <SettingRow label={t('settings.delivery.label')} description={t('settings.delivery.desc')} noBorder>
             <Badge label={t('settings.badge.comingSoon')} color="var(--ink-faint)" bg="var(--cream-dark)" />
           </SettingRow>
+
+          {push.state !== 'unsupported' && (
+            <SettingRow
+              label="Push notifications"
+              description={
+                push.state === 'subscribed'
+                  ? 'Tu brief diario llega como notificación push'
+                  : push.state === 'denied'
+                    ? 'Bloqueadas en el navegador — actívalas en la configuración del navegador'
+                    : 'Recibe tu brief diario como notificación push'
+              }
+              noBorder
+            >
+              {push.state === 'subscribed' ? (
+                <ActionButton onClick={() => void push.unsubscribe()}>
+                  Desactivar
+                </ActionButton>
+              ) : push.state === 'prompt' ? (
+                <ActionButton onClick={() => void push.subscribe()}>
+                  Activar
+                </ActionButton>
+              ) : push.state === 'denied' ? (
+                <Badge label="Bloqueadas" color="#DC2626" bg="#FEF2F2" />
+              ) : null}
+            </SettingRow>
+          )}
         </SettingsSection>
 
         {/* ── Section 3: Plan ── */}

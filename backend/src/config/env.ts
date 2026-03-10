@@ -37,6 +37,11 @@ const envSchema = z.object({
   // Shopify OAuth — beta app (custom distribution)
   SHOPIFY_BETA_API_KEY: z.string().min(1).optional(),
   SHOPIFY_BETA_API_SECRET: z.string().min(1).optional(),
+
+  // Web Push (VAPID)
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_EMAIL: z.string().default('mailto:support@sillages.app'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -18,6 +18,7 @@ import alertsRoutes from './routes/alerts.js';
 import accountsRoutes from './routes/accounts.js';
 import adminRoutes from './routes/admin.js';
 import chatRoutes from './routes/chat.js';
+import pushRoutes from './routes/push.js';
 
 import { startScheduler } from './services/scheduler.js';
 
@@ -71,6 +72,7 @@ app.use('/api/alerts', alertsRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/push', pushRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((_req, res) => {

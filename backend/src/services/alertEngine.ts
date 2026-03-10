@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
+import { sendPushNotification } from './pushNotifier.js';
 import type { ShopifyDailySnapshot } from '../types.js';
 
 export type AlertType = 'TRAFFIC_NOT_CONVERTING' | 'STAR_PRODUCT_OPPORTUNITY';
@@ -187,6 +188,18 @@ export async function checkAlerts(
       await sendAlertEmail(toEmail, candidate, language);
     } catch (err) {
       console.error(`[alertEngine] Failed to send alert email: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Send push notification (non-fatal)
+    try {
+      const emoji = candidate.severity === 'warning' ? '⚠️' : '🌟';
+      await sendPushNotification(accountId, {
+        title: `${emoji} ${candidate.title}`,
+        body: candidate.message.slice(0, 120) + (candidate.message.length > 120 ? '…' : ''),
+        url: '/dashboard',
+      });
+    } catch (err) {
+      console.error(`[alertEngine] Failed to send push: ${err instanceof Error ? err.message : err}`);
     }
 
     console.log(`[alertEngine] Alert fired — ${candidate.type} for account ${accountId}`);

@@ -33,7 +33,9 @@
       "Bash(__NEW_LINE_820f668bd6ccdb46__:*)",
       "Bash(__NEW_LINE_f2bb7d909b66e18b__ echo:*)",
       "Bash(npx shopify:*)",
-      "Bash(npx shopify@latest:*)"
+      "Bash(npx shopify@latest:*)",
+      "Bash(npx web-push:*)",
+      "Bash(ls:*)"
     ]
   }
 }

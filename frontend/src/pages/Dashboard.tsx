@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { Loader2, X } from 'lucide-react';
@@ -9,6 +9,8 @@ import { useAccount } from '../hooks/useAccount';
 import { useAlerts } from '../hooks/useAlerts';
 import type { Alert } from '../hooks/useAlerts';
 import { useLanguage } from '../contexts/LanguageContext';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import type { IntelligenceBrief } from '../types/index';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -202,6 +204,102 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
+// ── Push notification modal ───────────────────────────────────────────────────
+
+function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismiss: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(42,31,20,0.5)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+    }}>
+      <div style={{
+        background: 'var(--white)', borderRadius: 16, padding: '32px 28px',
+        maxWidth: 380, width: '100%', textAlign: 'center',
+        boxShadow: '0 20px 60px rgba(42,31,20,0.2)',
+      }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>🔔</div>
+        <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', marginBottom: 8, lineHeight: 1.3 }}>
+          Recibe tu brief como notificación
+        </h3>
+        <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.6, marginBottom: 24 }}>
+          Sin abrir email. Tu brief diario aparece directamente en tu móvil cada mañana.
+        </p>
+        <button
+          onClick={onActivate}
+          style={{
+            width: '100%', padding: '12px 20px', borderRadius: 10,
+            background: 'var(--ink)', color: 'var(--cream)',
+            fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer',
+            fontFamily: "'DM Sans', sans-serif", marginBottom: 10,
+          }}
+        >
+          Activar notificaciones
+        </button>
+        <button
+          onClick={onDismiss}
+          style={{
+            width: '100%', padding: '10px 20px', borderRadius: 10,
+            background: 'transparent', color: 'var(--ink-faint)',
+            fontSize: 13, border: 'none', cursor: 'pointer',
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          Ahora no
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PWA install banner ───────────────────────────────────────────────────────
+
+function PWABanner({ variant, onInstall, onDismiss }: {
+  variant: 'native' | 'ios';
+  onInstall: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div style={{
+      background: 'var(--white)', borderRadius: 12,
+      border: '1px solid rgba(201,150,74,0.2)',
+      padding: '14px 18px', marginBottom: 20,
+      display: 'flex', alignItems: 'center', gap: 14,
+    }}>
+      <span style={{ fontSize: 24, flexShrink: 0 }}>📱</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>
+          Instala Sillages en tu móvil
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--ink-muted)', lineHeight: 1.5, margin: 0 }}>
+          {variant === 'ios'
+            ? 'Toca Compartir (⬆) → Añadir a pantalla de inicio'
+            : 'Acceso directo desde tu pantalla de inicio'}
+        </p>
+      </div>
+      {variant === 'native' && (
+        <button
+          onClick={onInstall}
+          style={{
+            padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            background: 'var(--ink)', color: 'var(--cream)',
+            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+            fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          Instalar
+        </button>
+      )}
+      <button
+        onClick={onDismiss}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-faint)', flexShrink: 0 }}
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -210,6 +308,27 @@ export default function Dashboard() {
   const { alerts, dismiss } = useAlerts(account?.id);
   const { t, lang, setLang } = useLanguage();
   const firstName = account?.full_name?.split(' ')[0] ?? '';
+
+  // Push notifications
+  const push = usePushNotifications();
+  const [showPushModal, setShowPushModal] = useState(false);
+  const pushModalShown = useRef(false);
+
+  // Show push modal once when user has briefs and hasn't subscribed
+  useEffect(() => {
+    if (push.state === 'prompt' && briefs.length > 0 && !pushModalShown.current) {
+      const dismissed = localStorage.getItem('sillages_push_dismissed');
+      if (!dismissed) {
+        pushModalShown.current = true;
+        // Delay a bit so the page renders first
+        const timer = setTimeout(() => setShowPushModal(true), 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [push.state, briefs.length]);
+
+  // PWA install
+  const pwa = usePWAInstall();
 
   const [searchParams] = useSearchParams();
   const justConnected = searchParams.get('connected') === 'true';
@@ -333,6 +452,28 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+
+            {/* ── Push notification modal ── */}
+            {showPushModal && (
+              <PushModal
+                onActivate={async () => {
+                  await push.subscribe();
+                  setShowPushModal(false);
+                }}
+                onDismiss={() => {
+                  setShowPushModal(false);
+                  localStorage.setItem('sillages_push_dismissed', '1');
+                }}
+              />
+            )}
+
+            {/* ── PWA install banner ── */}
+            {pwa.showNativePrompt && (
+              <PWABanner variant="native" onInstall={() => void pwa.install()} onDismiss={pwa.dismiss} />
+            )}
+            {pwa.showIOSInstructions && (
+              <PWABanner variant="ios" onInstall={() => {}} onDismiss={pwa.dismiss} />
+            )}
 
             {/* ── Alert banners ── */}
             {alerts.length > 0 && (

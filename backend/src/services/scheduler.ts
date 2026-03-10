@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
+import { sendPushNotification } from './pushNotifier.js';
 
 // Runs every hour at :05 — checks which accounts are due for their brief
 // based on their configured timezone and send_hour
@@ -153,8 +154,44 @@ async function runBriefPipeline(accountId: string): Promise<void> {
       return;
     }
 
-    console.log(`[scheduler] [${accountId}] Step 3/3 — Email delivery`);
+    console.log(`[scheduler] [${accountId}] Step 3/4 — Email delivery`);
     await sendBriefEmail(brief.id);
+
+    // Step 4: Push notification (non-blocking)
+    console.log(`[scheduler] [${accountId}] Step 4/4 — Push notification`);
+    try {
+      // Fetch brief data for push content
+      const { data: fullBrief } = await supabase
+        .from('intelligence_briefs')
+        .select('section_yesterday, section_activation')
+        .eq('id', brief.id)
+        .single();
+
+      const { data: conn } = await supabase
+        .from('shopify_connections')
+        .select('shop_name, shop_currency')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (fullBrief?.section_yesterday) {
+        const y = fullBrief.section_yesterday as { revenue: number; orders: number };
+        const act = fullBrief.section_activation as { what: string } | null;
+        const storeName = (conn as { shop_name: string | null } | null)?.shop_name ?? 'Tu tienda';
+        const cur = (conn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
+        const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$' };
+        const cs = sym[cur] ?? `${cur} `;
+
+        await sendPushNotification(accountId, {
+          title: `${storeName} — Ayer ${cs}${y.revenue.toFixed(0)} · ${y.orders} pedidos`,
+          body: act?.what
+            ? `${act.what.slice(0, 100)}${act.what.length > 100 ? '…' : ''} — Toca para ver tu brief →`
+            : 'Tu brief diario está listo — Toca para verlo →',
+          url: '/dashboard',
+        });
+      }
+    } catch (pushErr) {
+      console.error(`[scheduler] [${accountId}] Push notification failed (non-blocking): ${(pushErr as Error).message}`);
+    }
 
     console.log(`[scheduler] [${accountId}] Pipeline complete`);
   } catch (err) {

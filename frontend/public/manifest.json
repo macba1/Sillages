@@ -1,0 +1,17 @@
+{
+  "name": "Sillages",
+  "short_name": "Sillages",
+  "description": "Daily intelligence briefs for your Shopify store",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#F5F0E8",
+  "theme_color": "#2C2417",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

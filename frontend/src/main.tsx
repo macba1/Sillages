@@ -11,3 +11,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </LanguageProvider>
   </React.StrictMode>,
 );
+
+// Register service worker for push notifications
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js').catch((err) => {
+      console.warn('[SW] Registration failed:', err);
+    });
+  });
+}
