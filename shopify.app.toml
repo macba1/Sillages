@@ -1,25 +1,27 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "35582656e15f06c81e7e4a9b0f828614"
 name = "Sillages"
-client_id = "30e25e458a9b1eb64e13c8eafe2a18a3"
-application_url = "https://sillages.app"
+application_url = "https://sillages-production.up.railway.app/api/shopify/auth"
 embedded = false
 
+[webhooks]
+api_version = "2026-01"
+
+  [[webhooks.subscriptions]]
+  uri = "https://sillages-production.up.railway.app/api/webhooks/shopify-compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
 [access_scopes]
-scopes = "read_orders,read_customers,read_checkouts,read_analytics"
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_all_orders,read_analytics,read_customers,read_inventory,read_orders,read_products,read_reports,read_pixels"
+optional_scopes = [ ]
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
   "https://sillages-production.up.railway.app/api/shopify/callback"
 ]
-
-[webhooks]
-api_version = "2024-04"
-
-  [[webhooks.subscriptions]]
-  topics = ["customers/data_request", "customers/redact", "shop/redact"]
-  uri = "https://sillages-production.up.railway.app/api/webhooks/shopify-compliance"
-
-[app_proxy]
-# No app proxy needed
 
 [pos]
 embedded = false
