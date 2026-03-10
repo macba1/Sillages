@@ -1,0 +1,25 @@
+name = "Sillages"
+client_id = "30e25e458a9b1eb64e13c8eafe2a18a3"
+application_url = "https://sillages.app"
+embedded = false
+
+[access_scopes]
+scopes = "read_orders,read_customers,read_checkouts,read_analytics"
+
+[auth]
+redirect_urls = [
+  "https://sillages-production.up.railway.app/api/shopify/callback"
+]
+
+[webhooks]
+api_version = "2024-04"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://sillages-production.up.railway.app/api/webhooks/shopify-compliance"
+
+[app_proxy]
+# No app proxy needed
+
+[pos]
+embedded = false
