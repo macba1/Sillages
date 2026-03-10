@@ -272,3 +272,134 @@ export function verifyShopifyWebhook(rawBody: Buffer, hmacHeader: string, creden
     .digest('base64');
   return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmacHeader));
 }
+
+// ── Shopify Billing (GraphQL) ────────────────────────────────────────────────
+
+export interface ShopifyBillingPlan {
+  name: string;
+  price: number;       // monthly USD
+  trialDays: number;
+}
+
+export const SHOPIFY_PLANS: Record<string, ShopifyBillingPlan> = {
+  starter: { name: 'Starter', price: 19, trialDays: 14 },
+  growth:  { name: 'Growth',  price: 39, trialDays: 14 },
+  pro:     { name: 'Pro',     price: 59, trialDays: 14 },
+};
+
+async function shopifyGraphQL<T>(shop: string, accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+  const response = await axios.post(
+    `https://${shop}/admin/api/2024-04/graphql.json`,
+    { query, variables },
+    { headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' } },
+  );
+  if (response.data.errors?.length) {
+    throw new Error(`Shopify GraphQL error: ${JSON.stringify(response.data.errors)}`);
+  }
+  return response.data.data as T;
+}
+
+/**
+ * Creates a recurring app subscription via Shopify Billing API.
+ * Returns the confirmation URL where the merchant must approve the charge.
+ */
+export async function createAppSubscription(
+  shop: string,
+  accessToken: string,
+  planKey: string,
+  returnUrl: string,
+): Promise<{ confirmationUrl: string; subscriptionId: string }> {
+  const plan = SHOPIFY_PLANS[planKey];
+  if (!plan) throw new Error(`Unknown plan: ${planKey}`);
+
+  const mutation = `
+    mutation appSubscriptionCreate($name: String!, $returnUrl: URL!, $trialDays: Int!, $amount: Decimal!, $currencyCode: CurrencyCode!) {
+      appSubscriptionCreate(
+        name: $name
+        returnUrl: $returnUrl
+        trialDays: $trialDays
+        test: ${env.NODE_ENV !== 'production' ? 'true' : 'false'}
+        lineItems: [
+          {
+            plan: {
+              appRecurringPricingDetails: {
+                price: { amount: $amount, currencyCode: $currencyCode }
+              }
+            }
+          }
+        ]
+      ) {
+        appSubscription {
+          id
+        }
+        confirmationUrl
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL<{
+    appSubscriptionCreate: {
+      appSubscription: { id: string } | null;
+      confirmationUrl: string | null;
+      userErrors: Array<{ field: string[]; message: string }>;
+    };
+  }>(shop, accessToken, mutation, {
+    name: `Sillages ${plan.name}`,
+    returnUrl,
+    trialDays: plan.trialDays,
+    amount: plan.price.toFixed(1),
+    currencyCode: 'USD',
+  });
+
+  const result = data.appSubscriptionCreate;
+  if (result.userErrors.length > 0) {
+    throw new Error(`Billing error: ${result.userErrors.map(e => e.message).join(', ')}`);
+  }
+  if (!result.confirmationUrl || !result.appSubscription) {
+    throw new Error('Shopify did not return a confirmation URL');
+  }
+
+  return {
+    confirmationUrl: result.confirmationUrl,
+    subscriptionId: result.appSubscription.id,
+  };
+}
+
+/**
+ * Fetches the current status of an app subscription.
+ */
+export async function getAppSubscriptionStatus(
+  shop: string,
+  accessToken: string,
+  subscriptionId: string,
+): Promise<{ status: string; trialEndsOn: string | null }> {
+  const query = `
+    query {
+      node(id: "${subscriptionId}") {
+        ... on AppSubscription {
+          status
+          trialDays
+          currentPeriodEnd
+          createdAt
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL<{
+    node: { status: string; trialDays: number; currentPeriodEnd: string | null; createdAt: string } | null;
+  }>(shop, accessToken, query);
+
+  if (!data.node) throw new Error(`Subscription ${subscriptionId} not found`);
+
+  // Calculate trial end from createdAt + trialDays
+  const trialEndsOn = data.node.trialDays > 0
+    ? new Date(new Date(data.node.createdAt).getTime() + data.node.trialDays * 86400000).toISOString()
+    : null;
+
+  return { status: data.node.status, trialEndsOn };
+}

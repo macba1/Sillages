@@ -9,6 +9,8 @@ import {
   exchangeCodeForToken,
   shopifyClient,
   resolveShopifyCredentials,
+  createAppSubscription,
+  getAppSubscriptionStatus,
 } from '../lib/shopify.js';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
@@ -208,7 +210,112 @@ router.get(
       // (e.g. 403 scope issues). Never blocks the redirect.
       void generateFirstBrief(accountId);
 
-      res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
+      // ── Shopify Billing ──────────────────────────────────────────────────
+      // Create a recurring app subscription. The merchant must approve the charge
+      // on Shopify's confirmation page before it takes effect.
+      try {
+        const billingReturnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing-callback?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}`;
+        const { confirmationUrl, subscriptionId } = await createAppSubscription(
+          shop,
+          tokenData.access_token,
+          'starter', // default plan
+          billingReturnUrl,
+        );
+
+        // Store the pending subscription ID so we can verify it in the callback
+        await supabase
+          .from('accounts')
+          .update({
+            stripe_subscription_id: subscriptionId, // reusing column for Shopify subscription GID
+            subscription_status: 'trialing',
+            trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+          })
+          .eq('id', accountId);
+
+        console.log(`[shopify/callback] Billing subscription created — redirecting merchant to approve: ${subscriptionId}`);
+        res.redirect(confirmationUrl);
+      } catch (billingErr) {
+        // If billing fails, still redirect to dashboard — don't block the install
+        console.error(`[shopify/callback] Billing creation failed (non-blocking): ${(billingErr as Error).message}`);
+        res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
+      }
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── GET /api/shopify/billing-callback ─────────────────────────────────────────
+// Shopify redirects here after the merchant approves (or declines) the charge.
+// Query params: charge_id (from Shopify), shop, account_id (from our returnUrl).
+router.get(
+  '/billing-callback',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const chargeId = req.query.charge_id as string | undefined;
+      const shop = req.query.shop as string | undefined;
+      const accountId = req.query.account_id as string | undefined;
+
+      console.log(`[shopify/billing-callback] charge_id=${chargeId} shop=${shop} account_id=${accountId}`);
+
+      if (!accountId) {
+        throw new AppError(400, 'Missing account_id');
+      }
+
+      // Fetch connection to get access token
+      const { data: conn } = await supabase
+        .from('shopify_connections')
+        .select('shop_domain, access_token')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (!conn) {
+        throw new AppError(400, 'No Shopify connection found for this account');
+      }
+
+      // Fetch the subscription ID we stored during OAuth callback
+      const { data: account } = await supabase
+        .from('accounts')
+        .select('stripe_subscription_id')
+        .eq('id', accountId)
+        .single();
+
+      const subscriptionGid = account?.stripe_subscription_id;
+
+      if (subscriptionGid) {
+        // Check the subscription status on Shopify
+        try {
+          const { status, trialEndsOn } = await getAppSubscriptionStatus(
+            conn.shop_domain,
+            conn.access_token,
+            subscriptionGid,
+          );
+
+          console.log(`[shopify/billing-callback] Subscription ${subscriptionGid} status=${status}`);
+
+          // Map Shopify subscription status to our DB status
+          const mappedStatus = status === 'ACTIVE' ? 'active'
+            : status === 'PENDING' ? 'trialing'
+            : status === 'DECLINED' ? 'canceled'
+            : status === 'EXPIRED' ? 'canceled'
+            : 'trialing';
+
+          await supabase
+            .from('accounts')
+            .update({
+              subscription_status: mappedStatus,
+              trial_ends_at: trialEndsOn,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', accountId);
+
+          console.log(`[shopify/billing-callback] Account ${accountId} subscription_status=${mappedStatus}`);
+        } catch (statusErr) {
+          console.error(`[shopify/billing-callback] Failed to check subscription status: ${(statusErr as Error).message}`);
+        }
+      }
+
+      res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true&billing=approved`);
     } catch (err) {
       next(err);
     }
