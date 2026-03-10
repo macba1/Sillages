@@ -123,6 +123,17 @@ export interface SectionWhatsNotWorking {
   items: WorkingItem[];
 }
 
+export interface UpcomingItem {
+  pattern: string;       // "Los jueves vendes el doble de Tarta de Limón"
+  days_until: number;    // days until the pattern's peak day
+  action: string;        // "Prepara una publicación para el miércoles por la noche"
+  ready_copy: string;    // copy/paste text for the action
+}
+
+export interface SectionUpcoming {
+  items: UpcomingItem[];
+}
+
 export interface SectionSignal {
   headline: string;
   market_context: string;
@@ -154,6 +165,7 @@ export interface IntelligenceBrief {
   section_yesterday: SectionYesterday | null;
   section_whats_working: SectionWhatsWorking | null;
   section_whats_not_working: SectionWhatsNotWorking | null;
+  section_upcoming: SectionUpcoming | null;
   section_signal: SectionSignal | null;
   section_gap: SectionGap | null;
   section_activation: SectionActivation | null;

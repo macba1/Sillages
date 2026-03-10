@@ -19,6 +19,7 @@ const labels = {
     newCustomers: 'New Customers',
     topProduct: 'Top Product',
     whatsWorking: "What's Working",
+    upcoming: "What's Coming This Week",
     whatsNotWorking: "What's Not Working",
     theSignal: 'The Signal',
     forYourStore: 'For your store',
@@ -47,6 +48,7 @@ const labels = {
     newCustomers: 'Nuevos clientes',
     topProduct: 'Producto estrella',
     whatsWorking: 'Lo que funciona',
+    upcoming: 'Lo que viene esta semana',
     whatsNotWorking: 'Lo que no funciona',
     theSignal: 'La señal',
     forYourStore: 'Para tu tienda',
@@ -143,6 +145,7 @@ function buildEmailHtml({ brief, ownerName, lang, currency }: BuildEmailInput): 
   const dateStr = format(parseISO(brief.brief_date), 'EEEE, d MMMM yyyy', { locale });
   const y = brief.section_yesterday;
   const ww = brief.section_whats_working;
+  const up = brief.section_upcoming;
   const wnw = brief.section_whats_not_working;
   const sig = brief.section_signal;
   const gap = brief.section_gap;
@@ -321,6 +324,42 @@ function buildEmailHtml({ brief, ownerName, lang, currency }: BuildEmailInput): 
           <tr>
             <td style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:8px 24px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">${workingItems}</table>
+            </td>
+          </tr>
+          <tr><td style="height:16px;"></td></tr>
+          ` : ''}
+
+          ${up && up.items?.length > 0 ? `
+          <!-- ── UPCOMING ── -->
+          <tr>
+            <td style="padding-bottom:8px;padding-top:8px;">
+              <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#9A8090;">${t.upcoming}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#FDF8F0;border-radius:12px;border:1px solid #EDE5DC;padding:8px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${up.items.map((item) => `
+                <tr>
+                  <td style="padding:12px 0;border-bottom:1px solid #F0E8E0;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="width:8px;vertical-align:top;padding-top:2px;">
+                          <div style="width:6px;height:6px;background:#D8B07A;border-radius:50%;margin-top:5px;"></div>
+                        </td>
+                        <td style="padding-left:10px;">
+                          <span style="font-size:13px;font-weight:600;color:#3A2332;">${item.pattern}</span>
+                          ${item.days_until > 0 ? `<span style="font-size:12px;color:#D8B07A;font-weight:600;margin-left:8px;">${item.days_until}d</span>` : ''}
+                          <p style="margin:6px 0 0;font-size:13px;color:#6B5460;line-height:1.5;">${item.action}</p>
+                          <div style="margin:8px 0 0;padding:10px 12px;background:#FFFFFF;border-radius:8px;border:1px solid #EDE5DC;">
+                            <p style="margin:0;font-size:13px;color:#3A2332;line-height:1.5;font-style:italic;">${item.ready_copy}</p>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>`).join('')}
+              </table>
             </td>
           </tr>
           <tr><td style="height:16px;"></td></tr>

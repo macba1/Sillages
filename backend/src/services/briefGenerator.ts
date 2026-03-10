@@ -1,6 +1,6 @@
 import { openai } from '../lib/openai.js';
 import { supabase } from '../lib/supabase.js';
-import { buildSystemPrompt, buildUserPrompt } from '../prompts/briefPrompt.js';
+import { buildSystemPrompt, buildUserPrompt, analyzeHistoricalPatterns } from '../prompts/briefPrompt.js';
 import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
@@ -9,6 +9,7 @@ import type {
   SectionYesterday,
   SectionWhatsWorking,
   SectionWhatsNotWorking,
+  SectionUpcoming,
   SectionSignal,
   SectionGap,
   SectionActivation,
@@ -23,6 +24,7 @@ interface BriefSections {
   section_yesterday: SectionYesterday;
   section_whats_working: SectionWhatsWorking;
   section_whats_not_working: SectionWhatsNotWorking;
+  section_upcoming: SectionUpcoming;
   section_signal: SectionSignal;
   section_gap: SectionGap;
   section_activation: SectionActivation;
@@ -80,12 +82,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const config = configResult.data as UserIntelligenceConfig;
     const snapshot = snapshotResult.data as ShopifyDailySnapshot;
 
-    console.log('LANGUAGE DEBUG:', account.language, account.id);
-    console.log(`[briefGenerator] Full account object:`, JSON.stringify({
-      id: account.id,
-      email: account.email,
-      language: account.language,
-    }));
+    console.log(`[briefGenerator] account=${account.id} language=${account.language}`);
 
     const ownerName = account.full_name?.split(' ')[0] ?? account.email.split('@')[0];
 
@@ -99,10 +96,32 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const storeName = connection?.shop_name ?? connection?.shop_domain ?? 'your store';
     const currency = connection?.shop_currency ?? 'USD';
 
-    // ── 4. Call GPT-4o ────────────────────────────────────────────────────
+    // ── 3b. Load last 30 days of snapshots for pattern analysis ─────────
     const language: 'en' | 'es' = account.language === 'es' ? 'es' : 'en';
+    const thirtyDaysAgo = new Date(new Date(briefDate).getTime() - 30 * 86400000)
+      .toISOString().slice(0, 10);
 
-    console.log(`[briefGenerator] Generating brief in language: ${language} (raw account.language = ${JSON.stringify(account.language)})`);
+    const { data: historicalSnapshots } = await supabase
+      .from('shopify_daily_snapshots')
+      .select('*')
+      .eq('account_id', accountId)
+      .gte('snapshot_date', thirtyDaysAgo)
+      .lte('snapshot_date', briefDate)
+      .order('snapshot_date', { ascending: true });
+
+    const allSnapshots = (historicalSnapshots ?? []) as ShopifyDailySnapshot[];
+    console.log(`[briefGenerator] Loaded ${allSnapshots.length} snapshots for pattern analysis (${thirtyDaysAgo} → ${briefDate})`);
+
+    // Analyze patterns
+    let historicalAnalysis: string | undefined;
+    if (allSnapshots.length >= 3) {
+      const { text } = analyzeHistoricalPatterns(allSnapshots, briefDate, language);
+      historicalAnalysis = text;
+      console.log(`[briefGenerator] Pattern analysis generated (${text.split('\n').length} lines)`);
+    }
+
+    // ── 4. Call GPT-4o ────────────────────────────────────────────────────
+    console.log(`[briefGenerator] Generating brief in language: ${language}`);
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -112,7 +131,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         { role: 'system', content: buildSystemPrompt(language) },
         {
           role: 'user',
-          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language, currency }),
+          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language, currency, historicalAnalysis }),
         },
       ],
     });
@@ -139,6 +158,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       'section_yesterday',
       'section_whats_working',
       'section_whats_not_working',
+      'section_upcoming',
       'section_signal',
       'section_gap',
       'section_activation',
@@ -160,6 +180,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         section_yesterday: sections.section_yesterday,
         section_whats_working: sections.section_whats_working,
         section_whats_not_working: sections.section_whats_not_working,
+        section_upcoming: sections.section_upcoming,
         section_signal: sections.section_signal,
         section_gap: sections.section_gap,
         section_activation: sections.section_activation,
