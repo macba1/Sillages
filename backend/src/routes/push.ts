@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { sendPushNotification } from '../services/pushNotifier.js';
 
 const router = Router();
 
@@ -69,6 +70,26 @@ router.delete(
       }
 
       console.log(`[push] Subscription removed for account ${req.accountId}`);
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /api/push/test ─────────────────────────────────────────────────────
+// Send a test push notification to the authenticated user.
+router.post(
+  '/test',
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { title, body } = req.body as { title?: string; body?: string };
+      await sendPushNotification(req.accountId!, {
+        title: title ?? 'Sillages — Test',
+        body: body ?? 'Push notifications are working!',
+        url: '/dashboard',
+      });
       res.json({ ok: true });
     } catch (err) {
       next(err);
