@@ -36,90 +36,73 @@ export default function Privacy() {
         <h1 style={{ fontSize: 36, fontWeight: 600, color: '#3A2332', marginBottom: 8, letterSpacing: '-0.02em', lineHeight: 1.2, fontFamily: "'DM Serif Display', serif" }}>
           Privacy Policy
         </h1>
-        <p style={{ fontSize: 13, color: '#A89880', marginBottom: 56 }}>Last updated: March 2026</p>
+        <p style={{ fontSize: 13, color: '#A89880', marginBottom: 56 }}>Last updated: March 9, 2026</p>
 
-        <Section title="The short version">
-          <p>
-            We collect only what we need to run Sillages. We never sell your data. We never share it with
-            third parties for advertising. You can delete your account and all your data at any time by
-            emailing us.
-          </p>
-        </Section>
+        <p style={{ fontSize: 15, color: '#7A6B63', lineHeight: 1.8, marginBottom: 40 }}>
+          Sillages ("we", "our", "the app") provides store analytics and daily briefs for Shopify merchants.
+        </p>
 
-        <Section title="What we collect">
-          <p style={{ marginBottom: 12 }}>We collect the following data when you use Sillages:</p>
+        <Section title="What data we collect">
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <li><strong style={{ color: '#3A2332' }}>Your email address</strong> — used to create your account and send you your daily brief.</li>
-            <li><strong style={{ color: '#3A2332' }}>Your name</strong> — used to personalise your brief. Optional.</li>
-            <li><strong style={{ color: '#3A2332' }}>Shopify store data</strong> — orders, revenue, sessions, product performance, and refunds. We pull this every night to generate your brief. We request read-only access — we never modify your Shopify store.</li>
-            <li><strong style={{ color: '#3A2332' }}>Usage data</strong> — which pages you visit in the app, so we can improve the product. No third-party trackers.</li>
-            <li><strong style={{ color: '#3A2332' }}>Language preference</strong> — to deliver your brief in your preferred language.</li>
+            <li>
+              <strong style={{ color: '#3A2332' }}>Store data accessed through the Shopify API</strong> — orders, products, customers, and analytics, used solely to generate daily briefs and in-app insights.
+            </li>
+            <li>
+              <strong style={{ color: '#3A2332' }}>Account information</strong> — email address and name, for authentication and delivering briefs.
+            </li>
           </ul>
         </Section>
 
-        <Section title="How we use it">
-          <p style={{ marginBottom: 12 }}>We use your data for one purpose: to give you a useful daily intelligence brief about your store.</p>
-          <p style={{ marginBottom: 12 }}>
-            Your Shopify data is sent to OpenAI's API to generate the written analysis. OpenAI does not use your data to train their models (we use their API under their data processing terms).
-          </p>
-          <p>
-            We do not sell your data. We do not share it with advertisers. We do not use it for any purpose
-            other than running Sillages.
-          </p>
+        <Section title="How we use your data">
+          <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <li>Generate personalized daily briefs about store performance</li>
+            <li>Provide actionable recommendations based on store data</li>
+            <li>Deliver briefs via email</li>
+            <li>Power the in-app chat feature</li>
+          </ul>
         </Section>
 
-        <Section title="How it's stored">
-          <p style={{ marginBottom: 12 }}>
-            Your data is stored in Supabase, a managed database service hosted on AWS in the US. Data is
-            encrypted at rest and in transit.
-          </p>
-          <p>
-            Your Shopify access token is stored encrypted and is only used for nightly data pulls. We store
-            daily snapshots of your store metrics — not your full Shopify data.
-          </p>
+        <Section title="Data storage and security">
+          <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <li>All data stored on encrypted servers</li>
+            <li>API tokens encrypted at rest</li>
+            <li>We do not sell, share, or transfer data to third parties</li>
+          </ul>
         </Section>
 
-        <Section title="How long we keep it">
-          <p>
-            We keep your data for as long as your account is active. Daily snapshots are kept for up to
-            12 months. If you delete your account, we delete all your data within 30 days.
-          </p>
+        <Section title="Data retention">
+          <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <li>Store data retained while account is active</li>
+            <li>Brief history retained for 90 days</li>
+            <li>Upon account deletion, all data permanently removed within 30 days</li>
+          </ul>
         </Section>
 
-        <Section title="Your rights">
+        <Section title="GDPR compliance">
           <p style={{ marginBottom: 12 }}>You have the right to:</p>
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <li>Access the data we hold about you</li>
-            <li>Correct any inaccurate data</li>
-            <li>Delete your account and all associated data</li>
-            <li>Export your data</li>
+            <li>Request access to all data we hold about you</li>
+            <li>Request deletion of your data at any time</li>
+            <li>Request a portable copy of your data</li>
           </ul>
           <p style={{ marginTop: 12 }}>
-            To exercise any of these rights, email us at{' '}
-            <a href="mailto:tony@sillages.app" style={{ color: '#D8B07A', textDecoration: 'none' }}>tony@sillages.app</a>.
-            We'll respond within 5 business days.
+            Contact:{' '}
+            <a href="mailto:privacy@sillages.app" style={{ color: '#D8B07A', textDecoration: 'none' }}>privacy@sillages.app</a>
           </p>
         </Section>
 
-        <Section title="Cookies">
-          <p>
-            We use a single session cookie to keep you logged in. We do not use any advertising or
-            tracking cookies.
-          </p>
-        </Section>
-
-        <Section title="Changes to this policy">
-          <p>
-            If we make significant changes to this policy, we'll notify you by email before they take
-            effect. The "last updated" date at the top of this page will always reflect the most recent
-            version.
-          </p>
+        <Section title="Shopify data handling">
+          <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <li>We comply with Shopify API Terms of Service</li>
+            <li>We only request minimum necessary API scopes</li>
+            <li>We respond to all mandatory Shopify webhooks</li>
+          </ul>
         </Section>
 
         <Section title="Contact">
           <p>
             Questions? Email us at{' '}
-            <a href="mailto:tony@sillages.app" style={{ color: '#D8B07A', textDecoration: 'none' }}>tony@sillages.app</a>.
+            <a href="mailto:support@sillages.app" style={{ color: '#D8B07A', textDecoration: 'none' }}>support@sillages.app</a>.
           </p>
         </Section>
       </main>

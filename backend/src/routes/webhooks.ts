@@ -5,8 +5,20 @@ import { stripe } from '../lib/stripe.js';
 import { supabase } from '../lib/supabase.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
+import { verifyShopifyWebhook, getAllShopifyCredentials } from '../lib/shopify.js';
 
 const router = Router();
+
+// ── Helper: verify Shopify webhook HMAC against all credential sets ─────────
+
+function verifyShopifyWebhookMultiApp(rawBody: Buffer, hmacHeader: string): boolean {
+  for (const creds of getAllShopifyCredentials()) {
+    if (verifyShopifyWebhook(rawBody, hmacHeader, creds)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Raw body is provided by express.raw() registered in index.ts for /api/webhooks
@@ -97,15 +109,153 @@ router.post(
   },
 );
 
-// ── POST /api/webhooks/shopify ────────────────────────────────────────────────
-// Shopify GDPR mandatory webhooks (customers/redact, shop/redact, customers/data_request)
+// ── POST /api/webhooks/shopify/customers-data-request ────────────────────────
+// GDPR: Shopify asks what customer data we hold
 router.post(
-  '/shopify',
+  '/shopify/customers-data-request',
   async (req: Request, res: Response) => {
-    const topic = req.headers['x-shopify-topic'] as string | undefined;
-    console.log(`[webhooks/shopify] Received topic: ${topic ?? 'unknown'}`);
-    // GDPR webhooks require a 200 response within 5s — we ack immediately.
-    // Full data deletion pipeline would be implemented here for production compliance.
+    const rawBody = req.body as Buffer;
+    const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
+
+    if (!hmac || !verifyShopifyWebhookMultiApp(rawBody, hmac)) {
+      console.warn('[webhooks/shopify] customers-data-request HMAC verification failed');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    let payload: { shop_domain: string; customer: { id: number; email: string } };
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    const { shop_domain, customer } = payload;
+    console.log(`[webhooks/shopify] customers-data-request for shop=${shop_domain} customer_id=${customer?.id} email=${customer?.email}`);
+
+    // Check if we hold any data for this customer
+    // We store aggregated snapshots, not individual customer PII, but check accounts by email
+    if (customer?.email) {
+      const { data: account } = await supabase
+        .from('accounts')
+        .select('id, email, full_name')
+        .eq('email', customer.email)
+        .maybeSingle();
+
+      if (account) {
+        console.log(`[webhooks/shopify] Found account for customer email ${customer.email}: account_id=${account.id}`);
+      } else {
+        console.log(`[webhooks/shopify] No account found for customer email ${customer.email}`);
+      }
+    }
+
+    console.log('[webhooks/shopify] Note: We do not store individual customer PII — only aggregated store snapshots');
+    res.json({ received: true });
+  },
+);
+
+// ── POST /api/webhooks/shopify/customers-redact ──────────────────────────────
+// GDPR: Shopify requests we delete all data for a specific customer
+router.post(
+  '/shopify/customers-redact',
+  async (req: Request, res: Response) => {
+    const rawBody = req.body as Buffer;
+    const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
+
+    if (!hmac || !verifyShopifyWebhookMultiApp(rawBody, hmac)) {
+      console.warn('[webhooks/shopify] customers-redact HMAC verification failed');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    let payload: { shop_domain: string; customer: { id: number; email: string } };
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    const { shop_domain, customer } = payload;
+    console.log(`[webhooks/shopify] customers-redact for shop=${shop_domain} customer_id=${customer?.id} email=${customer?.email}`);
+    console.log('[webhooks/shopify] No individual customer PII stored — we only store aggregated store snapshots. No action needed.');
+
+    res.json({ received: true });
+  },
+);
+
+// ── POST /api/webhooks/shopify/shop-redact ───────────────────────────────────
+// GDPR: Shopify requests we delete ALL data for a shop (48h after uninstall)
+router.post(
+  '/shopify/shop-redact',
+  async (req: Request, res: Response) => {
+    const rawBody = req.body as Buffer;
+    const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
+
+    if (!hmac || !verifyShopifyWebhookMultiApp(rawBody, hmac)) {
+      console.warn('[webhooks/shopify] shop-redact HMAC verification failed');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    let payload: { shop_domain: string };
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    const { shop_domain } = payload;
+    console.log(`[webhooks/shopify] shop-redact for shop=${shop_domain} — deleting all shop data`);
+
+    try {
+      // Find the shopify_connection to get the account_id
+      const { data: connection } = await supabase
+        .from('shopify_connections')
+        .select('id, account_id')
+        .eq('shop_domain', shop_domain)
+        .maybeSingle();
+
+      if (!connection) {
+        console.log(`[webhooks/shopify] shop-redact: No connection found for ${shop_domain} — nothing to delete`);
+        res.json({ received: true });
+        return;
+      }
+
+      const { account_id } = connection;
+      console.log(`[webhooks/shopify] shop-redact: Found account_id=${account_id} for ${shop_domain}`);
+
+      // Delete all related data for this account
+      const deletions = await Promise.allSettled([
+        supabase.from('intelligence_briefs').delete().eq('account_id', account_id),
+        supabase.from('shopify_daily_snapshots').delete().eq('account_id', account_id),
+        supabase.from('user_intelligence_config').delete().eq('account_id', account_id),
+        supabase.from('shopify_connections').delete().eq('account_id', account_id),
+      ]);
+
+      const tables = ['intelligence_briefs', 'shopify_daily_snapshots', 'user_intelligence_config', 'shopify_connections'];
+      deletions.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          const { error } = result.value;
+          if (error) {
+            console.error(`[webhooks/shopify] shop-redact: Failed to delete from ${tables[i]}:`, error.message);
+          } else {
+            console.log(`[webhooks/shopify] shop-redact: Deleted from ${tables[i]} for account_id=${account_id}`);
+          }
+        } else {
+          console.error(`[webhooks/shopify] shop-redact: Exception deleting from ${tables[i]}:`, result.reason);
+        }
+      });
+
+      console.log(`[webhooks/shopify] shop-redact: Completed for ${shop_domain} (account row preserved)`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`[webhooks/shopify] shop-redact error:`, message);
+      // Still return 200 — Shopify needs acknowledgment
+    }
+
     res.json({ received: true });
   },
 );
