@@ -8,7 +8,6 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import type { Lang } from '../../contexts/LanguageContext';
 import { useIsPWA } from '../../hooks/useIsPWA';
 import { MobileTabBar } from './MobileTabBar';
-import api from '../../lib/api';
 
 const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
   { icon: LayoutDashboard, tKey: 'nav.dashboard', to: '/dashboard', activeOn: '/dashboard' },
@@ -25,9 +24,8 @@ export function LeftNav() {
   const { hasUnread } = useUnreadAlerts(account?.id);
   const { lang, setLang, t } = useLanguage();
 
-  async function handleLangChange(l: Lang) {
+  function handleLangChange(l: Lang) {
     setLang(l);
-    try { await api.patch('/api/accounts/language', { language: l }); } catch { /* non-fatal */ }
   }
 
   async function handleSignOut() {

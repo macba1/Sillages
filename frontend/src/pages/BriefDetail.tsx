@@ -296,7 +296,7 @@ function ChatPanel({ brief, lang, onClose }: { brief: IntelligenceBrief; lang: '
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Ask about today's data…"
+          placeholder={lang === 'es' ? 'Pregunta sobre tus datos…' : "Ask about today's data…"}
           autoFocus
           style={{
             flex: 1,
@@ -415,7 +415,7 @@ export default function BriefDetail() {
                   justifyContent: 'center',
                 }}
               >
-                Profundizar con Sillages →
+                {t('brief.deepenChat')}
               </button>
             </div>
           </>

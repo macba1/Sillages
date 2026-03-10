@@ -54,6 +54,7 @@ export const en = {
   'brief.upside':             'Upside:',
   'brief.expected':           'Expected:',
   'brief.footer':             "Tonight I\u2019ll pull today\u2019s data. Tomorrow\u2019s brief ready by 6am.",
+  'brief.deepenChat':         'Deepen with Sillages \u2192',
 
   // ── Alerts ───────────────────────────────────────────────────────────────────
   'alerts.title':    'Alerts.',
@@ -129,6 +130,23 @@ export const en = {
   'landing.footer.copyright': '\u00a9 2026 Sillages. All rights reserved.',
   'landing.footer.privacy':   'Privacy Policy',
   'landing.footer.terms':     'Terms of Service',
+
+  // ── Push / PWA ──────────────────────────────────────────────────────────────
+  'push.modal.title':        'Get your brief as a notification',
+  'push.modal.body':         'No email needed. Your daily brief appears directly on your phone each morning.',
+  'push.modal.activate':     'Enable notifications',
+  'push.modal.later':        'Not now',
+  'pwa.banner.title':        'Install Sillages on your phone',
+  'pwa.banner.ios':          'Tap Share (\u2b06) \u2192 Add to Home Screen',
+  'pwa.banner.native':       'Direct access from your home screen',
+  'pwa.banner.install':      'Install',
+  'push.label':              'Push notifications',
+  'push.desc.active':        'Your daily brief arrives as a push notification',
+  'push.desc.denied':        'Blocked in browser \u2014 enable in browser settings',
+  'push.desc.prompt':        'Receive your daily brief as a push notification',
+  'push.btn.deactivate':     'Deactivate',
+  'push.btn.activate':       'Activate',
+  'push.badge.blocked':      'Blocked',
 
   // Brief card (mock demo in hero)
   'landing.card.date':         'FRIDAY, MARCH 6 \u00b7 2026',

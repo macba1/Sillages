@@ -56,6 +56,7 @@ export const translations: Translations = {
   'brief.upside':             'Potencial:',
   'brief.expected':           'Resultado esperado:',
   'brief.footer':             'Esta noche recogeré los datos de hoy. El informe de mañana estará listo a las 6am.',
+  'brief.deepenChat':         'Profundizar con Sillages \u2192',
 
   // ── Alerts ───────────────────────────────────────────────────────────────────
   'alerts.title':    'Alertas.',
@@ -131,6 +132,23 @@ export const translations: Translations = {
   'landing.footer.copyright': '\u00a9 2026 Sillages. Todos los derechos reservados.',
   'landing.footer.privacy':   'Política de Privacidad',
   'landing.footer.terms':     'Términos de Servicio',
+
+  // ── Push / PWA ──────────────────────────────────────────────────────────────
+  'push.modal.title':        'Recibe tu brief como notificación',
+  'push.modal.body':         'Sin abrir email. Tu brief diario aparece directamente en tu móvil cada mañana.',
+  'push.modal.activate':     'Activar notificaciones',
+  'push.modal.later':        'Ahora no',
+  'pwa.banner.title':        'Instala Sillages en tu móvil',
+  'pwa.banner.ios':          'Toca Compartir (\u2b06) \u2192 Añadir a pantalla de inicio',
+  'pwa.banner.native':       'Acceso directo desde tu pantalla de inicio',
+  'pwa.banner.install':      'Instalar',
+  'push.label':              'Notificaciones push',
+  'push.desc.active':        'Tu brief diario llega como notificación push',
+  'push.desc.denied':        'Bloqueadas en el navegador \u2014 actívalas en la configuración del navegador',
+  'push.desc.prompt':        'Recibe tu brief diario como notificación push',
+  'push.btn.deactivate':     'Desactivar',
+  'push.btn.activate':       'Activar',
+  'push.badge.blocked':      'Bloqueadas',
 
   // Brief card (mock demo in hero)
   'landing.card.date':         'VIERNES, 6 DE MARZO \u00b7 2026',

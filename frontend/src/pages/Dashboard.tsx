@@ -207,7 +207,7 @@ function SectionHeader({ label }: { label: string }) {
 
 // ── Push notification modal ───────────────────────────────────────────────────
 
-function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismiss: () => void }) {
+function PushModal({ onActivate, onDismiss, t }: { onActivate: () => void; onDismiss: () => void; t: (k: string) => string }) {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
@@ -221,10 +221,10 @@ function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismis
       }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>🔔</div>
         <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', marginBottom: 8, lineHeight: 1.3 }}>
-          Recibe tu brief como notificación
+          {t('push.modal.title')}
         </h3>
         <p style={{ fontSize: 14, color: 'var(--ink-muted)', lineHeight: 1.6, marginBottom: 24 }}>
-          Sin abrir email. Tu brief diario aparece directamente en tu móvil cada mañana.
+          {t('push.modal.body')}
         </p>
         <button
           onClick={onActivate}
@@ -235,7 +235,7 @@ function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismis
             fontFamily: "'DM Sans', sans-serif", marginBottom: 10,
           }}
         >
-          Activar notificaciones
+          {t('push.modal.activate')}
         </button>
         <button
           onClick={onDismiss}
@@ -246,7 +246,7 @@ function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismis
             fontFamily: "'DM Sans', sans-serif",
           }}
         >
-          Ahora no
+          {t('push.modal.later')}
         </button>
       </div>
     </div>
@@ -255,10 +255,11 @@ function PushModal({ onActivate, onDismiss }: { onActivate: () => void; onDismis
 
 // ── PWA install banner ───────────────────────────────────────────────────────
 
-function PWABanner({ variant, onInstall, onDismiss }: {
+function PWABanner({ variant, onInstall, onDismiss, t }: {
   variant: 'native' | 'ios';
   onInstall: () => void;
   onDismiss: () => void;
+  t: (k: string) => string;
 }) {
   return (
     <div style={{
@@ -270,12 +271,10 @@ function PWABanner({ variant, onInstall, onDismiss }: {
       <span style={{ fontSize: 24, flexShrink: 0 }}>📱</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>
-          Instala Sillages en tu móvil
+          {t('pwa.banner.title')}
         </p>
         <p style={{ fontSize: 12, color: 'var(--ink-muted)', lineHeight: 1.5, margin: 0 }}>
-          {variant === 'ios'
-            ? 'Toca Compartir (⬆) → Añadir a pantalla de inicio'
-            : 'Acceso directo desde tu pantalla de inicio'}
+          {variant === 'ios' ? t('pwa.banner.ios') : t('pwa.banner.native')}
         </p>
       </div>
       {variant === 'native' && (
@@ -288,7 +287,7 @@ function PWABanner({ variant, onInstall, onDismiss }: {
             fontFamily: "'DM Sans', sans-serif",
           }}
         >
-          Instalar
+          {t('pwa.banner.install')}
         </button>
       )}
       <button
@@ -510,6 +509,7 @@ export default function Dashboard() {
             {/* ── Push notification modal ── */}
             {showPushModal && (
               <PushModal
+                t={t}
                 onActivate={async () => {
                   await push.subscribe();
                   setShowPushModal(false);
@@ -523,10 +523,10 @@ export default function Dashboard() {
 
             {/* ── PWA install banner ── */}
             {pwa.showNativePrompt && (
-              <PWABanner variant="native" onInstall={() => void pwa.install()} onDismiss={pwa.dismiss} />
+              <PWABanner variant="native" onInstall={() => void pwa.install()} onDismiss={pwa.dismiss} t={t} />
             )}
             {pwa.showIOSInstructions && (
-              <PWABanner variant="ios" onInstall={() => {}} onDismiss={pwa.dismiss} />
+              <PWABanner variant="ios" onInstall={() => {}} onDismiss={pwa.dismiss} t={t} />
             )}
 
             {/* ── Alert banners ── */}

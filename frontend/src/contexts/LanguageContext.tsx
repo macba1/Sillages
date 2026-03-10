@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { translations as en } from '../locales/en';
 import { translations as es } from '../locales/es';
 import type { Translations } from '../locales/en';
+import api from '../lib/api';
 
 export type Lang = 'en' | 'es';
 
@@ -26,10 +27,26 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(detectLang);
+  const initialLoadDone = useRef(false);
+
+  // On mount, fetch language from server if user is authenticated
+  useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    api.get('/api/accounts/language').then(({ data }) => {
+      const serverLang = data.language;
+      if (serverLang === 'en' || serverLang === 'es') {
+        localStorage.setItem(STORAGE_KEY, serverLang);
+        setLangState(serverLang);
+      }
+    }).catch(() => { /* not authenticated or endpoint error — use local */ });
+  }, []);
 
   const setLang = useCallback((l: Lang) => {
     localStorage.setItem(STORAGE_KEY, l);
     setLangState(l);
+    // Persist to server (non-blocking)
+    api.patch('/api/accounts/language', { language: l }).catch(() => { /* non-fatal */ });
   }, []);
 
   const t = useCallback(

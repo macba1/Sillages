@@ -5,6 +5,23 @@ import { supabase } from '../lib/supabase.js';
 
 const router = Router();
 
+// GET /api/accounts/language — fetch language preference
+router.get('/language', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.accountId!;
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('language')
+      .eq('id', accountId)
+      .single();
+
+    if (error) throw new AppError(500, error.message);
+    res.json({ language: data?.language ?? 'en' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /api/accounts/language — update language preference
 router.patch('/language', requireAuth, async (req, res, next) => {
   try {

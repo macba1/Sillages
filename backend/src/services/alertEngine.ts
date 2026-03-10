@@ -125,8 +125,8 @@ async function sendAlertEmail(
             <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:${labelColor};">${label}</p>
             <h2 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#2A1F14;line-height:1.3;">${alert.title}</h2>
             <p style="margin:0 0 28px;font-size:15px;color:#7A6A58;line-height:1.7;">${alert.message}</p>
-            <p style="margin:0 0 28px;font-size:14px;color:#A89880;line-height:1.65;">I've added this to your dashboard. — Sillages</p>
-            <a href="${env.FRONTEND_URL}/dashboard" style="display:inline-block;background:#2A1F14;color:#F5EFE8;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;">Go to dashboard →</a>
+            <p style="margin:0 0 28px;font-size:14px;color:#A89880;line-height:1.65;">${language === 'es' ? 'Lo he añadido a tu dashboard. — Sillages' : "I've added this to your dashboard. — Sillages"}</p>
+            <a href="${env.FRONTEND_URL}/dashboard" style="display:inline-block;background:#2A1F14;color:#F5EFE8;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;">${language === 'es' ? 'Ir al dashboard →' : 'Go to dashboard →'}</a>
           </td>
         </tr>
       </table>

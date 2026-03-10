@@ -455,26 +455,26 @@ export default function Settings() {
 
           {push.state !== 'unsupported' && (
             <SettingRow
-              label="Push notifications"
+              label={t('push.label')}
               description={
                 push.state === 'subscribed'
-                  ? 'Tu brief diario llega como notificación push'
+                  ? t('push.desc.active')
                   : push.state === 'denied'
-                    ? 'Bloqueadas en el navegador — actívalas en la configuración del navegador'
-                    : 'Recibe tu brief diario como notificación push'
+                    ? t('push.desc.denied')
+                    : t('push.desc.prompt')
               }
               noBorder
             >
               {push.state === 'subscribed' ? (
                 <ActionButton onClick={() => void push.unsubscribe()}>
-                  Desactivar
+                  {t('push.btn.deactivate')}
                 </ActionButton>
               ) : push.state === 'prompt' ? (
                 <ActionButton onClick={() => void push.subscribe()}>
-                  Activar
+                  {t('push.btn.activate')}
                 </ActionButton>
               ) : push.state === 'denied' ? (
-                <Badge label="Bloqueadas" color="#DC2626" bg="#FEF2F2" />
+                <Badge label={t('push.badge.blocked')} color="#DC2626" bg="#FEF2F2" />
               ) : null}
             </SettingRow>
           )}

@@ -160,32 +160,34 @@ async function runBriefPipeline(accountId: string): Promise<void> {
     // Step 4: Push notification (non-blocking)
     console.log(`[scheduler] [${accountId}] Step 4/4 — Push notification`);
     try {
-      // Fetch brief data for push content
-      const { data: fullBrief } = await supabase
-        .from('intelligence_briefs')
-        .select('section_yesterday, section_activation')
-        .eq('id', brief.id)
-        .single();
+      // Fetch brief data and account language for push content
+      const [{ data: fullBrief }, { data: conn }, { data: acc }] = await Promise.all([
+        supabase.from('intelligence_briefs').select('section_yesterday, section_activation').eq('id', brief.id).single(),
+        supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
+        supabase.from('accounts').select('language').eq('id', accountId).single(),
+      ]);
 
-      const { data: conn } = await supabase
-        .from('shopify_connections')
-        .select('shop_name, shop_currency')
-        .eq('account_id', accountId)
-        .maybeSingle();
+      const lang: 'en' | 'es' = (acc as { language?: string } | null)?.language === 'es' ? 'es' : 'en';
 
       if (fullBrief?.section_yesterday) {
         const y = fullBrief.section_yesterday as { revenue: number; orders: number };
         const act = fullBrief.section_activation as { what: string } | null;
-        const storeName = (conn as { shop_name: string | null } | null)?.shop_name ?? 'Tu tienda';
+        const defaultStore = lang === 'es' ? 'Tu tienda' : 'Your store';
+        const storeName = (conn as { shop_name: string | null } | null)?.shop_name ?? defaultStore;
         const cur = (conn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
         const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$' };
         const cs = sym[cur] ?? `${cur} `;
 
+        const ordersWord = lang === 'es' ? 'pedidos' : 'orders';
+        const yesterdayWord = lang === 'es' ? 'Ayer' : 'Yesterday';
+        const tapCta = lang === 'es' ? 'Toca para ver tu brief →' : 'Tap to see your brief →';
+        const readyMsg = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
+
         await sendPushNotification(accountId, {
-          title: `${storeName} — Ayer ${cs}${y.revenue.toFixed(0)} · ${y.orders} pedidos`,
+          title: `${storeName} — ${yesterdayWord} ${cs}${y.revenue.toFixed(0)} · ${y.orders} ${ordersWord}`,
           body: act?.what
-            ? `${act.what.slice(0, 100)}${act.what.length > 100 ? '…' : ''} — Toca para ver tu brief →`
-            : 'Tu brief diario está listo — Toca para verlo →',
+            ? `${act.what.slice(0, 100)}${act.what.length > 100 ? '…' : ''} — ${tapCta}`
+            : readyMsg,
           url: '/dashboard',
         });
       }
