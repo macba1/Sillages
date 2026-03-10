@@ -22,41 +22,57 @@ import { generateBrief } from '../services/briefGenerator.js';
 const router = Router();
 
 // ── GET /api/shopify/auth ────────────────────────────────────────────────────
-// Initiates OAuth flow. Requires the user to be authenticated with Sillages.
-// Accepts the JWT from the Authorization header (AJAX) or ?token= query param
-// (browser navigation, where custom headers cannot be set).
+// Initiates OAuth flow.  Two modes:
+//   1. Shopify-initiated install (App Store) → no auth token, just ?shop=
+//      → generate OAuth URL and redirect immediately (no account_id needed yet)
+//   2. Sillages-initiated (dashboard) → JWT via Authorization header or ?token=
+//      → store state linked to account_id for the callback to resolve
 router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const headerToken = req.headers.authorization?.startsWith('Bearer ')
-      ? req.headers.authorization.slice(7)
-      : null;
-    const token = headerToken ?? (req.query.token as string | undefined);
-
-    if (!token) {
-      throw new AppError(401, 'Missing authorization');
-    }
-
-    const { accountId } = await resolveAuthToken(token);
-
     const shop = req.query.shop as string;
     if (!shop || !validateShopDomain(shop)) {
       throw new AppError(400, 'Invalid or missing shop domain');
     }
 
-    // Resolve credentials — ?app=beta selects Sillages Beta, ?client_id=xxx also works
+    // Resolve credentials — ?app=beta selects Sillages Beta
     const appParam = req.query.app as string | undefined;
     const clientIdHint = appParam === 'beta' ? env.SHOPIFY_BETA_API_KEY : (req.query.client_id as string | undefined);
     const credentials = resolveShopifyCredentials(clientIdHint);
 
     const state = generateState();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-    const { error: insertError } = await supabase
-      .from('shopify_oauth_states')
-      .insert({ state, account_id: accountId, expires_at: expiresAt });
+    // Try to resolve the authenticated user (optional — won't fail the request)
+    const headerToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7)
+      : null;
+    const token = headerToken ?? (req.query.token as string | undefined);
 
-    if (insertError) {
-      throw new AppError(500, `Failed to store OAuth state: ${insertError.message}`);
+    let accountId: string | null = null;
+    if (token) {
+      try {
+        const resolved = await resolveAuthToken(token);
+        accountId = resolved.accountId;
+      } catch {
+        // Token invalid or expired — continue without account_id
+        console.log(`[shopify/auth] Token provided but invalid — continuing as Shopify-initiated install for ${shop}`);
+      }
+    }
+
+    if (accountId) {
+      // Sillages-initiated: store state linked to account
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const { error: insertError } = await supabase
+        .from('shopify_oauth_states')
+        .insert({ state, account_id: accountId, expires_at: expiresAt });
+
+      if (insertError) {
+        throw new AppError(500, `Failed to store OAuth state: ${insertError.message}`);
+      }
+      console.log(`[shopify/auth] Sillages-initiated install for ${shop} — account_id=${accountId}`);
+    } else {
+      // Shopify-initiated: no account yet — state is not stored.
+      // The callback handles this case by looking up shop_domain or redirecting to signup.
+      console.log(`[shopify/auth] Shopify-initiated install for ${shop} — no auth token, skipping state storage`);
     }
 
     const installUrl = buildInstallUrl(shop, state, credentials);
