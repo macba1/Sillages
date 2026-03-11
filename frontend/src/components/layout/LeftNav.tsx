@@ -7,6 +7,7 @@ import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { Lang } from '../../contexts/LanguageContext';
 import { useIsPWA } from '../../hooks/useIsPWA';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileTabBar } from './MobileTabBar';
 
 const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
@@ -155,8 +156,10 @@ export function LeftNav() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const isPWA = useIsPWA();
+  const isMobile = useIsMobile();
+  const useMobileLayout = isPWA || isMobile;
 
-  if (isPWA) {
+  if (useMobileLayout) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
         <main

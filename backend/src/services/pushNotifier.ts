@@ -33,7 +33,13 @@ export async function sendPushNotification(accountId: string, payload: PushPaylo
     .select('id, endpoint, p256dh, auth')
     .eq('account_id', accountId);
 
-  if (error || !subs || subs.length === 0) {
+  if (error) {
+    console.error(`[push] Failed to query subscriptions for account ${accountId}:`, error.message);
+    return;
+  }
+
+  if (!subs || subs.length === 0) {
+    console.log(`[push] No subscriptions found for account ${accountId} — skipping push notification`);
     return;
   }
 

@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useIsPWA } from '../hooks/useIsPWA';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { Button } from '../components/ui/Button';
 
 export default function Login() {
   const { signInWithEmail, signUpWithEmail } = useAuth();
   const navigate = useNavigate();
   const isPWA = useIsPWA();
+  const isMobile = useIsMobile();
+  const showMobileLogo = isPWA || isMobile;
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -42,8 +45,8 @@ export default function Login() {
       style={{ paddingTop: isPWA ? 'env(safe-area-inset-top, 20px)' : undefined }}
     >
       {/* Logo */}
-      <div style={{ marginBottom: isPWA ? 40 : 40, textAlign: 'center' }}>
-        {isPWA ? (
+      <div style={{ marginBottom: 40, textAlign: 'center' }}>
+        {showMobileLogo ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <div style={{
               width: 64, height: 64, borderRadius: 16,

@@ -399,7 +399,7 @@ export default function Settings() {
 
   return (
     <AppShell>
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '64px 32px 80px' }}>
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: '40px 20px 100px' }}>
 
         {/* Title */}
         <h1

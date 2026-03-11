@@ -35,7 +35,9 @@
       "Bash(npx shopify:*)",
       "Bash(npx shopify@latest:*)",
       "Bash(npx web-push:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(find /Users/antoniojimenez/sillages/frontend -type f -name \"*auth*\" -o -type f -name \"*login*\" -o -type f -name \"*logout*\" -o -type f -name \"*settings*\" 2>/dev/null | head -30)",
+      "Bash(grep -r \"Navigate.*login\\\\|redirect.*login\" /Users/antoniojimenez/sillages/frontend/src --include=\"*.tsx\" --include=\"*.ts\" -n 2>/dev/null | head -20)"
     ]
   }
 }
