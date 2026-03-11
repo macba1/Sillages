@@ -160,18 +160,18 @@ async function runBriefPipeline(accountId: string): Promise<void> {
     // Step 4: Push notification (non-blocking)
     console.log(`[scheduler] [${accountId}] Step 4/4 — Push notification`);
     try {
-      // Fetch brief data and account language for push content
-      const [{ data: fullBrief }, { data: conn }, { data: acc }] = await Promise.all([
+      // Fetch brief data, pending actions count, and account language
+      const [{ data: fullBrief }, { data: conn }, { data: acc }, { count: actionCount }] = await Promise.all([
         supabase.from('intelligence_briefs').select('section_yesterday, section_activation').eq('id', brief.id).single(),
         supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
         supabase.from('accounts').select('language').eq('id', accountId).single(),
+        supabase.from('pending_actions').select('*', { count: 'exact', head: true }).eq('account_id', accountId).eq('brief_date', snapshotDate).eq('status', 'pending'),
       ]);
 
       const lang: 'en' | 'es' = (acc as { language?: string } | null)?.language === 'es' ? 'es' : 'en';
 
       if (fullBrief?.section_yesterday) {
         const y = fullBrief.section_yesterday as { revenue: number; orders: number };
-        const act = fullBrief.section_activation as { what: string } | null;
         const defaultStore = lang === 'es' ? 'Tu tienda' : 'Your store';
         const storeName = (conn as { shop_name: string | null } | null)?.shop_name ?? defaultStore;
         const cur = (conn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
@@ -180,14 +180,22 @@ async function runBriefPipeline(accountId: string): Promise<void> {
 
         const ordersWord = lang === 'es' ? 'pedidos' : 'orders';
         const yesterdayWord = lang === 'es' ? 'Ayer' : 'Yesterday';
-        const tapCta = lang === 'es' ? 'Toca para ver tu brief →' : 'Tap to see your brief →';
-        const readyMsg = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
+        const n = actionCount ?? 0;
+
+        // If there are pending actions, highlight them; otherwise show brief ready
+        let body: string;
+        if (n > 0) {
+          const actionsWord = lang === 'es'
+            ? `${n} ${n === 1 ? 'acción preparada' : 'acciones preparadas'}. Toca para aprobar.`
+            : `${n} ${n === 1 ? 'action ready' : 'actions ready'}. Tap to approve.`;
+          body = actionsWord;
+        } else {
+          body = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
+        }
 
         await sendPushNotification(accountId, {
           title: `${storeName} — ${yesterdayWord} ${cs}${y.revenue.toFixed(0)} · ${y.orders} ${ordersWord}`,
-          body: act?.what
-            ? `${act.what.slice(0, 100)}${act.what.length > 100 ? '…' : ''} — ${tapCta}`
-            : readyMsg,
+          body,
           url: '/dashboard',
         });
       }

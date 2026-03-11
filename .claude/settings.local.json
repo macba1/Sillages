@@ -40,7 +40,8 @@
       "Bash(grep -r \"Navigate.*login\\\\|redirect.*login\" /Users/antoniojimenez/sillages/frontend/src --include=\"*.tsx\" --include=\"*.ts\" -n 2>/dev/null | head -20)",
       "Bash(railway logs:*)",
       "Bash(npx supabase:*)",
-      "Bash(brew list:*)"
+      "Bash(brew list:*)",
+      "Bash(grep VITE_API_URL /Users/antoniojimenez/sillages/frontend/.env* 2>/dev/null; grep -r \"API_URL\\\\|BACKEND_URL\\\\|RAILWAY\" /Users/antoniojimenez/sillages/backend/.env 2>/dev/null | head -5)"
     ]
   }
 }

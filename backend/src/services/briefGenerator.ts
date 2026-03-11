@@ -1,33 +1,17 @@
-import { openai } from '../lib/openai.js';
 import { supabase } from '../lib/supabase.js';
-import { buildSystemPrompt, buildUserPrompt, analyzeHistoricalPatterns } from '../prompts/briefPrompt.js';
+import { runAnalyst } from '../agents/analyst.js';
+import { runGrowthHacker } from '../agents/growthHacker.js';
 import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
   UserIntelligenceConfig,
   ShopifyDailySnapshot,
-  SectionYesterday,
-  SectionWhatsWorking,
-  SectionWhatsNotWorking,
-  SectionUpcoming,
-  SectionSignal,
-  SectionGap,
-  SectionActivation,
 } from '../types.js';
+import type { GrowthAction } from '../agents/types.js';
 
 interface GenerateBriefInput {
   accountId: string;
   briefDate: string; // YYYY-MM-DD (the date being covered — yesterday)
-}
-
-interface BriefSections {
-  section_yesterday: SectionYesterday;
-  section_whats_working: SectionWhatsWorking;
-  section_whats_not_working: SectionWhatsNotWorking;
-  section_upcoming: SectionUpcoming;
-  section_signal: SectionSignal;
-  section_gap: SectionGap;
-  section_activation: SectionActivation;
 }
 
 export async function generateBrief(input: GenerateBriefInput): Promise<void> {
@@ -112,94 +96,150 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const allSnapshots = (historicalSnapshots ?? []) as ShopifyDailySnapshot[];
     console.log(`[briefGenerator] Loaded ${allSnapshots.length} snapshots for pattern analysis (${thirtyDaysAgo} → ${briefDate})`);
 
-    // Analyze patterns
-    let historicalAnalysis: string | undefined;
-    if (allSnapshots.length >= 3) {
-      const { text } = analyzeHistoricalPatterns(allSnapshots, briefDate, language);
-      historicalAnalysis = text;
-      console.log(`[briefGenerator] Pattern analysis generated (${text.split('\n').length} lines)`);
-    }
+    // ── 4. Agent 1: Analyst ─────────────────────────────────────────────
+    console.log(`[briefGenerator] Running agent chain in language: ${language}`);
 
-    // ── 4. Call GPT-4o ────────────────────────────────────────────────────
-    console.log(`[briefGenerator] Generating brief in language: ${language}`);
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.4,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: buildSystemPrompt(language) },
-        {
-          role: 'user',
-          content: buildUserPrompt({ ownerName, storeName, snapshot, config, briefDate, language, currency, historicalAnalysis }),
-        },
-      ],
+    const analystResult = await runAnalyst({
+      snapshot,
+      historicalSnapshots: allSnapshots,
+      config,
+      storeName,
+      currency,
+      briefDate,
+      language,
     });
 
-    const rawContent = completion.choices[0]?.message?.content;
-    if (!rawContent) {
-      throw new Error('OpenAI returned empty content');
-    }
+    console.log(`[briefGenerator] Analyst complete — ${analystResult.output.signals.length} signals`);
 
-    const sections = JSON.parse(rawContent) as BriefSections;
+    // ── 5. Agent 2: Growth Hacker ───────────────────────────────────────
+    const growthResult = await runGrowthHacker({
+      analystOutput: analystResult.output,
+      config,
+      ownerName,
+      storeName,
+      currency,
+      briefDate,
+      language,
+    });
 
-    // Inject WoW comparison from the snapshot directly — more reliable than
-    // asking GPT to relay numbers it was given.
-    sections.section_yesterday.wow = {
-      revenue_pct: snapshot.wow_revenue_pct ?? null,
-      orders_pct: snapshot.wow_orders_pct ?? null,
-      aov_pct: snapshot.wow_aov_pct ?? null,
-      conversion_pct: snapshot.wow_conversion_pct ?? null,
-      new_customers_pct: snapshot.wow_new_customers_pct ?? null,
+    console.log(`[briefGenerator] Growth hacker complete — ${growthResult.output.actions.length} actions`);
+
+    // ── 6. Map Growth Hacker output to brief sections ───────────────────
+    // Build the brief sections from the narrative + analyst data
+    const narrative = growthResult.output.brief_narrative;
+    const analyst = analystResult.output;
+
+    // section_yesterday: merge analyst numbers with narrative summary
+    const sectionYesterday = {
+      revenue: snapshot.total_revenue,
+      orders: snapshot.total_orders,
+      aov: snapshot.average_order_value,
+      sessions: snapshot.sessions,
+      conversion_rate: snapshot.conversion_rate,
+      new_customers: snapshot.new_customers,
+      top_product: snapshot.top_products[0]?.title ?? '',
+      summary: narrative.greeting + ' ' + narrative.yesterday_summary,
+      wow: {
+        revenue_pct: snapshot.wow_revenue_pct ?? null,
+        orders_pct: snapshot.wow_orders_pct ?? null,
+        aov_pct: snapshot.wow_aov_pct ?? null,
+        conversion_pct: snapshot.wow_conversion_pct ?? null,
+        new_customers_pct: snapshot.wow_new_customers_pct ?? null,
+      },
     };
 
-    // Validate required keys exist
-    const requiredKeys: (keyof BriefSections)[] = [
-      'section_yesterday',
-      'section_whats_working',
-      'section_whats_not_working',
-      'section_upcoming',
-      'section_signal',
-      'section_gap',
-      'section_activation',
-    ];
-    for (const key of requiredKeys) {
-      if (!sections[key]) {
-        throw new Error(`GPT response missing section: ${key}`);
-      }
-    }
-
-    // ── 5. Save brief ─────────────────────────────────────────────────────
-    // Try saving with section_upcoming; if column doesn't exist yet, retry without it
-    const baseSave = {
-      snapshot_id: snapshot.id,
-      status: 'ready' as const,
-      generated_at: new Date().toISOString(),
-      generation_error: null,
-      section_yesterday: sections.section_yesterday,
-      section_whats_working: sections.section_whats_working,
-      section_whats_not_working: sections.section_whats_not_working,
-      section_signal: sections.section_signal,
-      section_gap: sections.section_gap,
-      section_activation: sections.section_activation,
-      model_used: completion.model,
-      prompt_tokens: completion.usage?.prompt_tokens ?? null,
-      completion_tokens: completion.usage?.completion_tokens ?? null,
-      total_tokens: completion.usage?.total_tokens ?? null,
+    // section_whats_working: from narrative
+    const sectionWhatsWorking = {
+      items: [{
+        title: language === 'es' ? 'Lo que funciona' : "What's working",
+        metric: `${snapshot.total_orders} ${language === 'es' ? 'pedidos' : 'orders'}`,
+        insight: narrative.whats_working,
+      }],
     };
 
-    let { error: saveError } = await supabase
+    // section_whats_not_working: from narrative
+    const sectionWhatsNotWorking = {
+      items: [{
+        title: language === 'es' ? 'A mejorar' : 'Needs attention',
+        metric: '',
+        insight: narrative.whats_not_working,
+      }],
+    };
+
+    // section_upcoming: from analyst weekly patterns + narrative
+    const bestDay = analyst.upcoming.best_day_this_week;
+    const sectionUpcoming = {
+      items: [{
+        pattern: narrative.upcoming,
+        days_until: 1,
+        action: bestDay.recommended_product
+          ? `${language === 'es' ? 'Preparar' : 'Prepare'} ${bestDay.recommended_product} ${language === 'es' ? 'para' : 'for'} ${bestDay.day}`
+          : narrative.upcoming,
+        ready_copy: growthResult.output.actions[0]?.content?.copy ?? '',
+      }],
+    };
+
+    // section_signal: from narrative
+    const sectionSignal = {
+      headline: analyst.signals[0] ?? '',
+      market_context: narrative.signal,
+      store_implication: narrative.gap,
+    };
+
+    // section_gap: from narrative + analyst
+    const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$' };
+    const cs = sym[currency] ?? `${currency} `;
+    const sectionGap = {
+      gap: narrative.gap,
+      opportunity: narrative.upcoming,
+      estimated_upside: analyst.upcoming.best_day_this_week.expected_revenue > 0
+        ? `+${cs}${analyst.upcoming.best_day_this_week.expected_revenue.toFixed(0)} ${language === 'es' ? 'esta semana' : 'this week'}`
+        : '',
+    };
+
+    // section_activation: from the highest priority growth action
+    const topAction = growthResult.output.actions[0];
+    const sectionActivation = topAction ? {
+      what: topAction.title + ' — ' + topAction.description,
+      why: narrative.signal,
+      how: [
+        topAction.description,
+        ...(topAction.content.copy ? [`${language === 'es' ? 'Copia y pega' : 'Copy and paste'}: ${topAction.content.copy}`] : []),
+      ],
+      expected_impact: `${topAction.time_estimate} — ${topAction.priority} ${language === 'es' ? 'prioridad' : 'priority'}`,
+    } : {
+      what: narrative.upcoming,
+      why: narrative.signal,
+      how: [narrative.upcoming],
+      expected_impact: '',
+    };
+
+    // Combine token usage from both agents
+    const totalPromptTokens = analystResult.usage.prompt_tokens + growthResult.usage.prompt_tokens;
+    const totalCompletionTokens = analystResult.usage.completion_tokens + growthResult.usage.completion_tokens;
+    const totalTokens = analystResult.usage.total_tokens + growthResult.usage.total_tokens;
+
+    // ── 7. Save brief ─────────────────────────────────────────────────────
+    const { error: saveError } = await supabase
       .from('intelligence_briefs')
-      .update({ ...baseSave, section_upcoming: sections.section_upcoming })
+      .update({
+        snapshot_id: snapshot.id,
+        status: 'ready',
+        generated_at: new Date().toISOString(),
+        generation_error: null,
+        section_yesterday: sectionYesterday,
+        section_whats_working: sectionWhatsWorking,
+        section_whats_not_working: sectionWhatsNotWorking,
+        section_upcoming: sectionUpcoming,
+        section_signal: sectionSignal,
+        section_gap: sectionGap,
+        section_activation: sectionActivation,
+        model_used: 'gpt-4o (analyst+growth)',
+        prompt_tokens: totalPromptTokens,
+        completion_tokens: totalCompletionTokens,
+        total_tokens: totalTokens,
+      })
       .eq('id', briefId);
-
-    if (saveError?.message?.includes('section_upcoming')) {
-      console.warn('[briefGenerator] section_upcoming column missing — saving without it');
-      ({ error: saveError } = await supabase
-        .from('intelligence_briefs')
-        .update(baseSave)
-        .eq('id', briefId));
-    }
 
     if (saveError) {
       throw new Error(`Failed to save brief: ${saveError.message}`);
@@ -207,9 +247,36 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     console.log(`[briefGenerator] Brief ready — account ${accountId} date ${briefDate}`);
 
-    // ── 6. Check alerts ───────────────────────────────────────────────────
+    // ── 8. Save pending actions ─────────────────────────────────────────
+    if (growthResult.output.actions.length > 0) {
+      const actionRows = growthResult.output.actions.map((a: GrowthAction) => ({
+        account_id: accountId,
+        brief_id: briefId,
+        brief_date: briefDate,
+        action_type: a.type,
+        title: a.title,
+        description: a.description,
+        priority: a.priority,
+        time_estimate: a.time_estimate,
+        plan_required: a.plan_required,
+        content: a.content,
+        status: 'pending',
+      }));
+
+      const { error: actionsError } = await supabase
+        .from('pending_actions')
+        .insert(actionRows);
+
+      if (actionsError) {
+        // Non-fatal — brief is already saved
+        console.warn(`[briefGenerator] Failed to save actions (non-fatal): ${actionsError.message}`);
+      } else {
+        console.log(`[briefGenerator] Saved ${actionRows.length} pending action(s)`);
+      }
+    }
+
+    // ── 9. Check alerts ─────────────────────────────────────────────────
     try {
-      // Fetch previous snapshot (same weekday, 7 days prior)
       const prevDate = new Date(briefDate);
       prevDate.setUTCDate(prevDate.getUTCDate() - 7);
       const prevDateStr = prevDate.toISOString().slice(0, 10);
