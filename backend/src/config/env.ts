@@ -31,7 +31,7 @@ const envSchema = z.object({
   // Shopify OAuth — primary app
   SHOPIFY_API_KEY: z.string().min(1),
   SHOPIFY_API_SECRET: z.string().min(1),
-  SHOPIFY_SCOPES: z.string().default('read_all_orders,read_products,read_analytics,read_customers,read_pixels,read_orders,read_inventory,read_reports'),
+  SHOPIFY_SCOPES: z.string().default('read_all_orders,read_products,write_products,read_analytics,read_customers,read_pixels,read_orders,read_inventory,read_reports,write_discounts'),
   SHOPIFY_APP_URL: z.string().url(),
 
   // Shopify OAuth — beta app (custom distribution)

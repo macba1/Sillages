@@ -287,7 +287,7 @@ export const SHOPIFY_PLANS: Record<string, ShopifyBillingPlan> = {
   pro:     { name: 'Pro',     price: 59, trialDays: 14 },
 };
 
-async function shopifyGraphQL<T>(shop: string, accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+export async function shopifyGraphQL<T>(shop: string, accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
   const response = await axios.post(
     `https://${shop}/admin/api/2024-04/graphql.json`,
     { query, variables },

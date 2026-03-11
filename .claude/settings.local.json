@@ -41,7 +41,8 @@
       "Bash(railway logs:*)",
       "Bash(npx supabase:*)",
       "Bash(brew list:*)",
-      "Bash(grep VITE_API_URL /Users/antoniojimenez/sillages/frontend/.env* 2>/dev/null; grep -r \"API_URL\\\\|BACKEND_URL\\\\|RAILWAY\" /Users/antoniojimenez/sillages/backend/.env 2>/dev/null | head -5)"
+      "Bash(grep VITE_API_URL /Users/antoniojimenez/sillages/frontend/.env* 2>/dev/null; grep -r \"API_URL\\\\|BACKEND_URL\\\\|RAILWAY\" /Users/antoniojimenez/sillages/backend/.env 2>/dev/null | head -5)",
+      "Bash(find /Users/antoniojimenez/sillages -name \"shopify.app.*\" 2>/dev/null | head -20)"
     ]
   }
 }
