@@ -170,26 +170,36 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     }
 
     // ── 5. Save brief ─────────────────────────────────────────────────────
-    const { error: saveError } = await supabase
+    // Try saving with section_upcoming; if column doesn't exist yet, retry without it
+    const baseSave = {
+      snapshot_id: snapshot.id,
+      status: 'ready' as const,
+      generated_at: new Date().toISOString(),
+      generation_error: null,
+      section_yesterday: sections.section_yesterday,
+      section_whats_working: sections.section_whats_working,
+      section_whats_not_working: sections.section_whats_not_working,
+      section_signal: sections.section_signal,
+      section_gap: sections.section_gap,
+      section_activation: sections.section_activation,
+      model_used: completion.model,
+      prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      completion_tokens: completion.usage?.completion_tokens ?? null,
+      total_tokens: completion.usage?.total_tokens ?? null,
+    };
+
+    let { error: saveError } = await supabase
       .from('intelligence_briefs')
-      .update({
-        snapshot_id: snapshot.id,
-        status: 'ready',
-        generated_at: new Date().toISOString(),
-        generation_error: null,
-        section_yesterday: sections.section_yesterday,
-        section_whats_working: sections.section_whats_working,
-        section_whats_not_working: sections.section_whats_not_working,
-        section_upcoming: sections.section_upcoming,
-        section_signal: sections.section_signal,
-        section_gap: sections.section_gap,
-        section_activation: sections.section_activation,
-        model_used: completion.model,
-        prompt_tokens: completion.usage?.prompt_tokens ?? null,
-        completion_tokens: completion.usage?.completion_tokens ?? null,
-        total_tokens: completion.usage?.total_tokens ?? null,
-      })
+      .update({ ...baseSave, section_upcoming: sections.section_upcoming })
       .eq('id', briefId);
+
+    if (saveError?.message?.includes('section_upcoming')) {
+      console.warn('[briefGenerator] section_upcoming column missing — saving without it');
+      ({ error: saveError } = await supabase
+        .from('intelligence_briefs')
+        .update(baseSave)
+        .eq('id', briefId));
+    }
 
     if (saveError) {
       throw new Error(`Failed to save brief: ${saveError.message}`);
