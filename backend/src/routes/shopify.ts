@@ -186,6 +186,7 @@ router.get(
             shop_timezone: shopInfo.timezone,
             access_token: tokenData.access_token,
             scopes: tokenData.scope,
+            app_client_id: credentials.clientId,
             sync_status: 'active',
             sync_error: null,
             token_status: 'active',
@@ -398,7 +399,7 @@ router.get('/reconnect', async (req: Request, res: Response, next: NextFunction)
 
     const { data: conn } = await supabase
       .from('shopify_connections')
-      .select('shop_domain')
+      .select('shop_domain, app_client_id')
       .eq('account_id', accountId)
       .maybeSingle();
 
@@ -408,14 +409,28 @@ router.get('/reconnect', async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const state = (await import('../lib/shopify.js')).generateState();
+    const state = generateState();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     await supabase.from('shopify_oauth_states').insert({ state, account_id: accountId, expires_at: expiresAt });
 
-    const credentials = resolveShopifyCredentials();
+    // Use the app that originally connected the store.
+    // If no app_client_id saved, try beta first (legacy connections used beta),
+    // fall back to primary.
+    let credentials: import('../lib/shopify.js').ShopifyCredentials;
+    if (conn.app_client_id) {
+      credentials = resolveShopifyCredentials(conn.app_client_id);
+      console.log(`[shopify/reconnect] Using saved app_client_id: ${conn.app_client_id.slice(0, 8)}...`);
+    } else if (env.SHOPIFY_BETA_API_KEY) {
+      credentials = resolveShopifyCredentials(env.SHOPIFY_BETA_API_KEY);
+      console.log(`[shopify/reconnect] No saved app_client_id — trying beta app first`);
+    } else {
+      credentials = resolveShopifyCredentials();
+      console.log(`[shopify/reconnect] No saved app_client_id, no beta — using primary app`);
+    }
+
     const installUrl = buildInstallUrl(conn.shop_domain, state, credentials);
 
-    console.log(`[shopify/reconnect] Redirecting ${accountId} to OAuth for ${conn.shop_domain}`);
+    console.log(`[shopify/reconnect] Redirecting ${accountId} to OAuth for ${conn.shop_domain} (client_id=${credentials.clientId.slice(0, 8)}...)`);
     res.redirect(installUrl);
   } catch (err) {
     next(err);
