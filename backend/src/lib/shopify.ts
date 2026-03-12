@@ -60,12 +60,13 @@ export function validateHmacMultiApp(query: Record<string, string>): ShopifyCred
 
 export function buildInstallUrl(shop: string, state: string, credentials?: ShopifyCredentials): string {
   const creds = credentials ?? resolveShopifyCredentials();
+  // Use offline access (no per-user) to get permanent shpat_ tokens
+  // that don't expire when the merchant's session ends
   const params = new URLSearchParams({
     client_id: creds.clientId,
     scope: env.SHOPIFY_SCOPES,
     redirect_uri: `${env.SHOPIFY_APP_URL}/api/shopify/callback`,
     state,
-    'grant_options[]': 'per-user',
   });
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 }

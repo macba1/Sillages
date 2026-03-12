@@ -365,11 +365,12 @@ export default function Dashboard() {
 
   const [searchParams] = useSearchParams();
   const justConnected = searchParams.get('connected') === 'true';
+  const justReconnected = searchParams.get('reconnected') === 'true';
 
   // Poll every 5s while waiting for first brief to generate
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
-    if (!justConnected || loading || briefs.length > 0) {
+    if ((!justConnected && !justReconnected) || loading || briefs.length > 0) {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
       return;
     }
@@ -377,7 +378,7 @@ export default function Dashboard() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [justConnected, loading, briefs.length, refetch]);
 
-  const isGenerating = justConnected && !loading && briefs.length === 0;
+  const isGenerating = (justConnected || justReconnected) && !loading && briefs.length === 0;
   const latest = briefs[0] ?? null;
   const past = briefs.slice(1);
 
@@ -546,6 +547,19 @@ export default function Dashboard() {
                 <h1 className="font-display fade-up" style={{ fontSize: isPWA ? 32 : 48, color: 'var(--ink)', lineHeight: 1.1, marginBottom: isPWA ? 14 : 20 }}>
                   {t(greetingKey())}{firstName ? `, ${firstName.toLowerCase()}` : ''}.
                 </h1>
+
+                {justReconnected && (
+                  <div className="fade-up-2" style={{
+                    background: 'rgba(34,139,34,0.08)', borderRadius: 10,
+                    padding: '14px 18px', marginBottom: 20,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span style={{ fontSize: 18 }}>&#x2705;</span>
+                    <p style={{ fontSize: 14, color: '#2A1F14', margin: 0 }}>
+                      {t('reconnect.success')}
+                    </p>
+                  </div>
+                )}
 
                 {isGenerating && (
                   <div className="fade-up-2" style={{ marginBottom: 28 }}>

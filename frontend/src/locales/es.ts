@@ -142,8 +142,14 @@ export const translations: Translations = {
   'actions.history':      'Historial',
 
   // ── Reconnect ───────────────────────────────────────────────────────────────
-  'reconnect.redirecting': 'Reconectando tu tienda\u2026',
-  'reconnect.goSettings':  'Ir a Ajustes \u2192',
+  'reconnect.redirecting':  'Reconectando tu tienda\u2026',
+  'reconnect.goSettings':   'Ir a Ajustes \u2192',
+  'reconnect.loginTitle':   'Reconectar tu tienda',
+  'reconnect.loginDesc':    'Inicia sesi\u00f3n para reconectar tu tienda Shopify. Solo toma un momento.',
+  'reconnect.password':     'Contrase\u00f1a',
+  'reconnect.loginBtn':     'Entrar y reconectar',
+  'reconnect.noSession':    'No se encontr\u00f3 sesi\u00f3n. Int\u00e9ntalo de nuevo.',
+  'reconnect.success':      'Tienda reconectada. Sincronizando datos frescos \u2014 tu pr\u00f3ximo informe estar\u00e1 listo en breve.',
 
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Recibe tu brief como notificación',

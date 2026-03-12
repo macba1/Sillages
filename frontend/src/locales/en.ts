@@ -140,8 +140,14 @@ export const en = {
   'actions.history':      'History',
 
   // ── Reconnect ───────────────────────────────────────────────────────────────
-  'reconnect.redirecting': 'Reconnecting your store\u2026',
-  'reconnect.goSettings':  'Go to Settings \u2192',
+  'reconnect.redirecting':  'Reconnecting your store\u2026',
+  'reconnect.goSettings':   'Go to Settings \u2192',
+  'reconnect.loginTitle':   'Reconnect your store',
+  'reconnect.loginDesc':    'Sign in to reconnect your Shopify store. This only takes a moment.',
+  'reconnect.password':     'Password',
+  'reconnect.loginBtn':     'Sign in & reconnect',
+  'reconnect.noSession':    'No session found. Please try again.',
+  'reconnect.success':      'Store reconnected. Syncing fresh data now \u2014 your next brief will be ready shortly.',
 
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Get your brief as a notification',

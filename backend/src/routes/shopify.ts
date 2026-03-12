@@ -224,39 +224,69 @@ router.get(
         console.warn(`[shopify] GDPR webhook registration warning for ${shop}`);
       }
 
-      // Fire-and-forget: generate the first brief immediately.
-      // Tries real Shopify data first; falls back to seed data on any sync failure
-      // (e.g. 403 scope issues). Never blocks the redirect.
-      void generateFirstBrief(accountId);
+      // Check if this is a reconnection (existing account with subscription)
+      const { data: existingAccount } = await supabase
+        .from('accounts')
+        .select('subscription_status')
+        .eq('id', accountId)
+        .single();
 
-      // ── Shopify Billing ──────────────────────────────────────────────────
-      // Create a recurring app subscription. The merchant must approve the charge
-      // on Shopify's confirmation page before it takes effect.
-      try {
-        const billingReturnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing-callback?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}`;
-        const { confirmationUrl, subscriptionId } = await createAppSubscription(
-          shop,
-          tokenData.access_token,
-          'starter', // default plan
-          billingReturnUrl,
-        );
+      const isReconnection = existingAccount?.subscription_status &&
+        ['active', 'trialing', 'beta'].includes(existingAccount.subscription_status);
 
-        // Store the pending subscription ID so we can verify it in the callback
-        await supabase
-          .from('accounts')
-          .update({
-            stripe_subscription_id: subscriptionId, // reusing column for Shopify subscription GID
-            subscription_status: 'trialing',
-            trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
-          })
-          .eq('id', accountId);
+      if (isReconnection) {
+        // Reconnection — skip billing, sync fresh data, go straight to dashboard
+        console.log(`[shopify/callback] Reconnection detected — skipping billing, syncing data`);
 
-        console.log(`[shopify/callback] Billing subscription created — redirecting merchant to approve: ${subscriptionId}`);
-        res.redirect(confirmationUrl);
-      } catch (billingErr) {
-        // If billing fails, still redirect to dashboard — don't block the install
-        console.error(`[shopify/callback] Billing creation failed (non-blocking): ${(billingErr as Error).message}`);
-        res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
+        // Fire-and-forget: sync + brief with fresh data
+        void (async () => {
+          try {
+            await syncYesterdayForAccount(accountId);
+            const snap = await supabase
+              .from('shopify_daily_snapshots')
+              .select('snapshot_date')
+              .eq('account_id', accountId)
+              .order('snapshot_date', { ascending: false })
+              .limit(1)
+              .single();
+            if (snap.data) {
+              await generateBrief({ accountId, briefDate: snap.data.snapshot_date });
+              console.log(`[shopify/callback] Reconnection brief generated for ${accountId}`);
+            }
+          } catch (err) {
+            console.error(`[shopify/callback] Reconnection sync/brief failed (non-fatal):`, err instanceof Error ? err.message : err);
+          }
+        })();
+
+        res.redirect(`${env.FRONTEND_URL}/dashboard?reconnected=true`);
+      } else {
+        // First install — generate brief and set up billing
+        void generateFirstBrief(accountId);
+
+        try {
+          const billingReturnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing-callback?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}`;
+          const { confirmationUrl, subscriptionId } = await createAppSubscription(
+            shop,
+            tokenData.access_token,
+            'starter', // default plan
+            billingReturnUrl,
+          );
+
+          await supabase
+            .from('accounts')
+            .update({
+              stripe_subscription_id: subscriptionId,
+              subscription_status: 'trialing',
+              trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+            })
+            .eq('id', accountId);
+
+          console.log(`[shopify/callback] Billing subscription created — redirecting merchant to approve: ${subscriptionId}`);
+          res.redirect(confirmationUrl);
+        } catch (billingErr) {
+          console.error(`[shopify/callback] Billing creation failed (non-blocking): ${(billingErr as Error).message}`);
+          res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
+        }
       }
     } catch (err) {
       next(err);
