@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
+    "premerge": "tsc --noEmit && echo 'Build OK'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
