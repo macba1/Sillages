@@ -38,6 +38,18 @@ const TYPE_LABELS: Record<string, Record<string, string>> = {
   whatsapp_message:  { en: 'WhatsApp Message',    es: 'Mensaje WhatsApp' },
 };
 
+function approveLabel(type: string, lang: string): string {
+  const labels: Record<string, Record<string, string>> = {
+    discount_code:     { en: 'Create discount', es: 'Crear descuento' },
+    seo_fix:           { en: 'Apply fix',       es: 'Aplicar corrección' },
+    product_highlight: { en: 'Move product',    es: 'Mover producto' },
+    instagram_post:    { en: 'Copy text',       es: 'Copiar texto' },
+    email_campaign:    { en: 'Send email',      es: 'Enviar email' },
+    whatsapp_message:  { en: 'Open WhatsApp',   es: 'Abrir WhatsApp' },
+  };
+  return labels[type]?.[lang] ?? (lang === 'es' ? 'Ejecutar' : 'Execute');
+}
+
 const PRIORITY_COLORS: Record<string, string> = {
   high: '#D35400',
   medium: '#C9964A',
@@ -59,15 +71,41 @@ export default function Actions() {
     setProcessing(action.id);
     try {
       const result = await approve(action.id);
-      if (result.executed) {
-        setFeedback({ id: action.id, msg: lang === 'es' ? 'Ejecutado en Shopify' : 'Executed on Shopify', ok: true });
+      const updatedAction = result.action;
+      const actionResult = updatedAction?.result as Record<string, unknown> | null;
+
+      if (updatedAction?.status === 'failed') {
+        const errMsg = (actionResult?.error as string) ?? (lang === 'es' ? 'Error al ejecutar' : 'Execution failed');
+        setFeedback({ id: action.id, msg: errMsg, ok: false });
+      } else if (result.executed) {
+        // Type-specific success messages
+        if (action.type === 'instagram_post') {
+          // Copy the post text to clipboard
+          const copy = actionResult?.copy as string;
+          if (copy) {
+            try { await navigator.clipboard.writeText(copy); } catch { /* fallback ok */ }
+          }
+          setFeedback({ id: action.id, msg: lang === 'es' ? 'Copy listo. Abre Instagram y pégalo.' : 'Copy ready. Open Instagram and paste it.', ok: true });
+        } else if (action.type === 'whatsapp_message') {
+          const waLink = actionResult?.wa_link as string;
+          if (waLink) window.open(waLink, '_blank');
+          setFeedback({ id: action.id, msg: lang === 'es' ? 'Enlace de WhatsApp abierto' : 'WhatsApp link opened', ok: true });
+        } else if (action.type === 'email_campaign') {
+          const sent = (actionResult?.total_sent as number) ?? 0;
+          setFeedback({ id: action.id, msg: lang === 'es' ? `Email enviado a ${sent} contacto(s)` : `Email sent to ${sent} contact(s)`, ok: true });
+        } else if (action.type === 'product_highlight') {
+          const collection = (actionResult?.collection as string) ?? '';
+          setFeedback({ id: action.id, msg: lang === 'es' ? `Producto movido a posición 1 en "${collection}"` : `Product moved to position 1 in "${collection}"`, ok: true });
+        } else {
+          setFeedback({ id: action.id, msg: lang === 'es' ? 'Ejecutado en Shopify' : 'Executed on Shopify', ok: true });
+        }
       } else {
         setFeedback({ id: action.id, msg: lang === 'es' ? 'Aprobado' : 'Approved', ok: true });
       }
-      setTimeout(() => setFeedback(null), 3000);
+      setTimeout(() => setFeedback(null), 5000);
     } catch {
       setFeedback({ id: action.id, msg: lang === 'es' ? 'Error al aprobar' : 'Failed to approve', ok: false });
-      setTimeout(() => setFeedback(null), 3000);
+      setTimeout(() => setFeedback(null), 5000);
     }
     setProcessing(null);
   };
@@ -434,9 +472,7 @@ function ActionCard({
                 style={btnStyle('#C9964A', '#fff')}
               >
                 <Check size={14} />
-                {action.type === 'discount_code' || action.type === 'seo_fix'
-                  ? (lang === 'es' ? 'Ejecutar' : 'Execute')
-                  : (lang === 'es' ? 'Aprobar' : 'Approve')}
+                {approveLabel(action.type, lang)}
               </button>
               <button onClick={onEdit} style={btnStyle('rgba(201,150,74,0.1)', '#C9964A')}>
                 <Pencil size={14} />

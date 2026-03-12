@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { shopifyGraphQL } from '../lib/shopify.js';
+import { resend } from '../lib/resend.js';
+import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -108,13 +110,12 @@ router.get('/stats', requireAuth, async (req: Request, res: Response, next: Next
 });
 
 // ── PUT /api/actions/:id/approve ────────────────────────────────────────────
-// Approve an action. For discount_code and seo_fix, execute immediately on Shopify.
+// Approve and execute an action. Every action type does something real.
 router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const accountId = req.accountId!;
     const actionId = req.params.id;
 
-    // Fetch the action
     const { data: action, error: fetchError } = await supabase
       .from('pending_actions')
       .select('*')
@@ -125,43 +126,31 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
     if (fetchError || !action) throw new AppError(404, 'Action not found');
     if (action.status !== 'pending') throw new AppError(400, `Action is already ${action.status}`);
 
-    const actionType = action.type;
+    const actionType = action.type as string;
     const content = action.content ?? {};
 
-    // ── Auto-executable actions ───────────────────────────────────────────
-    if (actionType === 'discount_code') {
-      await executeDiscount(accountId, actionId, content);
-      const { data: updated } = await supabase.from('pending_actions').select('*').eq('id', actionId).single();
-      res.json({ action: updated, executed: true });
-      return;
+    // Dispatch to executor by type
+    const executors: Record<string, (aId: string, actId: string, c: Record<string, unknown>) => Promise<void>> = {
+      discount_code: executeDiscount,
+      seo_fix: executeSeoFix,
+      product_highlight: executeProductHighlight,
+      email_campaign: executeEmailCampaign,
+      instagram_post: executeInstagramPost,
+      whatsapp_message: executeWhatsAppMessage,
+    };
+
+    const executor = executors[actionType];
+    if (executor) {
+      await executor(accountId, actionId, content);
+    } else {
+      // Unknown type — mark completed with note
+      await markCompleted(actionId, { note: `Action type "${actionType}" approved` });
     }
-
-    if (actionType === 'seo_fix') {
-      await executeSeoFix(accountId, actionId, content);
-      const { data: updated } = await supabase.from('pending_actions').select('*').eq('id', actionId).single();
-      res.json({ action: updated, executed: true });
-      return;
-    }
-
-    // ── Manual actions (approve only) ─────────────────────────────────────
-    const { error: updateError } = await supabase
-      .from('pending_actions')
-      .update({
-        status: 'approved',
-        approved_at: new Date().toISOString(),
-
-      })
-      .eq('id', actionId);
-
-    if (updateError) throw new AppError(500, `Failed to approve: ${updateError.message}`);
 
     const { data: updated } = await supabase.from('pending_actions').select('*').eq('id', actionId).single();
+    const wasExecuted = updated?.status === 'completed';
 
-    res.json({
-      action: updated,
-      executed: false,
-      message: 'Acción aprobada. La ejecución automática estará disponible pronto.',
-    });
+    res.json({ action: updated, executed: wasExecuted });
   } catch (err) {
     next(err);
   }
@@ -439,6 +428,261 @@ async function executeSeoFix(accountId: string, actionId: string, content: Recor
   } catch (err) {
     await markFailed(actionId, err instanceof Error ? err.message : String(err));
   }
+}
+
+// ── Product Highlight Executor ───────────────────────────────────────────────
+// Moves a product to position 1 in the main collection via collectionReorderProducts.
+
+async function executeProductHighlight(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const conn = await getShopifyConnection(accountId);
+  if (!conn) {
+    await markFailed(actionId, 'No Shopify connection found');
+    return;
+  }
+
+  const productName = (content.copy as string) ?? (content.discount_product as string) ?? '';
+
+  try {
+    // 1. Find the main collection — try "Frontpage", then "All", then the largest collection
+    const collectionsQuery = `
+      query {
+        collections(first: 20, sortKey: PRODUCTS_COUNT, reverse: true) {
+          nodes {
+            id
+            title
+            handle
+            productsCount { count }
+          }
+        }
+      }
+    `;
+
+    const collectionsData = await shopifyGraphQL<{
+      collections: {
+        nodes: Array<{ id: string; title: string; handle: string; productsCount: { count: number } }>;
+      };
+    }>(conn.shop_domain, conn.access_token, collectionsQuery);
+
+    const collections = collectionsData.collections.nodes;
+    if (collections.length === 0) {
+      await markFailed(actionId, 'No collections found in store');
+      return;
+    }
+
+    // Prefer "Frontpage" > "All" > largest by product count
+    let targetCollection = collections.find(c =>
+      c.handle === 'frontpage' || c.title.toLowerCase() === 'frontpage'
+    );
+    if (!targetCollection) {
+      targetCollection = collections.find(c =>
+        c.handle === 'all' || c.title.toLowerCase() === 'all'
+      );
+    }
+    if (!targetCollection) {
+      targetCollection = collections[0]; // largest by products_count (sorted desc)
+    }
+
+    // 2. Get products in that collection to find the product to highlight
+    const productsQuery = `
+      query ($collectionId: ID!) {
+        collection(id: $collectionId) {
+          products(first: 50) {
+            nodes {
+              id
+              title
+              position
+            }
+          }
+        }
+      }
+    `;
+
+    const productsData = await shopifyGraphQL<{
+      collection: {
+        products: { nodes: Array<{ id: string; title: string; position: number }> };
+      };
+    }>(conn.shop_domain, conn.access_token, productsQuery, { collectionId: targetCollection.id });
+
+    const products = productsData.collection.products.nodes;
+    if (products.length === 0) {
+      await markFailed(actionId, `Collection "${targetCollection.title}" has no products`);
+      return;
+    }
+
+    // Find the product to highlight by name match
+    const targetProduct = products.find(p =>
+      p.title.toLowerCase().includes(productName.toLowerCase()) ||
+      productName.toLowerCase().includes(p.title.toLowerCase())
+    ) ?? products[0];
+
+    // 3. Build the reorder — move target to position 0 (first)
+    const moves = [{ id: targetProduct.id, newPosition: '0' }];
+
+    const reorderMutation = `
+      mutation collectionReorderProducts($id: ID!, $moves: [MoveInput!]!) {
+        collectionReorderProducts(id: $id, moves: $moves) {
+          job { id }
+          userErrors { field message }
+        }
+      }
+    `;
+
+    const reorderData = await shopifyGraphQL<{
+      collectionReorderProducts: {
+        job: { id: string } | null;
+        userErrors: Array<{ field: string[]; message: string }>;
+      };
+    }>(conn.shop_domain, conn.access_token, reorderMutation, {
+      id: targetCollection.id,
+      moves,
+    });
+
+    const result = reorderData.collectionReorderProducts;
+    if (result.userErrors.length > 0) {
+      await markFailed(actionId, result.userErrors.map(e => e.message).join('; '));
+      return;
+    }
+
+    await markCompleted(actionId, {
+      collection: targetCollection.title,
+      collection_id: targetCollection.id,
+      product: targetProduct.title,
+      product_id: targetProduct.id,
+      moved_to_position: 1,
+    });
+
+    console.log(`[actions] Product "${targetProduct.title}" moved to position 1 in "${targetCollection.title}" for action ${actionId}`);
+  } catch (err) {
+    await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ── Instagram Post Executor ─────────────────────────────────────────────────
+// Returns the copy for the user to paste into Instagram. No external API needed.
+
+async function executeInstagramPost(_accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const copy = (content.copy as string) ?? '';
+  if (!copy) {
+    await markFailed(actionId, 'No copy text provided for Instagram post');
+    return;
+  }
+
+  await markCompleted(actionId, {
+    copy,
+    instruction: 'Copy ready. Open Instagram and paste it.',
+    instruction_es: 'Copy listo. Abre Instagram y pégalo.',
+  });
+
+  console.log(`[actions] Instagram post copy prepared for action ${actionId}`);
+}
+
+// ── Email Campaign Executor ─────────────────────────────────────────────────
+// Sends the email via Resend to the recipients specified in the action content.
+
+async function executeEmailCampaign(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const subject = (content.email_subject as string) ?? '';
+  const body = (content.email_body as string) ?? (content.copy as string) ?? '';
+  const recipients = (content.email_recipients as string[]) ?? [];
+
+  if (!subject || !body) {
+    await markFailed(actionId, 'Missing email_subject or email_body');
+    return;
+  }
+
+  if (recipients.length === 0) {
+    await markFailed(actionId, 'No email recipients specified');
+    return;
+  }
+
+  // Get shop name for the from address
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('shop_name')
+    .eq('account_id', accountId)
+    .single();
+
+  const shopName = conn?.shop_name ?? 'Sillages';
+  const slug = shopName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const from = `${shopName} via Sillages <${slug}@sillages.app>`;
+
+  try {
+    // Build HTML from the body text
+    const htmlBody = body.split('\n').map(line => `<p style="margin:0 0 12px;color:#2A1F14;font-size:15px;line-height:1.5;">${line}</p>`).join('');
+    const html = `
+      <div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
+        ${htmlBody}
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+        <p style="font-size:11px;color:#A89880;">Sent via Sillages</p>
+      </div>
+    `;
+
+    const sent: string[] = [];
+    const failed: string[] = [];
+
+    // Send to each recipient individually (Resend free tier limit)
+    for (const to of recipients.slice(0, 20)) {
+      try {
+        await resend.emails.send({ from, to, subject, html });
+        sent.push(to);
+      } catch (err) {
+        console.error(`[actions] Failed to send to ${to}:`, err instanceof Error ? err.message : err);
+        failed.push(to);
+      }
+    }
+
+    if (sent.length === 0) {
+      await markFailed(actionId, `All emails failed. First error for: ${failed[0]}`);
+      return;
+    }
+
+    await markCompleted(actionId, {
+      sent_to: sent,
+      failed: failed.length > 0 ? failed : undefined,
+      total_sent: sent.length,
+      subject,
+    });
+
+    console.log(`[actions] Email campaign sent to ${sent.length}/${recipients.length} recipients for action ${actionId}`);
+  } catch (err) {
+    await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ── WhatsApp Message Executor ───────────────────────────────────────────────
+// Returns a wa.me link with the message pre-filled for the merchant to send.
+
+async function executeWhatsAppMessage(_accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const copy = (content.copy as string) ?? '';
+  if (!copy) {
+    await markFailed(actionId, 'No message text provided for WhatsApp');
+    return;
+  }
+
+  const encodedText = encodeURIComponent(copy);
+  const waLink = `https://wa.me/?text=${encodedText}`;
+
+  await markCompleted(actionId, {
+    copy,
+    wa_link: waLink,
+    instruction: 'Open the link to send via WhatsApp.',
+    instruction_es: 'Abre el enlace para enviar por WhatsApp.',
+  });
+
+  console.log(`[actions] WhatsApp link prepared for action ${actionId}`);
+}
+
+// ── Helper: mark action completed ───────────────────────────────────────────
+
+async function markCompleted(actionId: string, result: Record<string, unknown>): Promise<void> {
+  await supabase
+    .from('pending_actions')
+    .update({
+      status: 'completed',
+      approved_at: new Date().toISOString(),
+      executed_at: new Date().toISOString(),
+      result,
+    })
+    .eq('id', actionId);
 }
 
 async function markFailed(actionId: string, errorMessage: string): Promise<void> {
