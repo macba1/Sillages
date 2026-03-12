@@ -16,23 +16,72 @@ export interface AnalystOutput {
     units: number;
     revenue: number;
   }>;
-  customer_patterns: {
-    total_buyers: number;
-    repeat_buyers: number;
-    new_buyers: number;
-    returning_rate: number;
-    inactive_customers: Array<{
+
+  // ── 1. Conversion Analysis ─────────────────────────────────────────────
+  conversion: {
+    abandoned_carts: number;
+    cart_abandonment_rate: number; // 0-1
+    products_viewed_not_purchased: Array<{ name: string; views_or_carts: number }>;
+    avg_order_value: number;
+    checkout_completion_rate: number; // 0-1
+  };
+
+  // ── 2. Merchandising Analysis ──────────────────────────────────────────
+  merchandising: {
+    high_value_products: Array<{ name: string; revenue_per_unit: number; units: number }>;
+    volume_products: Array<{ name: string; units: number; revenue: number }>;
+    position_mismatch: Array<{ name: string; issue: string }>;
+    dead_products: Array<{ name: string; days_without_sale: number }>;
+    collection_performance: Array<{ name: string; products: number; has_description: boolean }>;
+  };
+
+  // ── 3. Retention Analysis ──────────────────────────────────────────────
+  retention: {
+    repeat_rate: number; // 0-1
+    new_customer_count: number;
+    overdue_customers: Array<{
       name: string;
       email: string;
       last_purchase: string;
       days_since: number;
+      usual_cycle_days: number;
+      total_spent: number;
     }>;
+    vip_customers: Array<{ name: string; email: string; purchases: number; total_spent: number }>;
+    customer_segments: {
+      vip: number;     // 4+ purchases
+      regular: number; // 2-3 purchases
+      one_time: number; // 1 purchase
+    };
   };
+
+  // ── 4. SEO Analysis ───────────────────────────────────────────────────
+  seo: {
+    missing_meta: Array<{ name: string; handle: string }>;
+    missing_alt: Array<{ name: string; handle: string; image_url: string }>;
+    short_descriptions: Array<{ name: string; handle: string; current_length: number }>;
+    missing_collection_desc: Array<{ name: string; handle: string }>;
+  };
+
+  // ── 5. Acquisition Analysis ───────────────────────────────────────────
+  acquisition: {
+    new_customer_trend: 'growing' | 'stable' | 'declining' | 'insufficient_data';
+    first_purchase_products: Array<{ name: string; count: number }>;
+    entry_price_point: number; // avg first-order value
+  };
+
+  // ── Patterns & Opportunities ──────────────────────────────────────────
   weekly_patterns: Array<{
     day_of_week: string;
     avg_revenue: number;
     avg_orders: number;
     best_product: string;
+  }>;
+  calendar_opportunities: Array<{
+    event: string;
+    date: string;
+    days_until: number;
+    relevance: string;
   }>;
   trends: {
     revenue_vs_last_week: number; // percentage change
@@ -40,26 +89,22 @@ export interface AnalystOutput {
     growing_products: string[];
     declining_products: string[];
   };
-  seo_audit: {
-    products_without_description: Array<{ name: string; handle: string }>;
-    products_without_meta_description: Array<{ name: string; handle: string }>;
-    products_without_image_alt: Array<{ name: string; handle: string; image_url: string }>;
-    collections_without_description: Array<{ name: string; handle: string }>;
-    short_descriptions: Array<{ name: string; handle: string; current_length: number }>;
-  };
-  upcoming: {
-    best_day_this_week: {
-      day: string;
-      expected_revenue: number;
-      recommended_product: string;
-    };
-    customers_due_for_repurchase: Array<{
-      name: string;
-      email: string;
-      usual_cycle_days: number;
-      days_since_last: number;
-    }>;
-  };
+
+  // ── Actions History (for the loop) ────────────────────────────────────
+  actions_history: Array<{
+    action_id: string;
+    type: string;
+    title: string;
+    status: string;
+    executed_at: string | null;
+    measured_impact: {
+      times_used?: number;
+      revenue_generated?: number;
+      sales_change?: string;
+      note?: string;
+    } | null;
+  }>;
+
   signals: string[]; // key observations in bullet points
 }
 

@@ -107,6 +107,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       currency,
       briefDate,
       language,
+      accountId,
     });
 
     console.log(`[briefGenerator] Analyst complete — ${analystResult.output.signals.length} signals`);
@@ -166,14 +167,15 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       }],
     };
 
-    // section_upcoming: from analyst weekly patterns + narrative
-    const bestDay = analyst.upcoming.best_day_this_week;
+    // section_upcoming: from analyst weekly patterns + calendar + narrative
+    const bestPattern = analyst.weekly_patterns?.[0];
+    const nextEvent = analyst.calendar_opportunities?.[0];
     const sectionUpcoming = {
       items: [{
         pattern: narrative.upcoming,
-        days_until: 1,
-        action: bestDay.recommended_product
-          ? `${language === 'es' ? 'Preparar' : 'Prepare'} ${bestDay.recommended_product} ${language === 'es' ? 'para' : 'for'} ${bestDay.day}`
+        days_until: nextEvent?.days_until ?? 1,
+        action: bestPattern?.best_product
+          ? `${language === 'es' ? 'Preparar' : 'Prepare'} ${bestPattern.best_product} ${language === 'es' ? 'para' : 'for'} ${bestPattern.day_of_week}`
           : narrative.upcoming,
         ready_copy: growthResult.output.actions[0]?.content?.copy ?? '',
       }],
@@ -189,11 +191,12 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     // section_gap: from narrative + analyst
     const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$' };
     const cs = sym[currency] ?? `${currency} `;
+    const bestDayRevenue = bestPattern?.avg_revenue ?? 0;
     const sectionGap = {
       gap: narrative.gap,
       opportunity: narrative.upcoming,
-      estimated_upside: analyst.upcoming.best_day_this_week.expected_revenue > 0
-        ? `+${cs}${analyst.upcoming.best_day_this_week.expected_revenue.toFixed(0)} ${language === 'es' ? 'esta semana' : 'this week'}`
+      estimated_upside: bestDayRevenue > 0
+        ? `+${cs}${bestDayRevenue.toFixed(0)} ${language === 'es' ? 'esta semana' : 'this week'}`
         : '',
     };
 

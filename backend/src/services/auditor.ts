@@ -50,6 +50,7 @@ export async function runAudit(): Promise<void> {
   await checkTokens(accounts, alerts);
   await checkStaleActions(alerts);
   await checkDataFreshness(accounts, alerts);
+  await measurePreviousActions(accounts);
 
   // Send alert email if anything critical was found
   if (alerts.length > 0) {
@@ -311,6 +312,164 @@ async function checkDataFreshness(
       console.log(`${LOG} [freshness] ✅ ${account.email} — data up to date (${latestSnap.snapshot_date})`);
     }
   }
+}
+
+// ── CHECK 5: Measure previous actions (improvement loop) ────────────────────
+
+async function measurePreviousActions(
+  accounts: Array<{ id: string; email: string; language: string | null }>,
+): Promise<void> {
+  console.log(`${LOG} [measure] Measuring impact of completed actions...`);
+
+  const twoDaysAgo = new Date(Date.now() - 48 * 3600000).toISOString();
+
+  // Find completed actions from the last 48h that haven't been measured yet
+  const { data: completedActions } = await supabase
+    .from('pending_actions')
+    .select('id, account_id, type, title, content, result, executed_at')
+    .eq('status', 'completed')
+    .gte('executed_at', twoDaysAgo)
+    .not('result', 'is', null);
+
+  if (!completedActions || completedActions.length === 0) {
+    console.log(`${LOG} [measure] No recent completed actions to measure`);
+    return;
+  }
+
+  for (const action of completedActions) {
+    // Skip if already measured
+    const result = action.result as Record<string, unknown> | null;
+    if (result?.measured_impact) continue;
+
+    try {
+      if (action.type === 'discount_code') {
+        await measureDiscount(action);
+      } else if (action.type === 'product_highlight') {
+        await measureProductHighlight(action);
+      }
+      // Other types don't have automated measurement yet
+    } catch (err) {
+      console.error(`${LOG} [measure] Failed to measure action ${action.id}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+async function measureDiscount(action: {
+  id: string; account_id: string; content: Record<string, unknown>; result: Record<string, unknown> | null;
+}): Promise<void> {
+  const discountCode = (action.content?.discount_code as string) ?? (action.result?.code as string);
+  if (!discountCode) return;
+
+  // Get Shopify connection
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain, access_token, token_status')
+    .eq('account_id', action.account_id)
+    .single();
+
+  if (!conn || conn.token_status === 'invalid') {
+    console.log(`${LOG} [measure] Cannot measure discount ${discountCode} — no valid connection`);
+    return;
+  }
+
+  // Check orders with this discount code via REST API
+  try {
+    const resp = await axios.get(
+      `https://${conn.shop_domain}/admin/api/2024-04/orders.json`,
+      {
+        headers: { 'X-Shopify-Access-Token': conn.access_token },
+        params: {
+          status: 'any',
+          limit: 50,
+          fields: 'id,total_price,discount_codes,created_at',
+        },
+        timeout: 10000,
+      },
+    );
+
+    const orders = resp.data.orders as Array<{
+      id: number;
+      total_price: string;
+      discount_codes: Array<{ code: string; amount: string }>;
+    }>;
+
+    const matchingOrders = orders.filter(o =>
+      o.discount_codes?.some(dc => dc.code.toUpperCase() === discountCode.toUpperCase()),
+    );
+
+    const timesUsed = matchingOrders.length;
+    const revenueGenerated = matchingOrders.reduce((sum, o) => sum + parseFloat(o.total_price), 0);
+
+    // Update the action result with measured impact
+    const updatedResult = {
+      ...(action.result ?? {}),
+      measured_impact: {
+        times_used: timesUsed,
+        revenue_generated: revenueGenerated,
+        measured_at: new Date().toISOString(),
+      },
+    };
+
+    await supabase
+      .from('pending_actions')
+      .update({ result: updatedResult })
+      .eq('id', action.id);
+
+    console.log(`${LOG} [measure] Discount ${discountCode}: used ${timesUsed} times, €${revenueGenerated.toFixed(2)} revenue`);
+  } catch (err) {
+    console.error(`${LOG} [measure] Failed to check orders for discount ${discountCode}:`, err instanceof Error ? err.message : err);
+  }
+}
+
+async function measureProductHighlight(action: {
+  id: string; account_id: string; result: Record<string, unknown> | null;
+}): Promise<void> {
+  const productTitle = action.result?.product as string;
+  if (!productTitle) return;
+
+  // Compare today's snapshot product sales vs the day before highlight
+  const executedAt = action.result?.executed_at ?? new Date().toISOString();
+  const executedDate = typeof executedAt === 'string' ? executedAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  // Get snapshots after the highlight was applied
+  const { data: snapshots } = await supabase
+    .from('shopify_daily_snapshots')
+    .select('snapshot_date, top_products')
+    .eq('account_id', action.account_id)
+    .gte('snapshot_date', executedDate)
+    .order('snapshot_date', { ascending: true })
+    .limit(7);
+
+  if (!snapshots || snapshots.length === 0) return;
+
+  // Count sales of the highlighted product after the action
+  let totalUnits = 0;
+  let totalRevenue = 0;
+  for (const snap of snapshots) {
+    const products = snap.top_products as Array<{ title: string; quantity_sold: number; revenue: number }> | null;
+    const match = products?.find(p => p.title.toLowerCase().includes(productTitle.toLowerCase()));
+    if (match) {
+      totalUnits += match.quantity_sold;
+      totalRevenue += match.revenue;
+    }
+  }
+
+  const updatedResult = {
+    ...(action.result ?? {}),
+    measured_impact: {
+      sales_after_highlight: totalUnits,
+      revenue_after_highlight: totalRevenue,
+      days_measured: snapshots.length,
+      measured_at: new Date().toISOString(),
+    },
+  };
+
+  await supabase
+    .from('pending_actions')
+    .update({ result: updatedResult })
+    .eq('id', action.id);
+
+  console.log(`${LOG} [measure] Product highlight "${productTitle}": ${totalUnits} units, €${totalRevenue.toFixed(2)} in ${snapshots.length} days after`);
 }
 
 // ── Alert email to admin ────────────────────────────────────────────────────
