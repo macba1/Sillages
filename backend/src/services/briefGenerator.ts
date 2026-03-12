@@ -252,14 +252,15 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       const actionRows = growthResult.output.actions.map((a: GrowthAction) => ({
         account_id: accountId,
         brief_id: briefId,
-        brief_date: briefDate,
-        action_type: a.type,
+        type: a.type,
         title: a.title,
         description: a.description,
-        priority: a.priority,
-        time_estimate: a.time_estimate,
-        plan_required: a.plan_required,
-        content: a.content,
+        content: {
+          ...a.content,
+          priority: a.priority,
+          time_estimate: a.time_estimate,
+          plan_required: a.plan_required,
+        },
         status: 'pending',
       }));
 

@@ -54,7 +54,6 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    // Determine which plan_required values to show
     const allowedPlans = plan === 'pro' ? ['growth', 'pro'] : ['growth'];
 
     const { data, error } = await supabase
@@ -62,16 +61,20 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       .select('*')
       .eq('account_id', accountId)
       .eq('status', status)
-      .in('plan_required', allowedPlans)
-      .order('priority', { ascending: true }) // 'high' < 'low' alphabetically — we fix below
       .order('created_at', { ascending: false });
 
     if (error) throw new AppError(500, `Failed to load actions: ${error.message}`);
 
-    // Sort by priority: high first, then medium, then low
+    // Filter by plan_required (stored in content.plan_required)
+    const filtered = (data ?? []).filter(a => {
+      const planReq = a.content?.plan_required ?? 'growth';
+      return allowedPlans.includes(planReq);
+    });
+
+    // Sort by priority (stored in content.priority): high first, then medium, then low
     const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-    const sorted = (data ?? []).sort((a, b) =>
-      (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1)
+    const sorted = filtered.sort((a, b) =>
+      (priorityOrder[a.content?.priority] ?? 1) - (priorityOrder[b.content?.priority] ?? 1)
     );
 
     res.json({ actions: sorted, plan });
@@ -122,7 +125,7 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
     if (fetchError || !action) throw new AppError(404, 'Action not found');
     if (action.status !== 'pending') throw new AppError(400, `Action is already ${action.status}`);
 
-    const actionType = action.action_type || action.type;
+    const actionType = action.type;
     const content = action.content ?? {};
 
     // ── Auto-executable actions ───────────────────────────────────────────
@@ -146,7 +149,7 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
       .update({
         status: 'approved',
         approved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+
       })
       .eq('id', actionId);
 
@@ -184,7 +187,7 @@ router.put('/:id/reject', requireAuth, async (req: Request, res: Response, next:
       .from('pending_actions')
       .update({
         status: 'rejected',
-        updated_at: new Date().toISOString(),
+
       })
       .eq('id', actionId);
 
@@ -220,7 +223,7 @@ router.put('/:id', requireAuth, async (req: Request, res: Response, next: NextFu
       .from('pending_actions')
       .update({
         content,
-        updated_at: new Date().toISOString(),
+
       })
       .eq('id', actionId);
 
@@ -308,7 +311,7 @@ async function executeDiscount(accountId: string, actionId: string, content: Rec
         approved_at: new Date().toISOString(),
         executed_at: new Date().toISOString(),
         result: { shopify_discount_id: discountId, code, percentage },
-        updated_at: new Date().toISOString(),
+
       })
       .eq('id', actionId);
 
@@ -428,7 +431,7 @@ async function executeSeoFix(accountId: string, actionId: string, content: Recor
         approved_at: new Date().toISOString(),
         executed_at: new Date().toISOString(),
         result: { product_id: product.id, seo_field: seoField, applied_value: newValue },
-        updated_at: new Date().toISOString(),
+
       })
       .eq('id', actionId);
 
@@ -444,7 +447,6 @@ async function markFailed(actionId: string, errorMessage: string): Promise<void>
     .update({
       status: 'failed',
       result: { error: errorMessage },
-      updated_at: new Date().toISOString(),
     })
     .eq('id', actionId);
 
