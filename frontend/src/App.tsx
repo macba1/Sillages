@@ -15,6 +15,7 @@ import ResetPassword from './pages/ResetPassword';
 import Alerts from './pages/Alerts';
 import Chat from './pages/Chat';
 import Actions from './pages/Actions';
+import Reconnect from './pages/Reconnect';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 
@@ -137,6 +138,9 @@ export default function App() {
             </RequireAuth>
           }
         />
+
+        {/* Reconnect — requires auth but handled internally */}
+        <Route path="/reconnect" element={<Reconnect />} />
 
         {/* Public landing + legal */}
         <Route path="/" element={<Landing />} />

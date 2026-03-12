@@ -6,6 +6,7 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
+import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 
 // Runs every hour at :05 — checks which accounts are due for their brief
 // based on their configured timezone and send_hour
@@ -98,36 +99,71 @@ async function runBriefPipeline(accountId: string): Promise<void> {
   console.log(`[scheduler] [${accountId}] Step 1/3 — Shopify sync`);
   let snapshotDate: string;
 
+  // Get shop domain for tokenGuard tracking
+  const { data: connRow } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain, token_status')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  // Skip accounts with definitively invalid tokens (they need to reconnect)
+  if (connRow?.token_status === 'invalid') {
+    console.log(`[scheduler] [${accountId}] Skipping — token marked invalid for ${connRow.shop_domain}. Merchant needs to reconnect.`);
+    return;
+  }
+
   try {
     const result = await syncYesterdayForAccount(accountId);
     snapshotDate = result.snapshotDate;
+
+    // Sync succeeded — mark token healthy
+    if (connRow?.shop_domain) {
+      await markTokenHealthy(connRow.shop_domain);
+    }
   } catch (syncErr) {
     const httpStatus = axios.isAxiosError(syncErr) ? syncErr.response?.status : null;
     const is403or401 = httpStatus === 403 || httpStatus === 401;
 
-    if (is403or401) {
-      console.log(`[scheduler] Shopify ${httpStatus} — falling back to last available snapshot for account ${accountId}`);
+    if (is403or401 && connRow?.shop_domain) {
+      console.log(`[scheduler] Shopify ${httpStatus} for ${connRow.shop_domain} — running tokenGuard`);
+      const canRetry = await handleTokenFailure(connRow.shop_domain);
 
-      const { data: lastSnapshot } = await supabase
-        .from('shopify_daily_snapshots')
-        .select('snapshot_date')
-        .eq('account_id', accountId)
-        .order('snapshot_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      if (canRetry) {
+        // Try once more
+        try {
+          const retryResult = await syncYesterdayForAccount(accountId);
+          snapshotDate = retryResult.snapshotDate;
+          await markTokenHealthy(connRow.shop_domain);
+        } catch {
+          // Retry also failed — fall back to last snapshot
+          console.log(`[scheduler] Retry also failed for ${connRow.shop_domain} — falling back to last snapshot`);
+        }
+      }
+    }
 
-      if (!lastSnapshot) {
-        console.log(`[scheduler] No data available for account ${accountId} — skipping until Shopify access is confirmed`);
+    // If snapshotDate is not set, fall back to last available
+    if (!snapshotDate!) {
+      if (is403or401) {
+        const { data: lastSnapshot } = await supabase
+          .from('shopify_daily_snapshots')
+          .select('snapshot_date')
+          .eq('account_id', accountId)
+          .order('snapshot_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastSnapshot) {
+          console.log(`[scheduler] No data available for account ${accountId} — skipping`);
+          return;
+        }
+        snapshotDate = lastSnapshot.snapshot_date;
+      } else {
+        const msg = axios.isAxiosError(syncErr)
+          ? `HTTP ${syncErr.response?.status}: ${JSON.stringify(syncErr.response?.data)}`
+          : String(syncErr);
+        console.error(`[scheduler] Shopify sync failed for account ${accountId}: ${msg}`);
         return;
       }
-
-      snapshotDate = lastSnapshot.snapshot_date;
-    } else {
-      const msg = axios.isAxiosError(syncErr)
-        ? `HTTP ${syncErr.response?.status}: ${JSON.stringify(syncErr.response?.data)}`
-        : String(syncErr);
-      console.error(`[scheduler] Shopify sync failed for account ${accountId}: ${msg}`);
-      return;
     }
   }
 

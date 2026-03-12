@@ -139,6 +139,10 @@ export const en = {
   'actions.empty.body':   'I\u2019ll suggest growth actions in your next morning brief.',
   'actions.history':      'History',
 
+  // ── Reconnect ───────────────────────────────────────────────────────────────
+  'reconnect.redirecting': 'Reconnecting your store\u2026',
+  'reconnect.goSettings':  'Go to Settings \u2192',
+
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Get your brief as a notification',
   'push.modal.body':         'No email needed. Your daily brief appears directly on your phone each morning.',

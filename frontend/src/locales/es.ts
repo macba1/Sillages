@@ -141,6 +141,10 @@ export const translations: Translations = {
   'actions.empty.body':   'Sugeriré acciones de crecimiento en tu próximo informe matutino.',
   'actions.history':      'Historial',
 
+  // ── Reconnect ───────────────────────────────────────────────────────────────
+  'reconnect.redirecting': 'Reconectando tu tienda\u2026',
+  'reconnect.goSettings':  'Ir a Ajustes \u2192',
+
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Recibe tu brief como notificación',
   'push.modal.body':         'Sin abrir email. Tu brief diario aparece directamente en tu móvil cada mañana.',

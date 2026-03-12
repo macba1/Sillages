@@ -173,7 +173,7 @@ router.get(
       // 2) Confirm the accountId that will be written
       console.log(`[shopify/callback] upserting shopify_connections for account_id=${accountId}`);
 
-      // Upsert connection
+      // Upsert connection — also reset token health on reconnection
       const { error: upsertError } = await supabase
         .from('shopify_connections')
         .upsert(
@@ -188,6 +188,9 @@ router.get(
             scopes: tokenData.scope,
             sync_status: 'active',
             sync_error: null,
+            token_status: 'active',
+            token_failing_since: null,
+            token_retry_count: 0,
           },
           { onConflict: 'shop_domain' },
         );
@@ -337,6 +340,57 @@ router.get(
     }
   },
 );
+
+// ── GET /api/shopify/reconnect ───────────────────────────────────────────────
+// Quick reconnection — looks up the merchant's existing shop_domain and redirects
+// straight to Shopify OAuth. No need to re-enter the shop domain.
+// Accepts token as ?token= query param (like /auth) since it's a redirect, not an API call.
+router.get('/reconnect', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Resolve auth from query param or header
+    const headerToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7) : null;
+    const token = headerToken ?? (req.query.token as string | undefined);
+
+    if (!token) {
+      res.redirect(`${env.FRONTEND_URL}/login?redirect=/reconnect`);
+      return;
+    }
+
+    let accountId: string;
+    try {
+      const resolved = await resolveAuthToken(token);
+      accountId = resolved.accountId;
+    } catch {
+      res.redirect(`${env.FRONTEND_URL}/login?redirect=/reconnect`);
+      return;
+    }
+
+    const { data: conn } = await supabase
+      .from('shopify_connections')
+      .select('shop_domain')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (!conn?.shop_domain) {
+      // No existing connection — redirect to onboarding
+      res.redirect(`${env.FRONTEND_URL}/onboarding`);
+      return;
+    }
+
+    const state = (await import('../lib/shopify.js')).generateState();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await supabase.from('shopify_oauth_states').insert({ state, account_id: accountId, expires_at: expiresAt });
+
+    const credentials = resolveShopifyCredentials();
+    const installUrl = buildInstallUrl(conn.shop_domain, state, credentials);
+
+    console.log(`[shopify/reconnect] Redirecting ${accountId} to OAuth for ${conn.shop_domain}`);
+    res.redirect(installUrl);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── GET /api/shopify/connection ──────────────────────────────────────────────
 // Returns the current Shopify connection status for the authed account.

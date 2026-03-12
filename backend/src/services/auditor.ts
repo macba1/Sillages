@@ -7,6 +7,7 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
+import { handleTokenFailure, markTokenHealthy, shouldRetryNow } from '../lib/tokenGuard.js';
 
 const ADMIN_EMAIL = 'tony@richmondpartner.com';
 const LOG = '[auditor]';
@@ -161,40 +162,60 @@ async function checkTokens(
 
   const { data: connections } = await supabase
     .from('shopify_connections')
-    .select('id, account_id, shop_domain, access_token');
+    .select('id, account_id, shop_domain, access_token, token_status, token_failing_since, token_retry_count');
 
   if (!connections || connections.length === 0) return;
 
   for (const conn of connections) {
+    // Skip already-invalid tokens (merchant has been alerted, waiting for reconnection)
+    if (conn.token_status === 'invalid') {
+      const account = accounts.find(a => a.id === conn.account_id);
+      const hoursSinceFailure = conn.token_failing_since
+        ? Math.floor((Date.now() - new Date(conn.token_failing_since).getTime()) / 3600000)
+        : 0;
+
+      console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — invalid for ${hoursSinceFailure}h, waiting for reconnection`);
+
+      // Send escalated alert if >72h
+      if (hoursSinceFailure > 72) {
+        alerts.push(`CRITICAL: ${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h — merchant has not reconnected`);
+      } else if (hoursSinceFailure > 24) {
+        alerts.push(`${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h`);
+      }
+      continue;
+    }
+
+    // For 'failing' tokens, check if enough time has passed for a retry
+    if (conn.token_status === 'failing' && conn.token_failing_since) {
+      if (!shouldRetryNow(conn.token_retry_count ?? 0, conn.token_failing_since)) {
+        console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — failing (retry ${conn.token_retry_count}/3), waiting for backoff`);
+        continue;
+      }
+    }
+
+    // Test the token
     try {
       await axios.get(`https://${conn.shop_domain}/admin/api/2024-04/shop.json`, {
         headers: { 'X-Shopify-Access-Token': conn.access_token },
         timeout: 10000,
       });
+
+      // Token works — reset to healthy
+      await markTokenHealthy(conn.shop_domain);
       console.log(`${LOG} [tokens] ✅ ${conn.shop_domain} — token valid`);
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : null;
       if (status === 401 || status === 403) {
+        // Use tokenGuard for graduated retry + alerting
+        const canRetry = await handleTokenFailure(conn.shop_domain);
         const account = accounts.find(a => a.id === conn.account_id);
-        const msg = `Token INVALID (${status}) for ${conn.shop_domain} (${account?.email ?? conn.account_id})`;
-        console.log(`${LOG} [tokens] ❌ ${msg}`);
-        alerts.push(msg);
 
-        // Send push notification to merchant
-        if (conn.account_id) {
-          const lang = account?.language === 'es' ? 'es' : 'en';
-          try {
-            await sendPushNotification(conn.account_id, {
-              title: lang === 'es' ? 'Conexión con Shopify perdida' : 'Shopify connection lost',
-              body: lang === 'es'
-                ? 'Tu conexión con Shopify se ha desconectado. Reconecta desde Ajustes para seguir recibiendo briefs.'
-                : 'Your Shopify connection was lost. Reconnect from Settings to keep receiving briefs.',
-              url: '/settings',
-            });
-            console.log(`${LOG} [tokens] Push sent to ${account?.email} about invalid token`);
-          } catch {
-            // Push may fail if no subscription
-          }
+        if (canRetry) {
+          console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — failing, will retry later`);
+        } else {
+          const msg = `Token INVALID for ${conn.shop_domain} (${account?.email}) — merchant alerted to reconnect`;
+          console.log(`${LOG} [tokens] ❌ ${msg}`);
+          alerts.push(msg);
         }
       } else {
         console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — non-auth error: ${axios.isAxiosError(err) ? err.response?.status : err}`);
