@@ -22,6 +22,7 @@ import pushRoutes from './routes/push.js';
 import actionsRoutes from './routes/actions.js';
 
 import { startScheduler } from './services/scheduler.js';
+import { startAuditor } from './services/auditor.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -90,6 +91,7 @@ const PORT = env.PORT;
 app.listen(PORT, () => {
   console.log(`[server] Running on port ${PORT} in ${env.NODE_ENV} mode`);
   startScheduler();
+  startAuditor();
 });
 
 export default app;
