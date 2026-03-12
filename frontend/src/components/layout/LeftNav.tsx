@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Bell, Settings } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Zap, Bell, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAccount } from '../../hooks/useAccount';
@@ -13,6 +13,7 @@ import { MobileTabBar } from './MobileTabBar';
 const NAV: { icon: LucideIcon; tKey: string; to: string; activeOn: string }[] = [
   { icon: LayoutDashboard, tKey: 'nav.dashboard', to: '/dashboard', activeOn: '/dashboard' },
   { icon: BookOpen,        tKey: 'nav.briefs',    to: '/briefs',    activeOn: '/briefs'    },
+  { icon: Zap,             tKey: 'nav.actions',   to: '/actions',   activeOn: '/actions'   },
   { icon: Bell,            tKey: 'nav.alerts',    to: '/alerts',    activeOn: '/alerts'    },
   { icon: Settings,        tKey: 'nav.settings',  to: '/settings',  activeOn: '/settings'  },
 ];

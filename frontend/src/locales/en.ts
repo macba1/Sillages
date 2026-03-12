@@ -131,6 +131,14 @@ export const en = {
   'landing.footer.privacy':   'Privacy Policy',
   'landing.footer.terms':     'Terms of Service',
 
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  'nav.actions':          'Actions',
+  'actions.title':        'Actions.',
+  'actions.subtitle':     'Growth actions I prepared for you. Review, edit, or approve.',
+  'actions.empty.title':  'No actions right now',
+  'actions.empty.body':   'I\u2019ll suggest growth actions in your next morning brief.',
+  'actions.history':      'History',
+
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Get your brief as a notification',
   'push.modal.body':         'No email needed. Your daily brief appears directly on your phone each morning.',

@@ -14,6 +14,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Alerts from './pages/Alerts';
 import Chat from './pages/Chat';
+import Actions from './pages/Actions';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 
@@ -109,6 +110,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Alerts />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/actions"
+          element={
+            <RequireAuth>
+              <Actions />
             </RequireAuth>
           }
         />

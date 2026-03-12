@@ -133,6 +133,14 @@ export const translations: Translations = {
   'landing.footer.privacy':   'Política de Privacidad',
   'landing.footer.terms':     'Términos de Servicio',
 
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  'nav.actions':          'Acciones',
+  'actions.title':        'Acciones.',
+  'actions.subtitle':     'Acciones de crecimiento que preparé para ti. Revisa, edita o aprueba.',
+  'actions.empty.title':  'Sin acciones por ahora',
+  'actions.empty.body':   'Sugeriré acciones de crecimiento en tu próximo informe matutino.',
+  'actions.history':      'Historial',
+
   // ── Push / PWA ──────────────────────────────────────────────────────────────
   'push.modal.title':        'Recibe tu brief como notificación',
   'push.modal.body':         'Sin abrir email. Tu brief diario aparece directamente en tu móvil cada mañana.',

@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, MessageCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Zap, MessageCircle, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useAccount } from '../../hooks/useAccount';
+import { useActionStats } from '../../hooks/useActions';
 
 const TABS: { icon: LucideIcon; label: string; to: string; match: string }[] = [
   { icon: LayoutDashboard, label: 'Home',     to: '/dashboard', match: '/dashboard' },
   { icon: BookOpen,        label: 'Briefs',   to: '/briefs',    match: '/briefs'    },
+  { icon: Zap,             label: 'Actions',  to: '/actions',   match: '/actions'   },
   { icon: MessageCircle,   label: 'Chat',     to: '/chat',      match: '/chat'      },
   { icon: Settings,        label: 'Settings', to: '/settings',  match: '/settings'  },
 ];
@@ -15,6 +17,8 @@ export function MobileTabBar() {
   const { pathname } = useLocation();
   const { account } = useAccount();
   const { hasUnread } = useUnreadAlerts(account?.id);
+  const actionStats = useActionStats(account?.id);
+  const pendingCount = actionStats.pending;
 
   return (
     <nav
@@ -40,6 +44,7 @@ export function MobileTabBar() {
         {TABS.map(({ icon: Icon, label, to, match }) => {
           const active = pathname === match || pathname.startsWith(match + '/');
           const showDot = label === 'Briefs' && hasUnread;
+          const showBadge = label === 'Actions' && pendingCount > 0;
           return (
             <Link
               key={to}
@@ -80,6 +85,26 @@ export function MobileTabBar() {
                   borderRadius: '50%',
                   background: '#C9964A',
                 }} />
+              )}
+              {showBadge && (
+                <span style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 8,
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  background: '#C9964A',
+                  color: '#fff',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                }}>
+                  {pendingCount}
+                </span>
               )}
             </Link>
           );
