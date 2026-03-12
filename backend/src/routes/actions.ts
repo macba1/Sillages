@@ -13,19 +13,18 @@ const router = Router();
 async function getAccountPlan(accountId: string): Promise<'starter' | 'growth' | 'pro'> {
   const { data: account } = await supabase
     .from('accounts')
-    .select('subscription_status')
+    .select('plan, subscription_status')
     .eq('id', accountId)
     .single();
 
-  const status = account?.subscription_status;
+  // Prefer explicit plan column if set
+  const plan = account?.plan;
+  if (plan === 'pro' || plan === 'growth' || plan === 'starter') return plan;
 
-  // trialing and beta users get full access
+  // Fallback to subscription_status
+  const status = account?.subscription_status;
   if (status === 'trialing' || status === 'beta' || status === null) return 'pro';
-  if (status === 'active') {
-    // Check Shopify subscription plan name if available
-    // For now, default active users to 'growth'
-    return 'growth';
-  }
+  if (status === 'active') return 'growth';
   return 'starter';
 }
 
