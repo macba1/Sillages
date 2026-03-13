@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { runAnalyst } from '../agents/analyst.js';
 import { runGrowthHacker } from '../agents/growthHacker.js';
+import { runQualityAuditor } from '../agents/qualityAuditor.js';
 import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
@@ -125,9 +126,27 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     console.log(`[briefGenerator] Growth hacker complete — ${growthResult.output.actions.length} actions`);
 
-    // ── 6. Map Growth Hacker output to brief sections ───────────────────
-    // Build the brief sections from the narrative + analyst data
-    const narrative = growthResult.output.brief_narrative;
+    // ── 5b. Agent 3: Quality Auditor ──────────────────────────────────
+    const auditResult = await runQualityAuditor({
+      growthOutput: growthResult.output,
+      analystOutput: analystResult.output,
+      storeName,
+      ownerName,
+      currency,
+      briefDate,
+      language,
+    });
+
+    console.log(`[briefGenerator] Quality audit complete — passed=${auditResult.output.audit_passed}, ${auditResult.output.audit_notes.length} notes`);
+
+    // Use the audited output (corrected if needed)
+    const finalNarrative = auditResult.output.brief_narrative;
+    const finalActions = auditResult.output.actions;
+    const auditNotes = auditResult.output.audit_notes.join('\n');
+
+    // ── 6. Map audited output to brief sections ─────────────────────────
+    // Build the brief sections from the audited narrative + analyst data
+    const narrative = finalNarrative;
     const analyst = analystResult.output;
 
     // section_yesterday: merge analyst numbers with narrative summary
@@ -177,7 +196,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         action: bestPattern?.best_product
           ? `${language === 'es' ? 'Preparar' : 'Prepare'} ${bestPattern.best_product} ${language === 'es' ? 'para' : 'for'} ${bestPattern.day_of_week}`
           : narrative.upcoming,
-        ready_copy: growthResult.output.actions[0]?.content?.copy ?? '',
+        ready_copy: finalActions[0]?.content?.copy ?? '',
       }],
     };
 
@@ -200,8 +219,8 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         : '',
     };
 
-    // section_activation: from the highest priority growth action
-    const topAction = growthResult.output.actions[0];
+    // section_activation: from the highest priority audited action
+    const topAction = finalActions[0];
     const sectionActivation = topAction ? {
       what: topAction.title + ' — ' + topAction.description,
       why: narrative.signal,
@@ -217,10 +236,10 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       expected_impact: '',
     };
 
-    // Combine token usage from both agents
-    const totalPromptTokens = analystResult.usage.prompt_tokens + growthResult.usage.prompt_tokens;
-    const totalCompletionTokens = analystResult.usage.completion_tokens + growthResult.usage.completion_tokens;
-    const totalTokens = analystResult.usage.total_tokens + growthResult.usage.total_tokens;
+    // Combine token usage from all 3 agents
+    const totalPromptTokens = analystResult.usage.prompt_tokens + growthResult.usage.prompt_tokens + auditResult.usage.prompt_tokens;
+    const totalCompletionTokens = analystResult.usage.completion_tokens + growthResult.usage.completion_tokens + auditResult.usage.completion_tokens;
+    const totalTokens = analystResult.usage.total_tokens + growthResult.usage.total_tokens + auditResult.usage.total_tokens;
 
     // ── 7. Save brief ─────────────────────────────────────────────────────
     const { error: saveError } = await supabase
@@ -237,7 +256,8 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
         section_signal: sectionSignal,
         section_gap: sectionGap,
         section_activation: sectionActivation,
-        model_used: 'gpt-4o (analyst+growth)',
+        audit_notes: auditNotes,
+        model_used: 'gpt-4o (analyst+growth+audit)',
         prompt_tokens: totalPromptTokens,
         completion_tokens: totalCompletionTokens,
         total_tokens: totalTokens,
@@ -250,9 +270,9 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     console.log(`[briefGenerator] Brief ready — account ${accountId} date ${briefDate}`);
 
-    // ── 8. Save pending actions ─────────────────────────────────────────
-    if (growthResult.output.actions.length > 0) {
-      const actionRows = growthResult.output.actions.map((a: GrowthAction) => ({
+    // ── 8. Save pending actions (using audited actions) ─────────────────
+    if (finalActions.length > 0) {
+      const actionRows = finalActions.map((a: GrowthAction) => ({
         account_id: accountId,
         brief_id: briefId,
         type: a.type,

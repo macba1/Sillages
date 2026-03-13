@@ -148,3 +148,12 @@ export interface GrowthHackerOutput {
   };
   actions: GrowthAction[];
 }
+
+// ── Quality Auditor Output ──────────────────────────────────────────────────
+
+export interface QualityAuditOutput {
+  brief_narrative: GrowthHackerOutput['brief_narrative'];
+  actions: GrowthAction[];
+  audit_passed: boolean;
+  audit_notes: string[];
+}
