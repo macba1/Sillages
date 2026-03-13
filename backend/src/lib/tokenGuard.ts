@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { supabase } from './supabase.js';
-import { sendPushNotification } from '../services/pushNotifier.js';
 import { resend } from './resend.js';
 import { env } from '../config/env.js';
+
+const ADMIN_EMAIL = 'tony@richmondpartner.com';
 
 /**
  * Token Guard — handles 401/403 errors from Shopify API calls with graduated retry and alerting.
@@ -79,7 +80,7 @@ export async function handleTokenFailure(shopDomain: string): Promise<boolean> {
     return true; // caller can retry
   }
 
-  // 3rd failure — mark as invalid and alert the merchant
+  // 3rd failure — mark as invalid and alert admin (never the merchant)
   await supabase
     .from('shopify_connections')
     .update({
@@ -91,8 +92,8 @@ export async function handleTokenFailure(shopDomain: string): Promise<boolean> {
 
   console.log(`${LOG} ${shopDomain} marked as 'invalid' after ${retryCount} failures`);
 
-  // Send alerts to the merchant
-  await alertMerchant(conn, failingSince);
+  // Send alert to admin only — merchants never see technical errors
+  await alertAdmin(conn, failingSince);
 
   return false; // token is definitively invalid
 }
@@ -112,69 +113,49 @@ export function shouldRetryNow(retryCount: number, failingSince: string): boolea
 }
 
 /**
- * Send graduated alerts to the merchant about their broken Shopify connection.
+ * Send technical alert to admin only — merchants NEVER receive token/connection error notifications.
+ * Admin decides manually whether to send the merchant a /reconnect link.
  */
-async function alertMerchant(conn: ConnectionRow, failingSince: string): Promise<void> {
+async function alertAdmin(conn: ConnectionRow, failingSince: string): Promise<void> {
   const hoursDown = Math.floor((Date.now() - new Date(failingSince).getTime()) / 3600000);
 
-  // Get account info
+  // Get merchant info for context in admin email
   const { data: account } = await supabase
     .from('accounts')
-    .select('email, language, full_name')
+    .select('email, full_name')
     .eq('id', conn.account_id)
     .single();
 
-  if (!account) return;
-
-  const lang = account.language === 'es' ? 'es' : 'en';
+  const merchantEmail = account?.email ?? 'unknown';
+  const merchantName = account?.full_name ?? 'unknown';
   const reconnectUrl = `${env.FRONTEND_URL}/reconnect`;
-  const name = account.full_name?.split(' ')[0] ?? '';
 
-  // Push notification
-  try {
-    await sendPushNotification(conn.account_id, {
-      title: lang === 'es' ? 'Reconecta tu tienda Shopify' : 'Reconnect your Shopify store',
-      body: lang === 'es'
-        ? `Tu conexión con ${conn.shop_domain} se ha interrumpido. Toca para reconectar con 1 click.`
-        : `Your connection to ${conn.shop_domain} was lost. Tap to reconnect with 1 click.`,
-      url: '/reconnect',
-    });
-    console.log(`${LOG} Push sent to ${account.email}`);
-  } catch {
-    // may not have push subscription
-  }
+  const subject = `🔴 Token invalid: ${conn.shop_domain} (${merchantName})`;
 
-  // Email
-  const subject = lang === 'es'
-    ? `${name ? name + ', tu' : 'Tu'} tienda Shopify necesita reconectarse`
-    : `${name ? name + ', your' : 'Your'} Shopify store needs to reconnect`;
-
-  const html = lang === 'es'
-    ? `<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
-        <p style="color:#2A1F14;font-size:16px;line-height:1.5;">Hola${name ? ' ' + name : ''},</p>
-        <p style="color:#2A1F14;font-size:15px;line-height:1.5;">La conexión con tu tienda <strong>${conn.shop_domain}</strong> se interrumpió hace ${hoursDown > 0 ? hoursDown + ' hora(s)' : 'unos minutos'}. Sin esta conexión no puedo generar tus briefs diarios.</p>
-        <p style="color:#2A1F14;font-size:15px;line-height:1.5;">Reconectar es un solo click:</p>
-        <a href="${reconnectUrl}" style="display:inline-block;padding:14px 28px;background:#C9964A;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;margin:12px 0;">Reconectar tienda →</a>
-        <p style="color:#A89880;font-size:12px;margin-top:24px;">Sillages — tu agente de inteligencia de tienda</p>
-      </div>`
-    : `<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
-        <p style="color:#2A1F14;font-size:16px;line-height:1.5;">Hi${name ? ' ' + name : ''},</p>
-        <p style="color:#2A1F14;font-size:15px;line-height:1.5;">The connection to your store <strong>${conn.shop_domain}</strong> was lost ${hoursDown > 0 ? hoursDown + ' hour(s) ago' : 'a few minutes ago'}. Without it, I can't generate your daily briefs.</p>
-        <p style="color:#2A1F14;font-size:15px;line-height:1.5;">Reconnecting takes just one click:</p>
-        <a href="${reconnectUrl}" style="display:inline-block;padding:14px 28px;background:#C9964A;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;margin:12px 0;">Reconnect store →</a>
-        <p style="color:#A89880;font-size:12px;margin-top:24px;">Sillages — your store intelligence agent</p>
-      </div>`;
+  const html = `<div style="max-width:600px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
+    <h2 style="color:#D35400;margin:0 0 16px;">Token Invalid — Action Required</h2>
+    <table style="font-size:14px;color:#2A1F14;line-height:1.8;">
+      <tr><td style="font-weight:600;padding-right:16px;">Store:</td><td>${conn.shop_domain}</td></tr>
+      <tr><td style="font-weight:600;padding-right:16px;">Merchant:</td><td>${merchantName} (${merchantEmail})</td></tr>
+      <tr><td style="font-weight:600;padding-right:16px;">Account ID:</td><td><code>${conn.account_id}</code></td></tr>
+      <tr><td style="font-weight:600;padding-right:16px;">Failing since:</td><td>${failingSince} (${hoursDown}h ago)</td></tr>
+      <tr><td style="font-weight:600;padding-right:16px;">Retries:</td><td>${conn.token_retry_count ?? 0}</td></tr>
+    </table>
+    <p style="color:#2A1F14;font-size:14px;margin-top:20px;">The merchant has <strong>NOT</strong> been notified. If you want them to reconnect, send them this link manually:</p>
+    <p><a href="${reconnectUrl}" style="color:#C9964A;font-weight:600;">${reconnectUrl}</a></p>
+    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+    <p style="font-size:11px;color:#A89880;">Sillages Token Guard — admin-only alert</p>
+  </div>`;
 
   try {
-    const shopSlug = conn.shop_domain.replace('.myshopify.com', '').replace(/[^a-z0-9-]/g, '');
     await resend.emails.send({
-      from: `Sillages <alerts@sillages.app>`,
-      to: account.email,
+      from: `Sillages Alerts <alerts@sillages.app>`,
+      to: ADMIN_EMAIL,
       subject,
       html,
     });
-    console.log(`${LOG} Reconnect email sent to ${account.email}`);
+    console.log(`${LOG} Admin alert sent to ${ADMIN_EMAIL} for ${conn.shop_domain}`);
   } catch (err) {
-    console.error(`${LOG} Failed to send email to ${account.email}:`, err instanceof Error ? err.message : err);
+    console.error(`${LOG} Failed to send admin alert:`, err instanceof Error ? err.message : err);
   }
 }

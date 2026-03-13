@@ -168,7 +168,7 @@ async function checkTokens(
   if (!connections || connections.length === 0) return;
 
   for (const conn of connections) {
-    // Skip already-invalid tokens (merchant has been alerted, waiting for reconnection)
+    // Skip already-invalid tokens (admin has been alerted, waiting for manual reconnection)
     if (conn.token_status === 'invalid') {
       const account = accounts.find(a => a.id === conn.account_id);
       const hoursSinceFailure = conn.token_failing_since
@@ -179,7 +179,7 @@ async function checkTokens(
 
       // Send escalated alert if >72h
       if (hoursSinceFailure > 72) {
-        alerts.push(`CRITICAL: ${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h — merchant has not reconnected`);
+        alerts.push(`CRITICAL: ${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h — consider sending reconnect link manually`);
       } else if (hoursSinceFailure > 24) {
         alerts.push(`${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h`);
       }
@@ -214,7 +214,7 @@ async function checkTokens(
         if (canRetry) {
           console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — failing, will retry later`);
         } else {
-          const msg = `Token INVALID for ${conn.shop_domain} (${account?.email}) — merchant alerted to reconnect`;
+          const msg = `Token INVALID for ${conn.shop_domain} (${account?.email}) — admin alerted, merchant NOT notified`;
           console.log(`${LOG} [tokens] ❌ ${msg}`);
           alerts.push(msg);
         }
