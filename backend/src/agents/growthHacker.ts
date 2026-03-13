@@ -2,7 +2,7 @@ import { openai } from '../lib/openai.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
-import { COPYWRITING_FRAMEWORKS, SENSORY_RULES, ABSOLUTE_RULES } from './copyExamples.js';
+import { COPY_EXAMPLES_BY_CATEGORY } from './copyExamples.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -178,29 +178,14 @@ MISSING DATA RULE:
 If sessions = 0 or traffic data is unavailable, do NOT mention visits, sessions, traffic, or conversion anywhere.
 
 ═══════════════════════════════════════════════════════════════════
-BRAND VOICE — CRITICAL FOR ALL CONTENT
+COPY QUALITY — 4 NON-NEGOTIABLE RULES
 ═══════════════════════════════════════════════════════════════════
-If you receive a BRAND PROFILE, every single piece of content you generate MUST:
+1. NEVER GENERIC: If you could paste the copy on a competitor's page and it works → rewrite. Must include THIS store's product name + a detail only true for THIS store.
+2. SENSORY: Every copy must include at least 1 sensory detail (sight, smell, taste, texture). "Se derrama", "corteza crujiente", "huele a vainilla natural", "ácido y dulce a la vez".
+3. INSTAGRAM = 3 LINES MAX: Line 1 hook, Line 2 sensory payoff, Line 3 soft CTA. Max 2 emojis, max 1 exclamation mark.
+4. SCREENSHOT TEST: Would someone screenshot this and send it to a friend? If not → rewrite.
 
-1. MATCH THE BRAND VOICE: If the brand is artisanal and warm, your copy must feel artisanal and warm. Never generic. Never corporate. If the store talks about 'ingredientes frescos' and 'hecho con las manos', your copy does too.
-
-2. HIGHLIGHT BRAND VALUES: Every post, email, or description must reinforce what makes this store special. If they're artisanal → emphasize handmade. If they're vegan → emphasize plant-based. If they're local → emphasize the city and neighborhood.
-
-3. CREATE EMOTION: The content must make the person FEEL something:
-   - Desire: 'I need to try this NOW'
-   - Exclusivity: 'This is special and only available here'
-   - Urgency: 'If I don't act now I'll miss it'
-   - Connection: 'This brand understands me and what I value'
-
-4. BE SHAREABLE: Every piece of content should be so good that someone who sees it wants to share it with friends. The test: would someone screenshot this and send it to a friend? If not, rewrite it.
-
-5. NEVER be generic. NEVER use templates that could work for any store. Every copy must be so specific to this brand that it would look wrong on any other store's page.
-
-${COPYWRITING_FRAMEWORKS}
-
-${SENSORY_RULES}
-
-${ABSOLUTE_RULES}
+If you receive a BRAND PROFILE, match its voice in every piece of copy. If the brand is artisanal and warm, the copy must feel artisanal and warm.
 
 Return ONLY valid JSON matching the output schema. No preamble, no explanation.`;
 }
@@ -235,11 +220,23 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
 - Differentiation: ${input.brandProfile.competitor_differentiation}\n`
     : '';
 
+  // Build few-shot examples block
+  const examples = COPY_EXAMPLES_BY_CATEGORY.bakery_artisanal;
+  const examplesBlock = `
+═══ COPY EXAMPLES — YOUR COPY MUST BE THIS GOOD OR BETTER ═══
+Study these examples. Your copy must match this quality level. Notice: specific product names, sensory details, no jargon, no generic templates.
+
+${examples.map((ex, i) => `${i + 1}. "${ex}"`).join('\n')}
+
+Write copy at THIS level. If your copy is worse than these examples, rewrite it.
+`;
+
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
 Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}.
 ${toneNote}
 ${focusNote}
 ${brandBlock}
+${examplesBlock}
 ANALYST DATA (from the data analyst agent):
 ${JSON.stringify(analystOutput, null, 2)}
 
@@ -258,7 +255,7 @@ OUTPUT FORMAT — return exactly this JSON:
     {
       "type": "<instagram_post|discount_code|email_campaign|product_highlight|seo_fix|whatsapp_message>",
       "title": "<Short action title, 3-6 words>",
-      "description": "<1-2 sentences: the data point that justifies this + what it does + WHEN to execute. State which FRAMEWORK you used (e.g. 'Using THE SPECIFIC DETAIL framework')>",
+      "description": "<1-2 sentences: the data point that justifies this + what it does + WHEN to execute>",
       "priority": "<high|medium|low>",
       "time_estimate": "<5 min|10 min|15 min>",
       "content": {
