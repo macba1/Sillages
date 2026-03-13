@@ -229,7 +229,7 @@ Return this JSON:
   "content_style": "<How their content should look and read. Photo style, text length, emoji usage, hashtag style, tone of captions. Based on what they currently do.>",
   "target_audience": "<WHO buys from this store. Age range, location, lifestyle, what they value, why they choose THIS store over alternatives. Be specific.>",
   "unique_selling_points": "<3-5 specific things that make THIS store unique. Based on their actual products, not generic claims.>",
-  "competitor_differentiation": "<What this store is NOT. How they differ from the obvious alternatives in their category. Be specific.>"
+  "competitor_differentiation": "<What this store is NOT. How they differ from the obvious alternatives in their category. Name 2-3 specific competitors or competitor types (e.g., 'industrial bakeries like Panaria', 'supermarket gluten-free brands like Schär') and explain HOW this store is better for its target audience. Include what the competitors do that THIS store would NEVER do.>"
 }`;
 
   const completion = await openai.chat.completions.create({

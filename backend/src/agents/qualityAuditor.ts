@@ -1,6 +1,7 @@
 import { openai } from '../lib/openai.js';
 import type { AnalystOutput, GrowthHackerOutput, QualityAuditOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
+import { COPYWRITING_FRAMEWORKS, SENSORY_RULES, ABSOLUTE_RULES } from './copyExamples.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,35 @@ If you receive a BRAND PROFILE, apply these additional checks:
 - SHAREABILITY TEST: Imagine a customer sees this post. Would they screenshot it and send it to a friend saying "we have to try this"? If not → rewrite until they would.
 - Are the brand VALUES visible? If the store values 'artisanal' and the copy doesn't mention anything about handmade/fresh/traditional → fix it.
 - Does the copy use language SPECIFIC to this brand? If you could copy-paste the same text onto a competitor's page and it would work fine → it's too generic. Rewrite.
+
+═══════════════════════════════════════════════════════════════════
+COPYWRITING FRAMEWORK VERIFICATION
+═══════════════════════════════════════════════════════════════════
+Every action with customer-facing copy MUST use one of these 6 frameworks:
+${COPYWRITING_FRAMEWORKS}
+
+CHECK: Does each action's description mention which framework was used?
+CHECK: Does the copy actually FOLLOW that framework's formula?
+If not → REWRITE the copy using the correct framework for that action type.
+
+${SENSORY_RULES}
+
+CHECK: Does every piece of copy for food/artisanal stores include at least 2 senses?
+If not → ADD sensory details. A copy without senses is dead copy.
+
+${ABSOLUTE_RULES}
+
+CHECK each absolute rule against every action:
+1. No technical ingredients in copy? If found → rewrite in plain language
+2. Competitor test passed? Could this copy work for ANY store? If yes → rewrite to be store-specific
+3. Instagram copy max 3 visible lines? If longer → trim
+4. Screenshot test: would someone send this to a friend? If not → rewrite
+5. Growth hacking technique present? (scarcity, social proof, reciprocity, etc.) If missing → add one
+6. Max 1 exclamation mark? If more → remove extras
+7. Max 2 relevant emojis? If more or irrelevant → fix
+8. Max 3 brand-specific hashtags at end? If generic → replace
+9. Soft CTA only? If aggressive → soften
+10. Doesn't start with store name? If it does → restructure
 
 REMEMBER: This is the LAST check before it reaches the merchant. If the brief says 'AOV €42.47' or has empty sections or generic copy, YOU failed.
 

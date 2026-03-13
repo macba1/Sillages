@@ -2,6 +2,7 @@ import { openai } from '../lib/openai.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
+import { COPYWRITING_FRAMEWORKS, SENSORY_RULES, ABSOLUTE_RULES } from './copyExamples.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,12 @@ If you receive a BRAND PROFILE, every single piece of content you generate MUST:
 
 5. NEVER be generic. NEVER use templates that could work for any store. Every copy must be so specific to this brand that it would look wrong on any other store's page.
 
+${COPYWRITING_FRAMEWORKS}
+
+${SENSORY_RULES}
+
+${ABSOLUTE_RULES}
+
 Return ONLY valid JSON matching the output schema. No preamble, no explanation.`;
 }
 
@@ -251,7 +258,7 @@ OUTPUT FORMAT — return exactly this JSON:
     {
       "type": "<instagram_post|discount_code|email_campaign|product_highlight|seo_fix|whatsapp_message>",
       "title": "<Short action title, 3-6 words>",
-      "description": "<1-2 sentences: the data point that justifies this + what it does + WHEN to execute>",
+      "description": "<1-2 sentences: the data point that justifies this + what it does + WHEN to execute. State which FRAMEWORK you used (e.g. 'Using THE SPECIFIC DETAIL framework')>",
       "priority": "<high|medium|low>",
       "time_estimate": "<5 min|10 min|15 min>",
       "content": {
