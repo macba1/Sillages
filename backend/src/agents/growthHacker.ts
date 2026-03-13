@@ -237,35 +237,11 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
 - Differentiation: ${input.brandProfile.competitor_differentiation}\n`
     : '';
 
-  const examplesBlock = `
-═══ PERFECT OUTPUT EXAMPLE — YOUR OUTPUT MUST BE AT THIS LEVEL ═══
-This is a perfect brief+actions for an artisanal gluten-free bakery. Study the tone, specificity, and sensory detail. Your output must be THIS good or better.
-
-BRIEF:
-- greeting: "Hola Andrea. Ayer €297 con 7 pedidos — la Tarta Letra Fresa fue la estrella."
-- yesterday_summary: "Se vendieron 3 Tartas Letra Fresa y 2 Hogazas de Pasas y Nueces. Todos los que compraron ya te conocían, lo cual es genial para fidelización pero necesitamos caras nuevas."
-- whats_working: "Tus tartas personalizadas se están convirtiendo en el regalo favorito de tus clientes. La Tarta de Corazón Fresas lleva 3 semanas sin bajar del top 3."
-- whats_not_working: "Llevamos 5 días sin un cliente nuevo. Los que te conocen te adoran, pero no estamos llegando a gente nueva."
-- signal: "El Día del Padre está a 6 días. El año pasado los pedidos de tartas personalizadas se duplicaron esa semana. Es momento de preparar la campaña."
-- upcoming: "Los viernes son nuestro mejor día (media de €180). Este viernes cae justo antes del Día del Padre — hay que tener stock extra de Tarta Corazón Fresas y Volcán de Chocolate."
-- gap: "Si captamos 3 clientes nuevos con una campaña de Día del Padre bien hecha, podríamos sumar €120-150 extra esta semana."
-
-ACTIONS:
-1. instagram_post — copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de fresa está fresco de esta mañana, y el mejor plot twist: no me siento culpable. nicolina.es 🍓"
-2. discount_code — copy: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Tarta Corazón Fresas, hecha por encargo con fresas de temporada. Solo este finde. PAPA25 para un 25% → nicolina.es"
-3. email_campaign — subject: "María ya ha repetido 6 veces" — body: "[Nombre], la Hogaza de Pasas y Nueces que pediste hace 3 semanas la horneamos los martes y viernes a las 6 de la mañana. María la pide cada semana. Este viernes quedan 4. ¿Te reservo una?"
-
-Notice: ZERO jargon. ZERO generic phrases. Every copy has sensory detail (se deshace, huele a horno, fresas frescas de esta mañana). Every copy is impossible to paste on another store's page. Every copy makes you want to buy.
-
-YOUR OUTPUT MUST BE AT THIS LEVEL. If it's not, rewrite until it is.
-`;
-
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
 Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}.
 ${toneNote}
 ${focusNote}
 ${brandBlock}
-${examplesBlock}
 ANALYST DATA (from the data analyst agent):
 ${JSON.stringify(analystOutput, null, 2)}
 
@@ -316,6 +292,93 @@ CRITICAL RULES:
 - Only include content fields relevant to the action type (omit null/empty fields)`;
 }
 
+// ── Few-shot example (user turn) ────────────────────────────────────────────
+
+const FEW_SHOT_USER = `Generate a daily brief and growth actions for Laura, owner of "La Tahona de Lucía".
+Language: es. Currency: EUR (symbol: €). Date: 2026-03-10.
+Be warm and encouraging. Celebrate wins. Frame problems as totally fixable.
+
+BRAND PROFILE (use this to shape ALL content):
+- Voice: Warm, artisanal, close to the customer. Uses phrases like "hecho con las manos" and "recién salido del horno".
+- Values: Handmade, fresh ingredients, local sourcing, gluten-free without compromise.
+- Emotion: The warmth of something made just for you.
+
+ANALYST DATA (from the data analyst agent):
+{
+  "period": { "revenue": 412.50, "orders": 9, "avg_order": 45.83 },
+  "top_products": [
+    { "name": "Tarta de Zanahoria", "units": 4, "revenue": 156.00 },
+    { "name": "Volcán de Chocolate", "units": 3, "revenue": 110.70 },
+    { "name": "Hogaza de Centeno", "units": 2, "revenue": 45.80 }
+  ],
+  "conversion": { "abandoned_carts": 2, "cart_abandonment_rate": 0.18 },
+  "retention": {
+    "repeat_rate": 0.44,
+    "new_customer_count": 1,
+    "vip_customers": [{ "name": "María García", "purchases": 6, "total_spent": 287.40 }],
+    "overdue_customers": [{ "name": "Elena Ruiz", "days_since": 21, "total_spent": 89.50, "email": "elena@mail.com" }]
+  },
+  "calendar_opportunities": [{ "event": "Día del Padre", "days_until": 9 }],
+  "weekly_patterns": [{ "day_of_week": "Friday", "avg_revenue": 180.00, "best_product": "Volcán de Chocolate" }],
+  "signals": ["Tarta de Zanahoria trending up +45%", "Friday is best sales day", "1 new customer this week"]
+}
+
+Return exactly the JSON format specified.`;
+
+// ── Few-shot example (assistant turn) ───────────────────────────────────────
+
+const FEW_SHOT_ASSISTANT = JSON.stringify({
+  brief_narrative: {
+    greeting: "Hola Laura. Ayer €412 con 9 pedidos — la Tarta de Zanahoria arrasó con 4 unidades.",
+    yesterday_summary: "Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate. María García volvió a pedir — ya van 6 veces. Solo 1 cara nueva esta semana, necesitamos más.",
+    whats_working: "La Tarta de Zanahoria lleva dos semanas subiendo sin parar, un 45% más que la anterior. María García ya es casi de la familia — 6 pedidos y €287 gastados. Algo estamos haciendo muy bien con ella.",
+    whats_not_working: "Elena Ruiz lleva 21 días sin comprar, y antes venía cada 2 semanas. Algo pasó. Y solo hemos captado 1 cliente nuevo — los que nos conocen repiten, pero no estamos llegando a gente nueva.",
+    signal: "El Día del Padre está a 9 días. Los viernes son nuestro mejor día (media de €180). Este viernes es perfecto para lanzar la campaña antes de que la gente se organice.",
+    upcoming: "Viernes es nuestro día fuerte — hay que tener stock extra de Volcán de Chocolate que es el que más sale. Y empezar a mover la campaña de Día del Padre esta semana para que la gente encargue con tiempo.",
+    gap: "Si recuperamos a Elena y captamos 2 clientes nuevos con la campaña del Día del Padre, podríamos sumar €130-180 extra esta semana.",
+  },
+  actions: [
+    {
+      type: "instagram_post",
+      title: "Post Tarta de Zanahoria",
+      description: "Tarta de Zanahoria trending up +45% (signals). 4 vendidas ayer. Publicar mañana a las 10am para captar clientes nuevos.",
+      priority: "high",
+      time_estimate: "10 min",
+      content: {
+        copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de zanahoria rallada del día tiene ese punto dulce que no empalaga, y el mejor plot twist: no me siento culpable. latahonadelucia.es 🥕",
+      },
+      plan_required: "growth",
+    },
+    {
+      type: "discount_code",
+      title: "Descuento Día del Padre",
+      description: "Día del Padre en 9 días (calendar_opportunities). Los viernes vendemos media de €180. Lanzar hoy para que la gente encargue con tiempo.",
+      priority: "high",
+      time_estimate: "10 min",
+      content: {
+        copy: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Volcán de Chocolate, hecho por encargo con cacao puro. Solo por encargo hasta el domingo. PAPA25 para un 25% → latahonadelucia.es",
+        discount_code: "PAPA25",
+        discount_percentage: 25,
+        discount_product: "Volcán de Chocolate",
+      },
+      plan_required: "growth",
+    },
+    {
+      type: "email_campaign",
+      title: "Recuperar a Elena Ruiz",
+      description: "Elena Ruiz lleva 21 días sin comprar, gastó €89.50 (retention.overdue_customers). Enviar hoy.",
+      priority: "high",
+      time_estimate: "5 min",
+      content: {
+        email_subject: "María ya ha repetido 6 veces",
+        email_body: "Elena, la Tarta de Zanahoria que pediste hace 3 semanas la horneamos los martes y viernes a las 6 de la mañana. María la pide cada semana. Este viernes quedan 4. ¿Te reservo una?",
+        email_recipients: ["elena@mail.com"],
+      },
+      plan_required: "growth",
+    },
+  ],
+}, null, 2);
+
 // ── Run growth hacker agent ─────────────────────────────────────────────────
 
 export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthHackerResult> {
@@ -323,10 +386,12 @@ export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthH
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
-    temperature: 0.7,
+    temperature: 0.9,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: buildGrowthHackerSystemPrompt(input.language, input.briefDate) },
+      { role: 'user', content: FEW_SHOT_USER },
+      { role: 'assistant', content: FEW_SHOT_ASSISTANT },
       { role: 'user', content: buildGrowthHackerUserPrompt(input) },
     ],
   });

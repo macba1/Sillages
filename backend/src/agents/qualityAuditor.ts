@@ -132,6 +132,100 @@ Signals: ${analystOutput.signals.join(' | ')}
 }`;
 }
 
+// ── Few-shot: user submits bad copy ─────────────────────────────────────────
+
+const AUDIT_FEW_SHOT_USER = `Review and fix this brief and actions for Laura, owner of "La Tahona de Lucía".
+Language: es. Currency: EUR (symbol: €). Date: 2026-03-10.
+
+═══ BRIEF NARRATIVE (from Growth Hacker) ═══
+{
+  "greeting": "Hola Laura, esperamos que estés bien.",
+  "yesterday_summary": "Ayer generamos €412.50 con 9 pedidos. La tasa de conversión fue del 4.2% y el AOV subió a €45.83.",
+  "whats_working": "Los productos están funcionando bien con buen engagement de los clientes.",
+  "whats_not_working": "La tasa de abandono de carrito es del 18%, lo que sugiere oportunidades de optimización del funnel.",
+  "signal": "El Día del Padre se acerca. Podemos aprovechar esta oportunidad para nuestras promociones.",
+  "upcoming": "Preparar promociones para el Día del Padre y optimizar la retención.",
+  "gap": "Mejorar la conversión podría generar €50 adicionales."
+}
+
+═══ ACTIONS (from Growth Hacker) ═══
+[
+  {
+    "type": "instagram_post",
+    "title": "Post Tarta Zanahoria",
+    "description": "Publicar un post atractivo para generar engagement.",
+    "content": { "copy": "¡Descubre nuestra deliciosa Tarta de Zanahoria! Hecha con amor y los mejores ingredientes. ¡Te encantará! 🥕🎂 #bakery #glutenfree #yummy" }
+  },
+  {
+    "type": "discount_code",
+    "title": "Descuento carritos",
+    "description": "Crear descuento para recuperar carritos abandonados.",
+    "content": { "copy": "¡No te lo pierdas! Usa TARTA10 para un 10% de descuento en tu próxima compra. ¡Haz tu pedido ahora! 🎉", "discount_code": "TARTA10", "discount_percentage": 10 }
+  }
+]
+
+═══ ANALYST DATA (raw data to reference for fixes) ═══
+Period: €412.50 revenue, 9 orders, €45.83 avg
+Top products: Tarta de Zanahoria (4u, €156.00), Volcán de Chocolate (3u, €110.70)
+Conversion: abandoned_carts=2, rate=0.18
+Retention: repeat_rate=0.44, new=1
+VIP customers: María García (6 compras, €287.40)
+Overdue customers: Elena Ruiz (21d sin comprar, €89.50)
+Calendar: Día del Padre in 9d
+
+═══ OUTPUT FORMAT ═══
+{
+  "brief_narrative": { ... },
+  "actions": [...],
+  "audit_passed": <true|false>,
+  "audit_notes": ["..."]
+}`;
+
+// ── Few-shot: assistant fixes everything ────────────────────────────────────
+
+const AUDIT_FEW_SHOT_ASSISTANT = JSON.stringify({
+  brief_narrative: {
+    greeting: "Hola Laura. Ayer €412 con 9 pedidos — la Tarta de Zanahoria arrasó con 4 unidades.",
+    yesterday_summary: "Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate. María García volvió a pedir — ya van 6 veces. Solo 1 cara nueva esta semana, necesitamos más.",
+    whats_working: "La Tarta de Zanahoria lleva dos semanas subiendo sin parar. María García ya es casi de la familia — 6 pedidos y €287 gastados. Algo estamos haciendo muy bien con ella.",
+    whats_not_working: "Elena Ruiz lleva 21 días sin comprar, y antes venía cada 2 semanas. Y solo hemos captado 1 cliente nuevo — los que nos conocen repiten, pero no estamos llegando a gente nueva.",
+    signal: "El Día del Padre está a 9 días. Los viernes vendemos de media €180. Es momento de preparar la campaña para que la gente encargue con tiempo.",
+    upcoming: "Viernes es nuestro día fuerte — stock extra de Volcán de Chocolate. Y mover la campaña del Día del Padre esta semana.",
+    gap: "Si recuperamos a Elena y captamos 2 clientes nuevos con la campaña del Día del Padre, podríamos sumar €130-180 extra.",
+  },
+  actions: [
+    {
+      type: "instagram_post",
+      title: "Post Tarta Zanahoria",
+      description: "Tarta de Zanahoria trending up +45%. 4 vendidas ayer. Publicar mañana a las 10am.",
+      content: {
+        copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de zanahoria rallada del día tiene ese punto dulce que no empalaga, y el mejor plot twist: no me siento culpable. latahonadelucia.es 🥕",
+      },
+    },
+    {
+      type: "discount_code",
+      title: "Descuento Día del Padre",
+      description: "Día del Padre en 9 días. 2 carritos abandonados ayer. Lanzar hoy.",
+      content: {
+        copy: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Volcán de Chocolate, hecho por encargo con cacao puro. PAPA25 para un 25% → latahonadelucia.es",
+        discount_code: "PAPA25",
+        discount_percentage: 25,
+      },
+    },
+  ],
+  audit_passed: false,
+  audit_notes: [
+    "Reescribí yesterday_summary: tenía 'tasa de conversión', 'AOV' — reemplazado con lenguaje de amigo",
+    "Reescribí whats_working: 'buen engagement de los clientes' es genérico — ahora menciona a María García por nombre y su historial real",
+    "Reescribí whats_not_working: 'tasa de abandono de carrito 18%' y 'optimización del funnel' — ahora dice '2 personas dejaron cosas en el carrito' y menciona a Elena por nombre",
+    "Reescribí signal: 'aprovechar esta oportunidad para nuestras promociones' es genérico — ahora tiene datos concretos de viernes €180",
+    "Reescribí instagram copy COMPLETO: '¡Descubre nuestra deliciosa Tarta!' es plantilla genérica sin detalle sensorial. Nuevo copy tiene textura (se deshace), frescura (zanahoria rallada del día), emoción (no me siento culpable)",
+    "Reescribí discount copy COMPLETO: '¡No te lo pierdas! ¡Haz tu pedido ahora!' son frases prohibidas. Nuevo copy tiene sensorial (se deshaga en la boca, huela a horno), contraste (corbata vs tarta), especificidad (cacao puro, hecho por encargo)",
+    "Eliminé hashtags genéricos #bakery #glutenfree #yummy",
+    "Eliminé emojis irrelevantes 🎂🎉, dejé solo 🥕 relevante",
+  ],
+}, null, 2);
+
 // ── Run quality auditor ─────────────────────────────────────────────────────
 
 export async function runQualityAuditor(input: QualityAuditorInput): Promise<QualityAuditorResult> {
@@ -143,6 +237,8 @@ export async function runQualityAuditor(input: QualityAuditorInput): Promise<Qua
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: buildSystemPrompt(input.language) },
+      { role: 'user', content: AUDIT_FEW_SHOT_USER },
+      { role: 'assistant', content: AUDIT_FEW_SHOT_ASSISTANT },
       { role: 'user', content: buildUserPrompt(input) },
     ],
   });
