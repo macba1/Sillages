@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from './supabase.js';
+import { refreshShopifyToken } from './shopify.js';
 import { resend } from './resend.js';
 import { env } from '../config/env.js';
 
@@ -25,6 +26,7 @@ interface ConnectionRow {
   token_status: string | null;
   token_failing_since: string | null;
   token_retry_count: number | null;
+  refresh_token: string | null;
 }
 
 /**
@@ -43,14 +45,20 @@ export async function markTokenHealthy(shopDomain: string): Promise<void> {
 
 /**
  * Call this when a Shopify API call returns 401 or 403.
- * Implements graduated retry: tracks failures and only alerts after 3 failures.
+ *
+ * Flow:
+ *   1. If refresh_token exists → try automatic token refresh first
+ *   2. If refresh succeeds → token renewed silently, return true (caller retries)
+ *   3. If refresh fails or no refresh_token → graduated retry with backoff
+ *   4. After 3 failures → mark invalid, alert admin
+ *
  * Returns true if caller should retry the API call, false if token is definitively invalid.
  */
 export async function handleTokenFailure(shopDomain: string): Promise<boolean> {
   // Fetch current connection state
   const { data: conn } = await supabase
     .from('shopify_connections')
-    .select('id, account_id, shop_domain, token_status, token_failing_since, token_retry_count')
+    .select('id, account_id, shop_domain, token_status, token_failing_since, token_retry_count, refresh_token')
     .eq('shop_domain', shopDomain)
     .single();
 
@@ -59,6 +67,18 @@ export async function handleTokenFailure(shopDomain: string): Promise<boolean> {
     return false;
   }
 
+  // ── Step 1: Try automatic token refresh if refresh_token exists ──────────
+  if (conn.refresh_token) {
+    console.log(`${LOG} ${shopDomain} has refresh_token — attempting automatic refresh`);
+    const newToken = await refreshShopifyToken(shopDomain);
+    if (newToken) {
+      console.log(`${LOG} ${shopDomain} token refreshed successfully — caller should retry`);
+      return true; // Token renewed silently, caller retries with new token
+    }
+    console.log(`${LOG} ${shopDomain} refresh failed — falling through to graduated retry`);
+  }
+
+  // ── Step 2: Graduated retry (no refresh_token or refresh failed) ─────────
   const retryCount = (conn.token_retry_count ?? 0) + 1;
   const now = new Date().toISOString();
   const failingSince = conn.token_failing_since ?? now;

@@ -163,7 +163,7 @@ router.get(
       const tokenData = await exchangeCodeForToken(shop, code, credentials);
 
       // 1) Verify token exchange
-      console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}...`);
+      console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}... expires_in=${tokenData.expires_in ?? 'none'} has_refresh=${!!tokenData.refresh_token}`);
 
       // Fetch shop info
       const client = shopifyClient(shop, tokenData.access_token);
@@ -172,6 +172,11 @@ router.get(
 
       // 2) Confirm the accountId that will be written
       console.log(`[shopify/callback] upserting shopify_connections for account_id=${accountId}`);
+
+      // Calculate token expiry if Shopify provided expires_in (online tokens from Custom Distribution apps)
+      const tokenExpiresAt = tokenData.expires_in
+        ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+        : null;
 
       // Upsert connection — also reset token health on reconnection
       const { error: upsertError } = await supabase
@@ -185,6 +190,8 @@ router.get(
             shop_currency: shopInfo.currency,
             shop_timezone: shopInfo.timezone,
             access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token ?? null,
+            token_expires_at: tokenExpiresAt,
             scopes: tokenData.scope,
             app_client_id: credentials.clientId,
             sync_status: 'active',

@@ -8,6 +8,7 @@ import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
 import { handleTokenFailure, markTokenHealthy, shouldRetryNow } from '../lib/tokenGuard.js';
+import { ensureTokenFresh } from '../lib/shopify.js';
 
 const ADMIN_EMAIL = 'tony@richmondpartner.com';
 const LOG = '[auditor]';
@@ -194,10 +195,21 @@ async function checkTokens(
       }
     }
 
+    // Proactive refresh — if token expires within 2 hours, refresh now
+    await ensureTokenFresh(conn.shop_domain, 2 * 3600000);
+
+    // Re-read token after potential refresh
+    const { data: freshConn } = await supabase
+      .from('shopify_connections')
+      .select('access_token')
+      .eq('id', conn.id)
+      .single();
+    const currentToken = freshConn?.access_token ?? conn.access_token;
+
     // Test the token
     try {
       await axios.get(`https://${conn.shop_domain}/admin/api/2024-04/shop.json`, {
-        headers: { 'X-Shopify-Access-Token': conn.access_token },
+        headers: { 'X-Shopify-Access-Token': currentToken },
         timeout: 10000,
       });
 

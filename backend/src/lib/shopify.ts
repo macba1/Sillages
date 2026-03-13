@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import axios from 'axios';
 import { env } from '../config/env.js';
+import { supabase } from './supabase.js';
 
 // ── Multi-app credential resolution ─────────────────────────────────────────
 
@@ -103,6 +104,8 @@ export interface AccessTokenResponse {
   access_token: string;
   scope: string;
   expires_in?: number;
+  /** Refresh token — only returned by Custom Distribution apps (online tokens). */
+  refresh_token?: string;
   associated_user_scope?: string;
   associated_user?: {
     id: number;
@@ -128,6 +131,105 @@ export async function exchangeCodeForToken(
     },
   );
   return response.data;
+}
+
+// ── Token refresh (Custom Distribution / online tokens) ─────────────────────
+
+/**
+ * Refreshes an online access token using the stored refresh_token.
+ * Custom Distribution apps issue online tokens (shpca_) that expire;
+ * this rotates the token pair and updates the DB.
+ *
+ * Returns the new access_token, or null if refresh failed.
+ */
+export async function refreshShopifyToken(shopDomain: string): Promise<string | null> {
+  const LOG = '[token-refresh]';
+
+  // Load connection with refresh_token and app_client_id
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('id, account_id, refresh_token, app_client_id')
+    .eq('shop_domain', shopDomain)
+    .single();
+
+  if (!conn?.refresh_token) {
+    console.log(`${LOG} No refresh_token for ${shopDomain} — cannot refresh`);
+    return null;
+  }
+
+  const creds = resolveShopifyCredentials(conn.app_client_id ?? undefined);
+
+  try {
+    const response = await axios.post<AccessTokenResponse>(
+      `https://${shopDomain}/admin/oauth/access_token`,
+      {
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: conn.refresh_token,
+      },
+    );
+
+    const { access_token, refresh_token, expires_in } = response.data;
+
+    // Calculate expiry — default to 24h if Shopify doesn't send expires_in
+    const expiresAt = expires_in
+      ? new Date(Date.now() + expires_in * 1000).toISOString()
+      : new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+
+    await supabase
+      .from('shopify_connections')
+      .update({
+        access_token,
+        refresh_token: refresh_token ?? conn.refresh_token, // keep old if not rotated
+        token_expires_at: expiresAt,
+        token_status: 'active',
+        token_failing_since: null,
+        token_retry_count: 0,
+      })
+      .eq('id', conn.id);
+
+    console.log(`${LOG} Token refreshed for ${shopDomain} — new prefix: ${access_token.slice(0, 8)}... expires: ${expiresAt}`);
+    return access_token;
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : null;
+    const body = axios.isAxiosError(err) ? JSON.stringify(err.response?.data) : '';
+    console.error(`${LOG} Refresh FAILED for ${shopDomain} — HTTP ${status} ${body}`);
+    return null;
+  }
+}
+
+/**
+ * Checks if a token is expiring soon (within the given threshold) and refreshes proactively.
+ * Returns true if token was refreshed or is still valid, false if refresh failed.
+ */
+export async function ensureTokenFresh(shopDomain: string, thresholdMs = 3600000): Promise<boolean> {
+  const LOG = '[token-refresh]';
+
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('token_expires_at, refresh_token')
+    .eq('shop_domain', shopDomain)
+    .single();
+
+  if (!conn) return false;
+
+  // No expiry tracked — token might be offline (shpat_), assume OK
+  if (!conn.token_expires_at) return true;
+
+  // No refresh_token — can't refresh
+  if (!conn.refresh_token) return true;
+
+  const expiresAt = new Date(conn.token_expires_at).getTime();
+  const timeLeft = expiresAt - Date.now();
+
+  if (timeLeft > thresholdMs) {
+    return true; // Still fresh
+  }
+
+  console.log(`${LOG} ${shopDomain} token expires in ${Math.round(timeLeft / 60000)}min — refreshing proactively`);
+  const result = await refreshShopifyToken(shopDomain);
+  return result !== null;
 }
 
 // ── Shopify REST API client ──────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
+import { ensureTokenFresh } from '../lib/shopify.js';
 
 // Runs every hour at :05 — checks which accounts are due for their brief
 // based on their configured timezone and send_hour
@@ -110,6 +111,11 @@ async function runBriefPipeline(accountId: string): Promise<void> {
   if (connRow?.token_status === 'invalid') {
     console.log(`[scheduler] [${accountId}] Skipping — token marked invalid for ${connRow.shop_domain}. Merchant needs to reconnect.`);
     return;
+  }
+
+  // Proactive token refresh — if token expires within 1 hour, refresh now
+  if (connRow?.shop_domain) {
+    await ensureTokenFresh(connRow.shop_domain);
   }
 
   try {
