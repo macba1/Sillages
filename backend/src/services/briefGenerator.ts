@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase.js';
 import { runAnalyst } from '../agents/analyst.js';
 import { runGrowthHacker } from '../agents/growthHacker.js';
 import { runQualityAuditor } from '../agents/qualityAuditor.js';
+import { loadBrandProfile } from './brandAnalyzer.js';
 import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
@@ -97,6 +98,14 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const allSnapshots = (historicalSnapshots ?? []) as ShopifyDailySnapshot[];
     console.log(`[briefGenerator] Loaded ${allSnapshots.length} snapshots for pattern analysis (${thirtyDaysAgo} → ${briefDate})`);
 
+    // ── 3c. Load brand profile ──────────────────────────────────────────
+    const brandProfile = await loadBrandProfile(accountId);
+    if (brandProfile) {
+      console.log(`[briefGenerator] Brand profile loaded — voice: ${brandProfile.brand_voice.slice(0, 60)}...`);
+    } else {
+      console.log(`[briefGenerator] No brand profile found — using default voice`);
+    }
+
     // ── 4. Agent 1: Analyst ─────────────────────────────────────────────
     console.log(`[briefGenerator] Running agent chain in language: ${language}`);
 
@@ -122,6 +131,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       currency,
       briefDate,
       language,
+      brandProfile,
     });
 
     console.log(`[briefGenerator] Growth hacker complete — ${growthResult.output.actions.length} actions`);
@@ -135,6 +145,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       currency,
       briefDate,
       language,
+      brandProfile,
     });
 
     console.log(`[briefGenerator] Quality audit complete — passed=${auditResult.output.audit_passed}, ${auditResult.output.audit_notes.length} notes`);

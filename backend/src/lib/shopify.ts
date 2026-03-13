@@ -314,6 +314,26 @@ export function shopifyClient(shop: string, accessToken: string) {
       return data.count as number;
     },
 
+    // Products (for brand analysis)
+    async getProducts(params?: { limit?: number; fields?: string }): Promise<Array<Record<string, unknown>>> {
+      const { data } = await base.get('/products.json', {
+        params: {
+          limit: params?.limit ?? 50,
+          fields: params?.fields ?? 'id,title,body_html,product_type,tags,vendor,handle,variants,images',
+        },
+      });
+      return data.products;
+    },
+
+    // Collections
+    async getCollections(): Promise<Array<Record<string, unknown>>> {
+      const [custom, smart] = await Promise.all([
+        base.get('/custom_collections.json', { params: { limit: 50 } }).catch(() => ({ data: { custom_collections: [] } })),
+        base.get('/smart_collections.json', { params: { limit: 50 } }).catch(() => ({ data: { smart_collections: [] } })),
+      ]);
+      return [...(custom.data.custom_collections ?? []), ...(smart.data.smart_collections ?? [])];
+    },
+
     // Register a webhook
     async registerWebhook(topic: string, address: string) {
       const { data } = await base.post('/webhooks.json', {

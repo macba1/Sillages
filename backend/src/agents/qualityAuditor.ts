@@ -1,5 +1,6 @@
 import { openai } from '../lib/openai.js';
 import type { AnalystOutput, GrowthHackerOutput, QualityAuditOutput, GrowthAction } from './types.js';
+import type { BrandProfile } from '../services/brandAnalyzer.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ export interface QualityAuditorInput {
   currency: string;
   briefDate: string;
   language: 'en' | 'es';
+  brandProfile?: BrandProfile | null;
 }
 
 // ── Result ──────────────────────────────────────────────────────────────────
@@ -134,6 +136,17 @@ Return the complete brief_narrative and actions, corrected and polished.
 - audit_notes: array of strings explaining each fix you made (e.g. "Rewrote instagram copy — was generic template", "Added customer names to whats_working", "Removed jargon: AOV → gasto medio por cliente")
 - If everything passes → return as-is with audit_passed: true and audit_notes: ["All sections pass quality check"]
 
+═══════════════════════════════════════════════════════════════════
+BRAND VOICE VERIFICATION (if brand profile provided)
+═══════════════════════════════════════════════════════════════════
+If you receive a BRAND PROFILE, apply these additional checks:
+
+- Does every piece of copy MATCH the brand voice? If the brand is "artisanal, warm, close to the customer" and the copy sounds corporate or generic → REJECT and rewrite in the brand's actual voice.
+- Does the content create EMOTION (desire, exclusivity, urgency, connection)? If it's informational but not emotional → REJECT and rewrite.
+- SHAREABILITY TEST: Imagine a customer sees this post. Would they screenshot it and send it to a friend saying "we have to try this"? If not → rewrite until they would.
+- Are the brand VALUES visible? If the store values 'artisanal' and the copy doesn't mention anything about handmade/fresh/traditional → fix it.
+- Does the copy use language SPECIFIC to this brand? If you could copy-paste the same text onto a competitor's page and it would work fine → it's too generic. Rewrite.
+
 REMEMBER: This is the LAST check before it reaches the merchant. If the brief says 'AOV €42.47' or has empty sections or generic copy, YOU failed.
 
 Return ONLY valid JSON. No preamble, no explanation.`;
@@ -147,9 +160,20 @@ function buildUserPrompt(input: QualityAuditorInput): string {
   const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
   const cs = sym[currency] ?? `${currency} `;
 
+  const brandBlock = input.brandProfile
+    ? `\n═══ BRAND PROFILE (use for voice/tone verification) ═══
+- Voice: ${input.brandProfile.brand_voice}
+- Values: ${input.brandProfile.brand_values}
+- Emotion: ${input.brandProfile.brand_emotion}
+- Content style: ${input.brandProfile.content_style}
+- Target audience: ${input.brandProfile.target_audience}
+- USPs: ${input.brandProfile.unique_selling_points}
+- Differentiation: ${input.brandProfile.competitor_differentiation}\n`
+    : '';
+
   return `Review and fix this brief and actions for ${ownerName}, owner of "${storeName}".
 Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}.
-
+${brandBlock}
 ═══ BRIEF NARRATIVE (from Growth Hacker) ═══
 ${JSON.stringify(growthOutput.brief_narrative, null, 2)}
 

@@ -1,6 +1,7 @@
 import { openai } from '../lib/openai.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
+import type { BrandProfile } from '../services/brandAnalyzer.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ export interface GrowthHackerInput {
   currency: string;
   briefDate: string;
   language: 'en' | 'es';
+  brandProfile?: BrandProfile | null;
 }
 
 // ── Result ──────────────────────────────────────────────────────────────────
@@ -174,6 +176,25 @@ FORBIDDEN WORDS — never use any of these in the narrative:
 MISSING DATA RULE:
 If sessions = 0 or traffic data is unavailable, do NOT mention visits, sessions, traffic, or conversion anywhere.
 
+═══════════════════════════════════════════════════════════════════
+BRAND VOICE — CRITICAL FOR ALL CONTENT
+═══════════════════════════════════════════════════════════════════
+If you receive a BRAND PROFILE, every single piece of content you generate MUST:
+
+1. MATCH THE BRAND VOICE: If the brand is artisanal and warm, your copy must feel artisanal and warm. Never generic. Never corporate. If the store talks about 'ingredientes frescos' and 'hecho con las manos', your copy does too.
+
+2. HIGHLIGHT BRAND VALUES: Every post, email, or description must reinforce what makes this store special. If they're artisanal → emphasize handmade. If they're vegan → emphasize plant-based. If they're local → emphasize the city and neighborhood.
+
+3. CREATE EMOTION: The content must make the person FEEL something:
+   - Desire: 'I need to try this NOW'
+   - Exclusivity: 'This is special and only available here'
+   - Urgency: 'If I don't act now I'll miss it'
+   - Connection: 'This brand understands me and what I value'
+
+4. BE SHAREABLE: Every piece of content should be so good that someone who sees it wants to share it with friends. The test: would someone screenshot this and send it to a friend? If not, rewrite it.
+
+5. NEVER be generic. NEVER use templates that could work for any store. Every copy must be so specific to this brand that it would look wrong on any other store's page.
+
 Return ONLY valid JSON matching the output schema. No preamble, no explanation.`;
 }
 
@@ -196,11 +217,22 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
     ? `Owner's priority focus areas: ${config.focus_areas.join(', ')}.`
     : '';
 
+  const brandBlock = input.brandProfile
+    ? `\nBRAND PROFILE (use this to shape ALL content):
+- Voice: ${input.brandProfile.brand_voice}
+- Values: ${input.brandProfile.brand_values}
+- Emotion: ${input.brandProfile.brand_emotion}
+- Content style: ${input.brandProfile.content_style}
+- Target audience: ${input.brandProfile.target_audience}
+- USPs: ${input.brandProfile.unique_selling_points}
+- Differentiation: ${input.brandProfile.competitor_differentiation}\n`
+    : '';
+
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
 Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}.
 ${toneNote}
 ${focusNote}
-
+${brandBlock}
 ANALYST DATA (from the data analyst agent):
 ${JSON.stringify(analystOutput, null, 2)}
 
