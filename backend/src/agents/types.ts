@@ -1,6 +1,8 @@
 // ── Agent communication schema ──────────────────────────────────────────────
 // Data flows: Shopify → [Analyst] → AnalystOutput → [GrowthHacker] → GrowthHackerOutput
 
+import type { CustomerIntelligence } from '../services/customerIntelligence.js';
+
 // ── Analyst Output ──────────────────────────────────────────────────────────
 
 export interface AnalystOutput {
@@ -106,6 +108,9 @@ export interface AnalystOutput {
   }>;
 
   signals: string[]; // key observations in bullet points
+
+  // ── Customer Intelligence (from Shopify API, not LLM-generated) ─────
+  customer_intelligence?: CustomerIntelligence;
 }
 
 // ── Growth Actions ──────────────────────────────────────────────────────────

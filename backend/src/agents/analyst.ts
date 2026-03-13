@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js';
 import { analyzeHistoricalPatterns } from '../prompts/briefPrompt.js';
 import type { ShopifyDailySnapshot, UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput } from './types.js';
+import type { CustomerIntelligence } from '../services/customerIntelligence.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export interface AnalystInput {
   briefDate: string;
   language: 'en' | 'es';
   accountId: string;
+  customerIntelligence?: CustomerIntelligence | null;
 }
 
 // ── Result ──────────────────────────────────────────────────────────────────
@@ -112,6 +114,56 @@ async function loadActionsHistory(accountId: string): Promise<AnalystOutput['act
   }));
 }
 
+// ── Customer intelligence block ─────────────────────────────────────────────
+
+function buildCustomerIntelBlock(ci: CustomerIntelligence | null | undefined): string {
+  if (!ci) return 'CUSTOMER INTELLIGENCE: Not available for this store.';
+
+  const lines: string[] = ['CUSTOMER INTELLIGENCE (from Shopify API — real customer data):'];
+  lines.push(`- Total customers (60 days): ${ci.total_customers}`);
+  lines.push(`- Repeat customers: ${ci.repeat_customers}`);
+  lines.push(`- One-time customers: ${ci.one_time_customers}`);
+  lines.push(`- New this week: ${ci.new_this_week}`);
+
+  if (ci.star_customers.length > 0) {
+    lines.push('\nSTAR CUSTOMERS (top by spend):');
+    ci.star_customers.forEach(c => {
+      lines.push(`  ${c.rank}. ${c.name} (${c.email}) — ${c.total_orders} orders, €${c.total_spent} spent, favorite: ${c.favorite_product}, last: ${c.last_purchase_date}`);
+    });
+  }
+
+  if (ci.lost_customers.length > 0) {
+    lines.push('\nLOST CUSTOMERS (1 purchase, 14+ days ago):');
+    ci.lost_customers.forEach(c => {
+      lines.push(`  - ${c.name} (${c.email}) — bought ${c.favorite_product}, ${c.days_since_last_purchase}d ago, spent €${c.total_spent}`);
+    });
+  }
+
+  if (ci.about_to_repeat.length > 0) {
+    lines.push('\nABOUT TO REPEAT (within their purchase cycle):');
+    ci.about_to_repeat.forEach(c => {
+      lines.push(`  - ${c.name} (${c.email}) — avg cycle ${c.avg_days_between_purchases}d, expected in ${c.expected_in_days}d, favorite: ${c.favorite_product}`);
+    });
+  }
+
+  if (ci.abandoned_carts.length > 0) {
+    lines.push(`\nABANDONED CARTS (${ci.abandoned_carts.length}):`);
+    ci.abandoned_carts.forEach(ac => {
+      const products = ac.products.map(p => `${p.title} x${p.quantity}`).join(', ');
+      lines.push(`  - ${ac.customer_name} (${ac.customer_email}) — ${products} — €${ac.total_value} — ${ac.is_returning_customer ? 'returning' : 'new visitor'} — ${ac.abandoned_at.slice(0, 10)}`);
+    });
+  }
+
+  if (ci.yesterday_buyers.length > 0) {
+    lines.push(`\nYESTERDAY'S BUYERS (${ci.yesterday_buyers.length}):`);
+    ci.yesterday_buyers.forEach(b => {
+      lines.push(`  - ${b.name} — ${b.products.join(', ')} — €${b.total} — ${b.is_repeat ? 'repeat' : 'new'}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
 // ── Build user prompt ───────────────────────────────────────────────────────
 
 function buildAnalystUserPrompt(input: AnalystInput, actionsHistory: AnalystOutput['actions_history']): string {
@@ -200,6 +252,8 @@ STORE CONFIG:
 ${config.store_context ? `- Store context: ${config.store_context}` : ''}
 ${config.competitor_context ? `- Competitor context: ${config.competitor_context}` : ''}
 
+${buildCustomerIntelBlock(input.customerIntelligence)}
+
 Return the AnalystOutput JSON. Include ALL 5 analysis areas (conversion, merchandising, retention, seo, acquisition), plus weekly_patterns, calendar_opportunities, trends, actions_history, and signals.
 
 Schema:
@@ -280,6 +334,11 @@ export async function runAnalyst(input: AnalystInput): Promise<AnalystResult> {
   // Ensure actions_history is populated even if LLM omits it
   if (!output.actions_history) {
     output.actions_history = actionsHistory;
+  }
+
+  // Attach customer intelligence (real data, not LLM-generated)
+  if (input.customerIntelligence) {
+    output.customer_intelligence = input.customerIntelligence;
   }
 
   // Ensure all 5 areas have defaults

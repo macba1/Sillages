@@ -2,6 +2,7 @@ import { openai } from '../lib/openai.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
+import type { CustomerIntelligence } from '../services/customerIntelligence.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,17 @@ RULE 9: COMPLETE CONTENT
 RULE 10: MAX 4 actions. Quality > quantity. 1 great action > 4 mediocre ones.
 ═══════════════════════════════════════════════════════════════════
 
+═══════════════════════════════════════════════════════════════════
+RULE 11: PERSONALIZE EVERY ACTION WITH REAL CUSTOMER NAMES
+═══════════════════════════════════════════════════════════════════
+If customer_intelligence is provided, EVERY action must target SPECIFIC customers by name:
+- email_campaign: "Recuperar a Elena Ruiz" NOT "Email a clientes inactivos". Include their name, what they bought, and days since last purchase. email_recipients must be their REAL email.
+- discount_code: mention the customer by name in the description. "Elena dejó un carrito con Tarta de Zanahoria hace 2 días" NOT "descuento para carritos abandonados".
+- instagram_post: reference star customers or yesterday's buyers in the narrative. "María ya ha pedido 6 veces" is social proof.
+- whatsapp_message: always addressed to a specific person.
+- In the brief narrative: mention customers by name. "María García volvió a pedir" NOT "un cliente recurrente compró".
+NEVER write generic actions like "email inactive customers" when you have their names and data.
+
 YOUR VOICE FOR THE NARRATIVE:
 - Talk like you're chatting with a friend: "I looked at your numbers", "here's what I'd do"
 - Be warm but direct. No corporate speak.
@@ -207,6 +219,53 @@ If you receive a BRAND PROFILE, match its voice in every piece of copy.
 Return ONLY valid JSON matching the output schema. No preamble, no explanation.`;
 }
 
+// ── Customer intelligence block for prompts ─────────────────────────────────
+
+function buildCustomerIntelBlock(ci: CustomerIntelligence | null | undefined): string {
+  if (!ci) return '';
+
+  const lines: string[] = ['═══ CUSTOMER INTELLIGENCE (real Shopify data — use names in actions) ═══'];
+  lines.push(`Base: ${ci.total_customers} customers — ${ci.repeat_customers} repeat, ${ci.one_time_customers} one-time, ${ci.new_this_week} new this week`);
+
+  if (ci.star_customers.length > 0) {
+    lines.push('\nSTAR CUSTOMERS (mention by name in narrative):');
+    ci.star_customers.forEach(c => {
+      lines.push(`  ${c.rank}. ${c.name} — ${c.total_orders} orders, €${c.total_spent}, favorite: ${c.favorite_product}, avg cycle: ${c.avg_days_between_purchases ?? '?'}d, last: ${c.last_purchase_date}`);
+    });
+  }
+
+  if (ci.lost_customers.length > 0) {
+    lines.push('\nLOST CUSTOMERS (target with email_campaign — include their name + product):');
+    ci.lost_customers.forEach(c => {
+      lines.push(`  - ${c.name} (${c.email}) — bought ${c.favorite_product}, ${c.days_since_last_purchase}d ago, €${c.total_spent}`);
+    });
+  }
+
+  if (ci.about_to_repeat.length > 0) {
+    lines.push('\nABOUT TO REPEAT (nudge with WhatsApp or email):');
+    ci.about_to_repeat.forEach(c => {
+      lines.push(`  - ${c.name} (${c.email}) — avg cycle ${c.avg_days_between_purchases}d, expected in ${c.expected_in_days}d, favorite: ${c.favorite_product}`);
+    });
+  }
+
+  if (ci.abandoned_carts.length > 0) {
+    lines.push(`\nABANDONED CARTS (${ci.abandoned_carts.length} — target with discount_code per person):`);
+    ci.abandoned_carts.forEach(ac => {
+      const products = ac.products.map(p => `${p.title} x${p.quantity}`).join(', ');
+      lines.push(`  - ${ac.customer_name} (${ac.customer_email}) — left: ${products} (€${ac.total_value}) — ${ac.is_returning_customer ? 'RETURNING customer' : 'new visitor'}`);
+    });
+  }
+
+  if (ci.yesterday_buyers.length > 0) {
+    lines.push(`\nYESTERDAY'S BUYERS (mention in narrative):`);
+    ci.yesterday_buyers.forEach(b => {
+      lines.push(`  - ${b.name} — ${b.products.join(', ')} — €${b.total} — ${b.is_repeat ? 'repeat' : 'new customer'}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
 // ── Build user prompt ───────────────────────────────────────────────────────
 
 function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
@@ -237,13 +296,18 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
 - Differentiation: ${input.brandProfile.competitor_differentiation}\n`
     : '';
 
+  // Build customer intelligence block
+  const ciBlock = buildCustomerIntelBlock(analystOutput.customer_intelligence);
+
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
 Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}.
 ${toneNote}
 ${focusNote}
 ${brandBlock}
 ANALYST DATA (from the data analyst agent):
-${JSON.stringify(analystOutput, null, 2)}
+${JSON.stringify({ ...analystOutput, customer_intelligence: undefined }, null, 2)}
+
+${ciBlock}
 
 OUTPUT FORMAT — return exactly this JSON:
 {
@@ -323,50 +387,45 @@ ANALYST DATA (from the data analyst agent):
   "signals": ["Tarta de Zanahoria trending up +45%", "Friday is best sales day", "1 new customer this week"]
 }
 
+═══ CUSTOMER INTELLIGENCE (real Shopify data — use names in actions) ═══
+Base: 23 customers — 10 repeat, 13 one-time, 1 new this week
+
+STAR CUSTOMERS (mention by name in narrative):
+  1. María García — 6 orders, €287.40, favorite: Hogaza de Centeno, avg cycle: 8d, last: 2026-03-09
+  2. Pedro Sánchez — 4 orders, €198.00, favorite: Volcán de Chocolate, avg cycle: 12d, last: 2026-03-05
+
+LOST CUSTOMERS (target with email_campaign — include their name + product):
+  - Elena Ruiz (elena@mail.com) — bought Tarta de Zanahoria, 21d ago, €89.50
+  - Luis Martín (luis@mail.com) — bought Hogaza de Centeno, 18d ago, €45.80
+
+ABOUT TO REPEAT (nudge with WhatsApp or email):
+  - Pedro Sánchez (pedro@mail.com) — avg cycle 12d, expected in 2d, favorite: Volcán de Chocolate
+
+ABANDONED CARTS (1 — target with discount_code per person):
+  - Ana López (ana@mail.com) — left: Tarta de Zanahoria x1 (€39.00) — new visitor
+
+YESTERDAY'S BUYERS (mention in narrative):
+  - María García — Hogaza de Centeno, Volcán de Chocolate — €67.50 — repeat
+
 Return exactly the JSON format specified.`;
 
 // ── Few-shot example (assistant turn) ───────────────────────────────────────
 
 const FEW_SHOT_ASSISTANT = JSON.stringify({
   brief_narrative: {
-    greeting: "Hola Laura. Ayer €412 con 9 pedidos — la Tarta de Zanahoria arrasó con 4 unidades.",
-    yesterday_summary: "Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate. María García volvió a pedir — ya van 6 veces. Solo 1 cara nueva esta semana, necesitamos más.",
-    whats_working: "La Tarta de Zanahoria lleva dos semanas subiendo sin parar, un 45% más que la anterior. María García ya es casi de la familia — 6 pedidos y €287 gastados. Algo estamos haciendo muy bien con ella.",
-    whats_not_working: "Elena Ruiz lleva 21 días sin comprar, y antes venía cada 2 semanas. Algo pasó. Y solo hemos captado 1 cliente nuevo — los que nos conocen repiten, pero no estamos llegando a gente nueva.",
-    signal: "El Día del Padre está a 9 días. Los viernes son nuestro mejor día (media de €180). Este viernes es perfecto para lanzar la campaña antes de que la gente se organice.",
-    upcoming: "Viernes es nuestro día fuerte — hay que tener stock extra de Volcán de Chocolate que es el que más sale. Y empezar a mover la campaña de Día del Padre esta semana para que la gente encargue con tiempo.",
-    gap: "Si recuperamos a Elena y captamos 2 clientes nuevos con la campaña del Día del Padre, podríamos sumar €130-180 extra esta semana.",
+    greeting: "Hola Laura. Ayer €412 con 9 pedidos — María García volvió a pedir y la Tarta de Zanahoria arrasó con 4 unidades.",
+    yesterday_summary: "Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate. María García compró de nuevo ayer — ya van 6 pedidos y €287. Pedro Sánchez debería volver en 2 días si sigue su ritmo habitual. Solo 1 cara nueva esta semana.",
+    whats_working: "La Tarta de Zanahoria lleva dos semanas subiendo sin parar, un 45% más que la anterior. María García ya es casi de la familia — 6 pedidos. Pedro Sánchez está en su ciclo de compra, su favorito es el Volcán de Chocolate.",
+    whats_not_working: "Elena Ruiz lleva 21 días sin comprar — antes compraba Tarta de Zanahoria. Luis Martín lleva 18 días — su último pedido fue Hogaza de Centeno. Ana López dejó una Tarta de Zanahoria de €39 en el carrito sin completar.",
+    signal: "El Día del Padre está a 9 días. Los viernes son nuestro mejor día (media de €180). Pedro está a punto de repetir y Ana tiene un carrito abandonado. Este viernes es perfecto para lanzar todo junto.",
+    upcoming: "Viernes es nuestro día fuerte — stock extra de Volcán de Chocolate. Pedro debería volver pronto, prepararle un mensaje. Y mover la campaña del Día del Padre esta semana.",
+    gap: "Si recuperamos a Elena (€89) y Luis (€46), rescatamos el carrito de Ana (€39), y Pedro repite su pedido habitual (~€50), sumamos €224 extra esta semana.",
   },
   actions: [
     {
-      type: "instagram_post",
-      title: "Post Tarta de Zanahoria",
-      description: "Tarta de Zanahoria trending up +45% (signals). 4 vendidas ayer. Publicar mañana a las 10am para captar clientes nuevos.",
-      priority: "high",
-      time_estimate: "10 min",
-      content: {
-        copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de zanahoria rallada del día tiene ese punto dulce que no empalaga, y el mejor plot twist: no me siento culpable. latahonadelucia.es 🥕",
-      },
-      plan_required: "growth",
-    },
-    {
-      type: "discount_code",
-      title: "Descuento Día del Padre",
-      description: "Día del Padre en 9 días (calendar_opportunities). Los viernes vendemos media de €180. Lanzar hoy para que la gente encargue con tiempo.",
-      priority: "high",
-      time_estimate: "10 min",
-      content: {
-        copy: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Volcán de Chocolate, hecho por encargo con cacao puro. Solo por encargo hasta el domingo. PAPA25 para un 25% → latahonadelucia.es",
-        discount_code: "PAPA25",
-        discount_percentage: 25,
-        discount_product: "Volcán de Chocolate",
-      },
-      plan_required: "growth",
-    },
-    {
       type: "email_campaign",
       title: "Recuperar a Elena Ruiz",
-      description: "Elena Ruiz lleva 21 días sin comprar, gastó €89.50 (retention.overdue_customers). Enviar hoy.",
+      description: "Elena Ruiz lleva 21 días sin comprar, gastó €89.50 en Tarta de Zanahoria (customer_intelligence.lost_customers). Enviar hoy.",
       priority: "high",
       time_estimate: "5 min",
       content: {
@@ -375,6 +434,42 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
         email_recipients: ["elena@mail.com"],
       },
       plan_required: "growth",
+    },
+    {
+      type: "discount_code",
+      title: "Rescatar carrito de Ana López",
+      description: "Ana López dejó Tarta de Zanahoria (€39) en el carrito sin completar (customer_intelligence.abandoned_carts). Es visitante nueva — el descuento la convierte.",
+      priority: "high",
+      time_estimate: "5 min",
+      content: {
+        copy: "Ana, tu Tarta de Zanahoria te espera. La horneamos cada mañana con zanahoria rallada fresca y sin azúcar añadido. La masa se deshace sola. PRIMERA10 para un 10% en tu primer pedido → latahonadelucia.es",
+        discount_code: "PRIMERA10",
+        discount_percentage: 10,
+        discount_product: "Tarta de Zanahoria",
+      },
+      plan_required: "growth",
+    },
+    {
+      type: "instagram_post",
+      title: "Post Tarta de Zanahoria",
+      description: "Tarta de Zanahoria trending up +45% (signals). 4 vendidas ayer. María García la pide cada semana — social proof real. Publicar mañana a las 10am.",
+      priority: "high",
+      time_estimate: "10 min",
+      content: {
+        copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de zanahoria rallada del día tiene ese punto dulce que no empalaga, y el mejor plot twist: no me siento culpable. latahonadelucia.es 🥕",
+      },
+      plan_required: "growth",
+    },
+    {
+      type: "whatsapp_message",
+      title: "Nudge a Pedro Sánchez",
+      description: "Pedro Sánchez compra cada 12 días, su próximo pedido debería ser en 2 días (customer_intelligence.about_to_repeat). Su favorito es Volcán de Chocolate.",
+      priority: "medium",
+      time_estimate: "5 min",
+      content: {
+        copy: "Pedro, este viernes horneamos Volcán de Chocolate por la mañana — con el cacao que te gusta. ¿Te reservo uno? 🍫",
+      },
+      plan_required: "pro",
     },
   ],
 }, null, 2);

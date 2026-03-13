@@ -3,6 +3,7 @@ import { runAnalyst } from '../agents/analyst.js';
 import { runGrowthHacker } from '../agents/growthHacker.js';
 import { runQualityAuditor } from '../agents/qualityAuditor.js';
 import { loadBrandProfile } from './brandAnalyzer.js';
+import { buildCustomerIntelligence } from './customerIntelligence.js';
 import { checkAlerts } from './alertEngine.js';
 import type {
   Account,
@@ -98,12 +99,25 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const allSnapshots = (historicalSnapshots ?? []) as ShopifyDailySnapshot[];
     console.log(`[briefGenerator] Loaded ${allSnapshots.length} snapshots for pattern analysis (${thirtyDaysAgo} → ${briefDate})`);
 
-    // ── 3c. Load brand profile ──────────────────────────────────────────
-    const brandProfile = await loadBrandProfile(accountId);
+    // ── 3c. Load brand profile + customer intelligence in parallel ─────
+    const [brandProfile, customerIntelligence] = await Promise.all([
+      loadBrandProfile(accountId),
+      buildCustomerIntelligence(accountId, briefDate).catch(err => {
+        console.warn(`[briefGenerator] Customer intelligence failed (non-fatal): ${err instanceof Error ? err.message : err}`);
+        return null;
+      }),
+    ]);
+
     if (brandProfile) {
       console.log(`[briefGenerator] Brand profile loaded — voice: ${brandProfile.brand_voice.slice(0, 60)}...`);
     } else {
       console.log(`[briefGenerator] No brand profile found — using default voice`);
+    }
+
+    if (customerIntelligence) {
+      console.log(`[briefGenerator] Customer intelligence loaded — ${customerIntelligence.total_customers} customers, ${customerIntelligence.abandoned_carts.length} abandoned carts, ${customerIntelligence.star_customers.length} stars, ${customerIntelligence.lost_customers.length} lost`);
+    } else {
+      console.log(`[briefGenerator] No customer intelligence available`);
     }
 
     // ── 4. Agent 1: Analyst ─────────────────────────────────────────────
@@ -118,6 +132,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       briefDate,
       language,
       accountId,
+      customerIntelligence,
     });
 
     console.log(`[briefGenerator] Analyst complete — ${analystResult.output.signals.length} signals`);

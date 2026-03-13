@@ -76,6 +76,29 @@ Return ONLY valid JSON.`;
 
 }
 
+// ── Customer intelligence summary for auditor ──────────────────────────────
+
+function buildCustomerIntelSummary(analystOutput: AnalystOutput): string {
+  const ci = analystOutput.customer_intelligence;
+  if (!ci) return '';
+
+  const lines: string[] = ['\n═══ CUSTOMER INTELLIGENCE (verify actions reference real customers) ═══'];
+  if (ci.star_customers.length > 0) {
+    lines.push(`Stars: ${ci.star_customers.map(c => `${c.name} (${c.total_orders} orders)`).join(', ')}`);
+  }
+  if (ci.lost_customers.length > 0) {
+    lines.push(`Lost: ${ci.lost_customers.map(c => `${c.name} (${c.days_since_last_purchase}d)`).join(', ')}`);
+  }
+  if (ci.about_to_repeat.length > 0) {
+    lines.push(`About to repeat: ${ci.about_to_repeat.map(c => `${c.name} (in ${c.expected_in_days}d)`).join(', ')}`);
+  }
+  if (ci.abandoned_carts.length > 0) {
+    lines.push(`Abandoned carts: ${ci.abandoned_carts.map(c => `${c.customer_name} (€${c.total_value})`).join(', ')}`);
+  }
+  lines.push('VERIFY: Every email_campaign targets a specific person. Every discount references the abandoned product. No generic "email inactive customers".');
+  return lines.join('\n');
+}
+
 // ── Build user prompt ───────────────────────────────────────────────────────
 
 function buildUserPrompt(input: QualityAuditorInput): string {
@@ -114,6 +137,7 @@ Overdue customers: ${analystOutput.retention.overdue_customers.map(c => `${c.nam
 Calendar: ${analystOutput.calendar_opportunities.map(c => `${c.event} in ${c.days_until}d`).join(', ') || 'none'}
 Weekly patterns: ${analystOutput.weekly_patterns.map(w => `${w.day_of_week}: ${cs}${w.avg_revenue} avg`).join(', ') || 'none'}
 Signals: ${analystOutput.signals.join(' | ')}
+${buildCustomerIntelSummary(analystOutput)}
 
 ═══ OUTPUT FORMAT ═══
 {

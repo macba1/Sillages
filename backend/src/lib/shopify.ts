@@ -270,7 +270,7 @@ export function shopifyClient(shop: string, accessToken: string) {
       const requestParams: Record<string, string | number> = {
         status: 'any',
         limit: 250,
-        fields: 'id,total_price,subtotal_price,financial_status,cancel_reason,customer,line_items,refunds,created_at',
+        fields: 'id,total_price,subtotal_price,financial_status,cancel_reason,customer,line_items,refunds,created_at,email',
       };
 
       // When using page_info cursor, Shopify forbids other filter params
@@ -306,6 +306,27 @@ export function shopifyClient(shop: string, accessToken: string) {
     }): Promise<number> {
       const { data } = await base.get('/checkouts/count.json', { params });
       return (data.count as number) ?? 0;
+    },
+
+    // Abandoned checkouts with details
+    async getAbandonedCheckouts(params: {
+      created_at_min: string;
+      created_at_max: string;
+      limit?: number;
+    }): Promise<ShopifyAbandonedCheckout[]> {
+      try {
+        const { data } = await base.get('/checkouts.json', {
+          params: {
+            created_at_min: params.created_at_min,
+            created_at_max: params.created_at_max,
+            limit: params.limit ?? 50,
+            status: 'open',
+          },
+        });
+        return (data.checkouts ?? []) as ShopifyAbandonedCheckout[];
+      } catch {
+        return [];
+      }
     },
 
     // Customers count
@@ -370,6 +391,9 @@ export interface ShopifyOrder {
   created_at: string;
   customer: {
     id: number;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
     orders_count: number;
   } | null;
   line_items: Array<{
@@ -383,6 +407,23 @@ export interface ShopifyOrder {
   refunds: Array<{
     transactions: Array<{ amount: string }>;
   }>;
+}
+
+export interface ShopifyAbandonedCheckout {
+  id: number;
+  created_at: string;
+  customer: {
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+  } | null;
+  line_items: Array<{
+    title: string;
+    quantity: number;
+    price: string;
+  }>;
+  total_price: string;
 }
 
 // ── HMAC webhook verification ────────────────────────────────────────────────
