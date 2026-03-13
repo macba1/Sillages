@@ -2,7 +2,6 @@ import { openai } from '../lib/openai.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
-import { COPY_EXAMPLES_BY_CATEGORY } from './copyExamples.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -178,14 +177,32 @@ MISSING DATA RULE:
 If sessions = 0 or traffic data is unavailable, do NOT mention visits, sessions, traffic, or conversion anywhere.
 
 ═══════════════════════════════════════════════════════════════════
-COPY QUALITY — 4 NON-NEGOTIABLE RULES
+BANNED PHRASES — if ANY of these appear in your output, you have FAILED:
 ═══════════════════════════════════════════════════════════════════
-1. NEVER GENERIC: If you could paste the copy on a competitor's page and it works → rewrite. Must include THIS store's product name + a detail only true for THIS store.
-2. SENSORY: Every copy must include at least 1 sensory detail (sight, smell, taste, texture). "Se derrama", "corteza crujiente", "huele a vainilla natural", "ácido y dulce a la vez".
-3. INSTAGRAM = 3 LINES MAX: Line 1 hook, Line 2 sensory payoff, Line 3 soft CTA. Max 2 emojis, max 1 exclamation mark.
-4. SCREENSHOT TEST: Would someone screenshot this and send it to a friend? If not → rewrite.
+- "¡No te lo pierdas!" / "Don't miss out!"
+- "¡Haz tu pedido ahora!" / "Order now!"
+- "Pura fantasía"
+- "Te transporta"
+- "Un clásico reinventado"
+- "Descubre nuestra selección" / "Discover our selection"
+- "Celebra con nuestras deliciosas..."
+- "Personaliza tu regalo"
+- "¡Te encantará!" / "You'll love it!"
+- "No te arrepentirás"
+- Any phrase with ¡...! that sounds like a TV commercial
+- "Un abrazo dulce"
+- "Explosión de sabor"
+- "Una experiencia única"
+- Any phrase that could work on ANY store's page
 
-If you receive a BRAND PROFILE, match its voice in every piece of copy. If the brand is artisanal and warm, the copy must feel artisanal and warm.
+═══════════════════════════════════════════════════════════════════
+COPY QUALITY — 3 NON-NEGOTIABLE RULES
+═══════════════════════════════════════════════════════════════════
+1. SENSORY: Every copy must make people TASTE/SMELL/SEE the product. "Se derrama", "corteza crujiente", "huele a vainilla natural", "ácido y dulce a la vez".
+2. SPECIFIC: Must include THIS store's product name + a detail only true for THIS store (ingredient origin, process, texture). If you could paste it on a competitor's page → rewrite.
+3. INSTAGRAM = 3 LINES MAX. Max 2 emojis. Max 1 exclamation mark. Soft CTA only (never "¡Compra ya!").
+
+If you receive a BRAND PROFILE, match its voice in every piece of copy.
 
 Return ONLY valid JSON matching the output schema. No preamble, no explanation.`;
 }
@@ -220,15 +237,27 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
 - Differentiation: ${input.brandProfile.competitor_differentiation}\n`
     : '';
 
-  // Build few-shot examples block
-  const examples = COPY_EXAMPLES_BY_CATEGORY.bakery_artisanal;
   const examplesBlock = `
-═══ COPY EXAMPLES — YOUR COPY MUST BE THIS GOOD OR BETTER ═══
-Study these examples. Your copy must match this quality level. Notice: specific product names, sensory details, no jargon, no generic templates.
+═══ PERFECT OUTPUT EXAMPLE — YOUR OUTPUT MUST BE AT THIS LEVEL ═══
+This is a perfect brief+actions for an artisanal gluten-free bakery. Study the tone, specificity, and sensory detail. Your output must be THIS good or better.
 
-${examples.map((ex, i) => `${i + 1}. "${ex}"`).join('\n')}
+BRIEF:
+- greeting: "Hola Andrea. Ayer €297 con 7 pedidos — la Tarta Letra Fresa fue la estrella."
+- yesterday_summary: "Se vendieron 3 Tartas Letra Fresa y 2 Hogazas de Pasas y Nueces. Todos los que compraron ya te conocían, lo cual es genial para fidelización pero necesitamos caras nuevas."
+- whats_working: "Tus tartas personalizadas se están convirtiendo en el regalo favorito de tus clientes. La Tarta de Corazón Fresas lleva 3 semanas sin bajar del top 3."
+- whats_not_working: "Llevamos 5 días sin un cliente nuevo. Los que te conocen te adoran, pero no estamos llegando a gente nueva."
+- signal: "El Día del Padre está a 6 días. El año pasado los pedidos de tartas personalizadas se duplicaron esa semana. Es momento de preparar la campaña."
+- upcoming: "Los viernes son nuestro mejor día (media de €180). Este viernes cae justo antes del Día del Padre — hay que tener stock extra de Tarta Corazón Fresas y Volcán de Chocolate."
+- gap: "Si captamos 3 clientes nuevos con una campaña de Día del Padre bien hecha, podríamos sumar €120-150 extra esta semana."
 
-Write copy at THIS level. If your copy is worse than these examples, rewrite it.
+ACTIONS:
+1. instagram_post — copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de fresa está fresco de esta mañana, y el mejor plot twist: no me siento culpable. nicolina.es 🍓"
+2. discount_code — copy: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Tarta Corazón Fresas, hecha por encargo con fresas de temporada. Solo este finde. PAPA25 para un 25% → nicolina.es"
+3. email_campaign — subject: "María ya ha repetido 6 veces" — body: "[Nombre], la Hogaza de Pasas y Nueces que pediste hace 3 semanas la horneamos los martes y viernes a las 6 de la mañana. María la pide cada semana. Este viernes quedan 4. ¿Te reservo una?"
+
+Notice: ZERO jargon. ZERO generic phrases. Every copy has sensory detail (se deshace, huele a horno, fresas frescas de esta mañana). Every copy is impossible to paste on another store's page. Every copy makes you want to buy.
+
+YOUR OUTPUT MUST BE AT THIS LEVEL. If it's not, rewrite until it is.
 `;
 
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
@@ -294,7 +323,7 @@ export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthH
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
-    temperature: 0.5,
+    temperature: 0.7,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: buildGrowthHackerSystemPrompt(input.language, input.briefDate) },
