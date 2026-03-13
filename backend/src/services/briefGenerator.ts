@@ -242,30 +242,48 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     const totalTokens = analystResult.usage.total_tokens + growthResult.usage.total_tokens + auditResult.usage.total_tokens;
 
     // ── 7. Save brief ─────────────────────────────────────────────────────
-    const { error: saveError } = await supabase
+    const briefPayload: Record<string, unknown> = {
+      snapshot_id: snapshot.id,
+      status: 'ready',
+      generated_at: new Date().toISOString(),
+      generation_error: null,
+      section_yesterday: sectionYesterday,
+      section_whats_working: sectionWhatsWorking,
+      section_whats_not_working: sectionWhatsNotWorking,
+      section_upcoming: sectionUpcoming,
+      section_signal: sectionSignal,
+      section_gap: sectionGap,
+      section_activation: sectionActivation,
+      model_used: 'gpt-4o (analyst+growth+audit)',
+      prompt_tokens: totalPromptTokens,
+      completion_tokens: totalCompletionTokens,
+      total_tokens: totalTokens,
+    };
+
+    // Try saving with audit_notes — fallback without if column doesn't exist yet
+    let saveError;
+    const { error: err1 } = await supabase
       .from('intelligence_briefs')
-      .update({
-        snapshot_id: snapshot.id,
-        status: 'ready',
-        generated_at: new Date().toISOString(),
-        generation_error: null,
-        section_yesterday: sectionYesterday,
-        section_whats_working: sectionWhatsWorking,
-        section_whats_not_working: sectionWhatsNotWorking,
-        section_upcoming: sectionUpcoming,
-        section_signal: sectionSignal,
-        section_gap: sectionGap,
-        section_activation: sectionActivation,
-        audit_notes: auditNotes,
-        model_used: 'gpt-4o (analyst+growth+audit)',
-        prompt_tokens: totalPromptTokens,
-        completion_tokens: totalCompletionTokens,
-        total_tokens: totalTokens,
-      })
+      .update({ ...briefPayload, audit_notes: auditNotes })
       .eq('id', briefId);
+
+    if (err1?.message?.includes('audit_notes')) {
+      console.log(`[briefGenerator] audit_notes column not yet added — saving without it`);
+      const { error: err2 } = await supabase
+        .from('intelligence_briefs')
+        .update(briefPayload)
+        .eq('id', briefId);
+      saveError = err2;
+    } else {
+      saveError = err1;
+    }
 
     if (saveError) {
       throw new Error(`Failed to save brief: ${saveError.message}`);
+    }
+
+    if (auditNotes) {
+      console.log(`[briefGenerator] Audit notes: ${auditNotes}`);
     }
 
     console.log(`[briefGenerator] Brief ready — account ${accountId} date ${briefDate}`);
