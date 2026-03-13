@@ -14,9 +14,6 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().min(1),
 
-  // Anthropic (Claude) — optional, used for Growth Hacker agent
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
-
   // Resend
   RESEND_API_KEY: z.string().min(1),
   RESEND_FROM_EMAIL: z.string().email().default('briefs@sillages.co'),

@@ -265,7 +265,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
       section_signal: sectionSignal,
       section_gap: sectionGap,
       section_activation: sectionActivation,
-      model_used: 'gpt-4o analyst+audit, claude-sonnet-4 growth',
+      model_used: 'gpt-4o (analyst+growth+audit)',
       prompt_tokens: totalPromptTokens,
       completion_tokens: totalCompletionTokens,
       total_tokens: totalTokens,

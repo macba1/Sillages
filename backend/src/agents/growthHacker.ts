@@ -1,5 +1,4 @@
 import { openai } from '../lib/openai.js';
-import { anthropic } from '../lib/anthropic.js';
 import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
@@ -382,49 +381,8 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
 
 // ── Run growth hacker agent ─────────────────────────────────────────────────
 
-async function runWithClaude(input: GrowthHackerInput): Promise<{ rawContent: string; usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
-  if (!anthropic) throw new Error('Anthropic client not available');
-
-  console.log('[growthHacker] Using Claude Sonnet 4...');
-
-  const systemPrompt = buildGrowthHackerSystemPrompt(input.language, input.briefDate);
-  const userPrompt = buildGrowthHackerUserPrompt(input);
-
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
-    temperature: 0.9,
-    system: systemPrompt,
-    messages: [
-      { role: 'user', content: FEW_SHOT_USER },
-      { role: 'assistant', content: FEW_SHOT_ASSISTANT },
-      { role: 'user', content: userPrompt + '\n\nReturn ONLY valid JSON. No preamble, no explanation, no markdown code blocks.' },
-    ],
-  });
-
-  const textBlock = response.content.find(b => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('[growthHacker] Claude returned no text content');
-  }
-
-  // Strip markdown code blocks if present
-  let raw = textBlock.text.trim();
-  if (raw.startsWith('```')) {
-    raw = raw.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-  }
-
-  return {
-    rawContent: raw,
-    usage: {
-      prompt_tokens: response.usage.input_tokens,
-      completion_tokens: response.usage.output_tokens,
-      total_tokens: response.usage.input_tokens + response.usage.output_tokens,
-    },
-  };
-}
-
-async function runWithOpenAI(input: GrowthHackerInput): Promise<{ rawContent: string; usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
-  console.log('[growthHacker] Using OpenAI gpt-4o (fallback)...');
+export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthHackerResult> {
+  console.log('[growthHacker] Running growth hacker agent...');
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -443,40 +401,6 @@ async function runWithOpenAI(input: GrowthHackerInput): Promise<{ rawContent: st
     throw new Error('[growthHacker] OpenAI returned empty content');
   }
 
-  return {
-    rawContent,
-    usage: {
-      prompt_tokens: completion.usage?.prompt_tokens ?? 0,
-      completion_tokens: completion.usage?.completion_tokens ?? 0,
-      total_tokens: completion.usage?.total_tokens ?? 0,
-    },
-  };
-}
-
-export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthHackerResult> {
-  console.log('[growthHacker] Running growth hacker agent...');
-
-  // Use Claude Sonnet 4 if available, otherwise fall back to OpenAI
-  let rawContent: string;
-  let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-
-  if (anthropic) {
-    try {
-      const result = await runWithClaude(input);
-      rawContent = result.rawContent;
-      usage = result.usage;
-    } catch (err) {
-      console.warn(`[growthHacker] Claude failed, falling back to OpenAI: ${err instanceof Error ? err.message : err}`);
-      const result = await runWithOpenAI(input);
-      rawContent = result.rawContent;
-      usage = result.usage;
-    }
-  } else {
-    const result = await runWithOpenAI(input);
-    rawContent = result.rawContent;
-    usage = result.usage;
-  }
-
   const output = JSON.parse(rawContent) as GrowthHackerOutput;
 
   // Validate actions
@@ -492,6 +416,12 @@ export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthH
   // Validate action types
   const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'email_campaign', 'product_highlight', 'seo_fix', 'whatsapp_message'];
   output.actions = output.actions.filter(a => validTypes.includes(a.type));
+
+  const usage = {
+    prompt_tokens: completion.usage?.prompt_tokens ?? 0,
+    completion_tokens: completion.usage?.completion_tokens ?? 0,
+    total_tokens: completion.usage?.total_tokens ?? 0,
+  };
 
   console.log(`[growthHacker] Done — ${output.actions.length} actions, ${usage.total_tokens} tokens`);
 
