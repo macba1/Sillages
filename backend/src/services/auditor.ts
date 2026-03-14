@@ -16,13 +16,14 @@ const LOG = '[auditor]';
 // ── Start auditor (runs every hour at :30) ──────────────────────────────────
 
 export function startAuditor(): void {
-  cron.schedule('30 * * * *', () => {
+  // Run at :30 every 6 hours (00:30, 06:30, 12:30, 18:30) instead of every hour
+  cron.schedule('30 */6 * * *', () => {
     runAudit().catch(err => {
       console.error(`${LOG} Unhandled error:`, err);
     });
   });
 
-  console.log(`${LOG} Started — auditing every hour at :30`);
+  console.log(`${LOG} Started — auditing every 6 hours at :30`);
 }
 
 // ── Main audit ──────────────────────────────────────────────────────────────
@@ -53,10 +54,29 @@ export async function runAudit(): Promise<void> {
   await checkDataFreshness(accounts, alerts);
   await measurePreviousActions(accounts);
 
-  // Send alert email if anything critical was found
+  // Send alert email if anything critical was found (deduplicated)
   if (alerts.length > 0) {
-    console.log(`${LOG} ${alerts.length} alert(s) found — sending email to admin`);
-    await sendAlertEmail(alerts);
+    // Check if we already sent similar alerts recently (within 6 hours)
+    const sixHoursAgo = new Date(Date.now() - 6 * 3600000).toISOString();
+    let recentAlertCount = 0;
+    try {
+      const { data: recentAudits } = await supabase
+        .from('audit_log')
+        .select('alerts_count')
+        .gte('ran_at', sixHoursAgo)
+        .gt('alerts_count', 0)
+        .limit(1);
+      recentAlertCount = recentAudits?.length ?? 0;
+    } catch {
+      // audit_log may not exist
+    }
+
+    if (recentAlertCount > 0) {
+      console.log(`${LOG} ${alerts.length} alert(s) found but similar alerts sent within 6h — skipping email`);
+    } else {
+      console.log(`${LOG} ${alerts.length} alert(s) found — sending email to admin`);
+      await sendAlertEmail(alerts);
+    }
   } else {
     console.log(`${LOG} All clear — no issues found`);
   }
