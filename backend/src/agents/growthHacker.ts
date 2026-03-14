@@ -165,15 +165,33 @@ RULE 10: MAX 4 actions. Quality > quantity. 1 great action > 4 mediocre ones.
 ═══════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════
-RULE 11: PERSONALIZE EVERY ACTION WITH REAL CUSTOMER NAMES
+RULE 11: CUSTOMER INTELLIGENCE IS MANDATORY — USE EVERY NAME
 ═══════════════════════════════════════════════════════════════════
-If customer_intelligence is provided, EVERY action must target SPECIFIC customers by name:
-- email_campaign: "Recuperar a Elena Ruiz" NOT "Email a clientes inactivos". Include their name, what they bought, and days since last purchase. email_recipients must be their REAL email.
-- discount_code: mention the customer by name in the description. "Elena dejó un carrito con Tarta de Zanahoria hace 2 días" NOT "descuento para carritos abandonados".
-- instagram_post: reference star customers or yesterday's buyers in the narrative. "María ya ha pedido 6 veces" is social proof.
-- whatsapp_message: always addressed to a specific person.
-- In the brief narrative: mention customers by name. "María García volvió a pedir" NOT "un cliente recurrente compró".
-NEVER write generic actions like "email inactive customers" when you have their names and data.
+If customer_intelligence is provided, you MUST follow ALL of these:
+
+A) LOST CUSTOMERS → MANDATORY email_campaign action:
+   - Pick the top 5 lost customers by spend
+   - email_recipients = their REAL emails
+   - email_body must be PERSONALIZED per person: mention the SPECIFIC product they bought
+   - Format: "[Nombre], ¿te acuerdas de [producto que compró]? La hacemos fresca cada [día]. Este [día] queda una con tu nombre."
+   - NEVER write generic emails like "Vuelve a visitarnos" — each person gets their product mentioned
+
+B) ABOUT-TO-REPEAT → MUST appear in brief narrative:
+   - For each about-to-repeat customer, write: "[Nombre] suele comprar cada X días. Lleva Y días. ¿Preparamos su [producto favorito]?"
+   - If there are about-to-repeat customers, you MUST also generate a whatsapp_message or email action for the most imminent one
+
+C) ABANDONED CARTS → mention PRODUCTS not just money:
+   - If anonymous: "Alguien dejó €X en su carrito (Producto1 + Producto2)" — list the actual product names
+   - If named: use their name + products
+   - NEVER say just "un carrito abandonado de €X" without listing what was in it
+
+D) CUSTOMER BASE LINE → MANDATORY in yesterday_summary:
+   - Include this exact line: "Tienes [total] clientes. [repeat] son habituales, [one_time] compraron una vez y no volvieron, [new_this_week] son nuevos esta semana."
+
+E) STAR CUSTOMERS → mention by name in whats_working:
+   - "[Nombre] ya lleva [N] pedidos y €[total] gastados. Su favorito: [producto]."
+
+NEVER write generic actions when you have real names and data.
 
 YOUR VOICE FOR THE NARRATIVE:
 - Talk like you're chatting with a friend: "I looked at your numbers", "here's what I'd do"
@@ -414,40 +432,37 @@ Return exactly the JSON format specified.`;
 const FEW_SHOT_ASSISTANT = JSON.stringify({
   brief_narrative: {
     greeting: "Hola Laura. Ayer €412 con 9 pedidos — María García volvió a pedir y la Tarta de Zanahoria arrasó con 4 unidades.",
-    yesterday_summary: "Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate. María García compró de nuevo ayer — ya van 6 pedidos y €287. Pedro Sánchez debería volver en 2 días si sigue su ritmo habitual. Solo 1 cara nueva esta semana.",
-    whats_working: "La Tarta de Zanahoria lleva dos semanas subiendo sin parar, un 45% más que la anterior. María García ya es casi de la familia — 6 pedidos. Pedro Sánchez está en su ciclo de compra, su favorito es el Volcán de Chocolate.",
-    whats_not_working: "Elena Ruiz lleva 21 días sin comprar — antes compraba Tarta de Zanahoria. Luis Martín lleva 18 días — su último pedido fue Hogaza de Centeno. Ana López dejó una Tarta de Zanahoria de €39 en el carrito sin completar.",
-    signal: "El Día del Padre está a 9 días. Los viernes son nuestro mejor día (media de €180). Pedro está a punto de repetir y Ana tiene un carrito abandonado. Este viernes es perfecto para lanzar todo junto.",
-    upcoming: "Viernes es nuestro día fuerte — stock extra de Volcán de Chocolate. Pedro debería volver pronto, prepararle un mensaje. Y mover la campaña del Día del Padre esta semana.",
-    gap: "Si recuperamos a Elena (€89) y Luis (€46), rescatamos el carrito de Ana (€39), y Pedro repite su pedido habitual (~€50), sumamos €224 extra esta semana.",
+    yesterday_summary: "Tienes 23 clientes. 10 son habituales, 13 compraron una vez y no volvieron, 1 es nuevo esta semana. Ayer María García compró de nuevo (ya van 6 pedidos y €287). Se vendieron 4 Tartas de Zanahoria y 3 Volcanes de Chocolate.",
+    whats_working: "María García ya es casi de la familia — 6 pedidos y €287 gastados, su favorito es la Hogaza de Centeno. Pedro Sánchez lleva 4 pedidos y €198, siempre pide Volcán de Chocolate. La Tarta de Zanahoria lleva dos semanas subiendo un 45%.",
+    whats_not_working: "Elena Ruiz compró Tarta de Zanahoria hace 21 días y no volvió. Luis Martín compró Hogaza de Centeno hace 18 días y desapareció. Alguien dejó €39 en su carrito (Tarta de Zanahoria x1) sin completar la compra.",
+    signal: "Pedro Sánchez suele comprar cada 12 días. Lleva 5 días. ¿Preparamos su Volcán de Chocolate? El Día del Padre está a 9 días y los viernes vendemos media de €180 — este viernes toca preparar.",
+    upcoming: "Viernes es nuestro día fuerte — stock extra de Volcán de Chocolate para Pedro y los habituales. Y lanzar la campaña del Día del Padre esta semana para que la gente encargue con tiempo.",
+    gap: "Si recuperamos a Elena (€89) y Luis (€46), rescatamos el carrito abandonado (€39), y Pedro repite (~€50), sumamos €224 extra esta semana.",
   },
   actions: [
     {
       type: "email_campaign",
-      title: "Recuperar a Elena Ruiz",
-      description: "Elena Ruiz lleva 21 días sin comprar, gastó €89.50 en Tarta de Zanahoria (customer_intelligence.lost_customers). Enviar hoy.",
+      title: "Recuperar clientes perdidos",
+      description: "5 clientes compraron una vez y no volvieron — Elena (21d, €89), Luis (18d, €46), Sara (16d, €38), Marta (15d, €35), Carlos (14d, €32). Enviar hoy.",
       priority: "high",
-      time_estimate: "5 min",
+      time_estimate: "10 min",
       content: {
         email_subject: "María ya ha repetido 6 veces",
-        email_body: "Elena, la Tarta de Zanahoria que pediste hace 3 semanas la horneamos los martes y viernes a las 6 de la mañana. María la pide cada semana. Este viernes quedan 4. ¿Te reservo una?",
-        email_recipients: ["elena@mail.com"],
+        email_body: "Emails personalizados por cliente:\n\n→ Elena: \"Elena, ¿te acuerdas de la Tarta de Zanahoria? La horneamos fresca cada martes y viernes a las 6 de la mañana. Este viernes quedan 4. ¿Te reservo una?\"\n\n→ Luis: \"Luis, la Hogaza de Centeno que probaste el mes pasado sale del horno cada lunes y jueves. Esta semana la hicimos con nueces nuevas de temporada. ¿Te guardo una?\"\n\n→ Sara: \"Sara, el Volcán de Chocolate que pediste sigue siendo nuestro bestseller. Lo hacemos con cacao puro cada miércoles. ¿Repetimos?\"\n\n→ Marta: \"Marta, las Galletas de Avena que compraste las horneamos cada mañana. Esta semana añadimos chips de chocolate negro. ¿Te apetece probarlas?\"\n\n→ Carlos: \"Carlos, la Hogaza de Pasas y Nueces que pediste sale recién hecha cada martes. Las pasas son de Málaga y las nueces crujientes. ¿Te reservo una?\"",
+        email_recipients: ["elena@mail.com", "luis@mail.com", "sara@mail.com", "marta@mail.com", "carlos@mail.com"],
       },
       plan_required: "growth",
     },
     {
-      type: "discount_code",
-      title: "Rescatar carrito de Ana López",
-      description: "Ana López dejó Tarta de Zanahoria (€39) en el carrito sin completar (customer_intelligence.abandoned_carts). Es visitante nueva — el descuento la convierte.",
+      type: "whatsapp_message",
+      title: "Nudge a Pedro Sánchez",
+      description: "Pedro compra cada 12 días, lleva 5. Su favorito es Volcán de Chocolate (customer_intelligence.about_to_repeat). Enviar mañana jueves.",
       priority: "high",
       time_estimate: "5 min",
       content: {
-        copy: "Ana, tu Tarta de Zanahoria te espera. La horneamos cada mañana con zanahoria rallada fresca y sin azúcar añadido. La masa se deshace sola. PRIMERA10 para un 10% en tu primer pedido → latahonadelucia.es",
-        discount_code: "PRIMERA10",
-        discount_percentage: 10,
-        discount_product: "Tarta de Zanahoria",
+        copy: "Pedro, este viernes horneamos Volcán de Chocolate por la mañana — con el cacao que te gusta. ¿Te reservo uno? 🍫",
       },
-      plan_required: "growth",
+      plan_required: "pro",
     },
     {
       type: "instagram_post",
@@ -459,17 +474,6 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
         copy: "Me acabo de comer una tarta entera. ENTERA. Y es sin gluten. Y sin azúcar añadido. La masa se deshace, el relleno de zanahoria rallada del día tiene ese punto dulce que no empalaga, y el mejor plot twist: no me siento culpable. latahonadelucia.es 🥕",
       },
       plan_required: "growth",
-    },
-    {
-      type: "whatsapp_message",
-      title: "Nudge a Pedro Sánchez",
-      description: "Pedro Sánchez compra cada 12 días, su próximo pedido debería ser en 2 días (customer_intelligence.about_to_repeat). Su favorito es Volcán de Chocolate.",
-      priority: "medium",
-      time_estimate: "5 min",
-      content: {
-        copy: "Pedro, este viernes horneamos Volcán de Chocolate por la mañana — con el cacao que te gusta. ¿Te reservo uno? 🍫",
-      },
-      plan_required: "pro",
     },
   ],
 }, null, 2);

@@ -95,7 +95,14 @@ function buildCustomerIntelSummary(analystOutput: AnalystOutput): string {
   if (ci.abandoned_carts.length > 0) {
     lines.push(`Abandoned carts: ${ci.abandoned_carts.map(c => `${c.customer_name} (€${c.total_value})`).join(', ')}`);
   }
-  lines.push('VERIFY: Every email_campaign targets a specific person. Every discount references the abandoned product. No generic "email inactive customers".');
+  lines.push('\nVERIFY ALL OF THESE:');
+  lines.push('- email_campaign MUST have real email addresses in email_recipients from lost customers');
+  lines.push('- email_body MUST mention each person by name + their specific product');
+  lines.push('- yesterday_summary MUST include "Tienes X clientes. Y son habituales, Z compraron una vez..."');
+  lines.push('- about_to_repeat customers MUST appear by name in the narrative');
+  lines.push('- abandoned carts MUST list the product names, not just the amount');
+  lines.push('- star customers MUST appear by name in whats_working');
+  lines.push('If ANY of these are missing → ADD them. This is not optional.');
   return lines.join('\n');
 }
 
