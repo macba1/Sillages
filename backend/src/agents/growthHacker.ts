@@ -95,11 +95,11 @@ BAD examples (NEVER do this):
 ═══════════════════════════════════════════════════════════════════
 RULE 2: PRIORITIZE by category
 ═══════════════════════════════════════════════════════════════════
-- If cart_abandonment_rate > 0.20 → MUST include a conversion action (discount_code)
+- If customer_intelligence has 3+ lost_customers → MUST include email_campaign (MANDATORY — see Rule 11A)
+- If customer_intelligence has about_to_repeat → MUST include whatsapp_message or email for them
+- If abandoned_carts exist → MUST include a discount_code action
 - If new_customer_count == 0 → MUST include an acquisition/social action (instagram_post)
-- If overdue_customers is not empty → MUST include a retention action (email_campaign)
 - If seo issues exist → include 1 SEO fix (seo_fix)
-- Always include at least 1 merchandising action (product_highlight)
 
 ═══════════════════════════════════════════════════════════════════
 RULE 3: THE LOOP — MEASURE AND CORRECT
@@ -169,12 +169,14 @@ RULE 11: CUSTOMER INTELLIGENCE IS MANDATORY — USE EVERY NAME
 ═══════════════════════════════════════════════════════════════════
 If customer_intelligence is provided, you MUST follow ALL of these:
 
-A) LOST CUSTOMERS → MANDATORY email_campaign action:
-   - Pick the top 5 lost customers by spend
-   - email_recipients = their REAL emails
-   - email_body must be PERSONALIZED per person: mention the SPECIFIC product they bought
-   - Format: "[Nombre], ¿te acuerdas de [producto que compró]? La hacemos fresca cada [día]. Este [día] queda una con tu nombre."
-   - NEVER write generic emails like "Vuelve a visitarnos" — each person gets their product mentioned
+A) LOST CUSTOMERS → MANDATORY email_campaign action (if 3+ lost customers exist):
+   - This is NOT optional. If there are 3+ lost customers, you MUST generate an email_campaign action. NO EXCEPTIONS.
+   - Pick the top 5 lost customers by spend from customer_intelligence.lost_customers
+   - email_recipients = their REAL email addresses from the data
+   - email_body must list EACH person with their own personalized message referencing the SPECIFIC product they bought:
+     "→ [Nombre]: '[Nombre], ¿te acuerdas de [producto]? La hacemos fresca cada [día]. Este [día] queda una con tu nombre.'"
+   - One email_body with ALL 5 personalized messages separated by \n\n
+   - NEVER write a single generic email for all — each person's line mentions THEIR product
 
 B) ABOUT-TO-REPEAT → MUST appear in brief narrative:
    - For each about-to-repeat customer, write: "[Nombre] suele comprar cada X días. Lleva Y días. ¿Preparamos su [producto favorito]?"
@@ -314,7 +316,7 @@ function buildGrowthHackerUserPrompt(input: GrowthHackerInput): string {
 - Differentiation: ${input.brandProfile.competitor_differentiation}\n`
     : '';
 
-  // Build customer intelligence block
+  // Build customer intelligence block — BEFORE analyst data for priority
   const ciBlock = buildCustomerIntelBlock(analystOutput.customer_intelligence);
 
   return `Generate a daily brief and growth actions for ${ownerName}, owner of "${storeName}".
@@ -322,21 +324,28 @@ Language: ${language}. Currency: ${currency} (symbol: ${cs}). Date: ${briefDate}
 ${toneNote}
 ${focusNote}
 ${brandBlock}
-ANALYST DATA (from the data analyst agent):
-${JSON.stringify({ ...analystOutput, customer_intelligence: undefined }, null, 2)}
 
+════════════════════════════════════════════════════════════════
+HIGHEST PRIORITY DATA — CUSTOMER INTELLIGENCE (from real Shopify orders)
+════════════════════════════════════════════════════════════════
+This is REAL customer data from the last 60 days. Use these numbers for the customer base line.
+Use these NAMES in the brief and actions. This data overrides the analyst's retention section.
 ${ciBlock}
+════════════════════════════════════════════════════════════════
+
+ANALYST DATA (from the data analyst agent — use for products, trends, calendar, SEO):
+${JSON.stringify({ ...analystOutput, customer_intelligence: undefined }, null, 2)}
 
 OUTPUT FORMAT — return exactly this JSON:
 {
   "brief_narrative": {
     "greeting": "<1 sentence. Address ${ownerName} by name. Warm, personal opening that hints at the key finding.>",
-    "yesterday_summary": "<2-3 sentences. What happened yesterday — revenue, orders, top product. Connect it to what it means for this week. Use ${cs} for currency.>",
-    "whats_working": "<2-3 sentences. What's going well based on the analyst data. Use real product names and numbers.>",
-    "whats_not_working": "<2-3 sentences. What needs attention. Be honest but constructive. Don't mention sessions/traffic if data unavailable.>",
-    "signal": "<2-3 sentences. The most important pattern or insight from the analyst. Forward-looking — what does this mean for the coming days? If actions_history has results, reference them here.>",
-    "upcoming": "<2-3 sentences. Based on weekly_patterns, calendar_opportunities, and upcoming data, what should the owner prepare for? Mention specific days and products.>",
-    "gap": "<2-3 sentences. The single biggest opportunity with a realistic estimated upside in ${cs}.>"
+    "yesterday_summary": "<MUST include: 'Tienes [total] clientes. [repeat] son habituales, [one_time] compraron una vez y no volvieron, [new_this_week] son nuevos esta semana.' Then what happened yesterday — revenue, orders, who bought.>",
+    "whats_working": "<2-3 sentences. MUST mention star customers BY NAME: '[Nombre] ya lleva [N] pedidos y €[total]. Su favorito: [producto].' Then trends.>",
+    "whats_not_working": "<2-3 sentences. MUST mention lost customers BY NAME and what they bought. MUST list abandoned cart products by name.>",
+    "signal": "<2-3 sentences. MUST mention about-to-repeat customers: '[Nombre] suele comprar cada X días. Lleva Y días. ¿Preparamos su [producto favorito]?' Then forward-looking insight.>",
+    "upcoming": "<2-3 sentences. Based on weekly_patterns, calendar_opportunities, and about-to-repeat customers. Mention specific days and products.>",
+    "gap": "<2-3 sentences. Calculate: if we recover lost customers + rescue abandoned carts + about-to-repeat buy = €X total. Be specific with names and amounts.>"
   },
   "actions": [
     {
