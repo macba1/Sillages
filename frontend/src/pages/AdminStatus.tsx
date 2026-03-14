@@ -104,7 +104,7 @@ export default function AdminStatus() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await api.get('/admin/status');
+      const res = await api.get('/api/admin/status');
       setData(res.data);
       setError(null);
       setLastRefresh(new Date());
