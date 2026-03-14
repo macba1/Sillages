@@ -13,10 +13,58 @@ import { ensureTokenFresh } from '../lib/shopify.js';
 const ADMIN_EMAIL = 'tony@richmondpartner.com';
 const LOG = '[auditor]';
 
-// ── Start auditor (runs every hour at :30) ──────────────────────────────────
+// ── Alert deduplication ─────────────────────────────────────────────────────
+
+interface CriticalAlert {
+  alert_type: string;
+  account_id: string | null;
+  message: string;
+}
+
+/**
+ * Check if an alert of the same type+account was already sent in the last 24h.
+ * If not, record it and return true (should send). If yes, return false (skip).
+ */
+async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600000).toISOString();
+
+  try {
+    let query = supabase
+      .from('admin_alerts')
+      .select('id')
+      .eq('alert_type', alert.alert_type)
+      .gte('sent_at', twentyFourHoursAgo)
+      .limit(1);
+
+    if (alert.account_id) {
+      query = query.eq('account_id', alert.account_id);
+    } else {
+      query = query.is('account_id', null);
+    }
+
+    const { data: existing } = await query;
+    if (existing && existing.length > 0) {
+      console.log(`${LOG} Skipping duplicate alert: ${alert.alert_type} (sent within 24h)`);
+      return false;
+    }
+
+    // Record this alert
+    await supabase.from('admin_alerts').insert({
+      alert_type: alert.alert_type,
+      account_id: alert.account_id,
+      message: alert.message,
+    });
+
+    return true;
+  } catch {
+    // Table may not exist yet — send anyway to be safe
+    return true;
+  }
+}
+
+// ── Start auditor (runs every 6 hours) ──────────────────────────────────────
 
 export function startAuditor(): void {
-  // Run at :30 every 6 hours (00:30, 06:30, 12:30, 18:30) instead of every hour
   cron.schedule('30 */6 * * *', () => {
     runAudit().catch(err => {
       console.error(`${LOG} Unhandled error:`, err);
@@ -32,7 +80,7 @@ export async function runAudit(): Promise<void> {
   const start = Date.now();
   console.log(`${LOG} ══════ Audit started at ${new Date().toISOString()} ══════`);
 
-  const alerts: string[] = [];
+  const criticalAlerts: CriticalAlert[] = [];
 
   // Load all active accounts
   const { data: accounts } = await supabase
@@ -48,35 +96,25 @@ export async function runAudit(): Promise<void> {
   console.log(`${LOG} Auditing ${accounts.length} active account(s)`);
 
   // Run all checks
-  await checkBriefs(accounts, alerts);
-  await checkTokens(accounts, alerts);
-  await checkStaleActions(alerts);
-  await checkDataFreshness(accounts, alerts);
+  await checkBriefs(accounts, criticalAlerts);
+  await checkTokens(accounts, criticalAlerts);
+  await checkStaleActions(criticalAlerts);
+  await checkDataFreshness(accounts, criticalAlerts);
   await measurePreviousActions(accounts);
 
-  // Send alert email if anything critical was found (deduplicated)
-  if (alerts.length > 0) {
-    // Check if we already sent similar alerts recently (within 6 hours)
-    const sixHoursAgo = new Date(Date.now() - 6 * 3600000).toISOString();
-    let recentAlertCount = 0;
-    try {
-      const { data: recentAudits } = await supabase
-        .from('audit_log')
-        .select('alerts_count')
-        .gte('ran_at', sixHoursAgo)
-        .gt('alerts_count', 0)
-        .limit(1);
-      recentAlertCount = recentAudits?.length ?? 0;
-    } catch {
-      // audit_log may not exist
+  // Filter to only NEW alerts (not sent in last 24h)
+  const newAlerts: CriticalAlert[] = [];
+  for (const alert of criticalAlerts) {
+    if (await shouldSendAlert(alert)) {
+      newAlerts.push(alert);
     }
+  }
 
-    if (recentAlertCount > 0) {
-      console.log(`${LOG} ${alerts.length} alert(s) found but similar alerts sent within 6h — skipping email`);
-    } else {
-      console.log(`${LOG} ${alerts.length} alert(s) found — sending email to admin`);
-      await sendAlertEmail(alerts);
-    }
+  if (newAlerts.length > 0) {
+    console.log(`${LOG} ${newAlerts.length} NEW critical alert(s) — sending email`);
+    await sendAlertEmail(newAlerts.map(a => a.message));
+  } else if (criticalAlerts.length > 0) {
+    console.log(`${LOG} ${criticalAlerts.length} alert(s) found but all already sent within 24h — no email`);
   } else {
     console.log(`${LOG} All clear — no issues found`);
   }
@@ -84,12 +122,12 @@ export async function runAudit(): Promise<void> {
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`${LOG} ══════ Audit complete in ${elapsed}s ══════`);
 
-  // Record this audit run (audit_log table may not exist — non-fatal)
+  // Record this audit run
   try {
     await supabase.from('audit_log').insert({
       ran_at: new Date().toISOString(),
-      alerts_count: alerts.length,
-      alerts: alerts.length > 0 ? alerts : null,
+      alerts_count: criticalAlerts.length,
+      alerts: criticalAlerts.length > 0 ? criticalAlerts.map(a => a.message) : null,
       duration_ms: Date.now() - start,
     });
   } catch {
@@ -101,7 +139,7 @@ export async function runAudit(): Promise<void> {
 
 async function checkBriefs(
   accounts: Array<{ id: string; email: string; language: string | null }>,
-  alerts: string[],
+  alerts: CriticalAlert[],
 ): Promise<void> {
   console.log(`${LOG} [briefs] Checking brief freshness...`);
 
@@ -109,7 +147,6 @@ async function checkBriefs(
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
   for (const account of accounts) {
-    // Check if there's a brief for today or yesterday
     const { data: brief } = await supabase
       .from('intelligence_briefs')
       .select('brief_date, status, generation_error')
@@ -120,7 +157,6 @@ async function checkBriefs(
       .maybeSingle();
 
     if (!brief) {
-      // No brief at all — check if they have any snapshot to work with
       const { data: lastSnap } = await supabase
         .from('shopify_daily_snapshots')
         .select('snapshot_date')
@@ -130,12 +166,8 @@ async function checkBriefs(
         .maybeSingle();
 
       if (lastSnap) {
-        const msg = `No brief for today/yesterday for ${account.email} (last snapshot: ${lastSnap.snapshot_date})`;
-        console.log(`${LOG} [briefs] ⚠️  ${msg}`);
-        alerts.push(msg);
-
-        // Try to generate a brief from the latest snapshot
-        console.log(`${LOG} [briefs] Retrying brief generation for ${account.email}...`);
+        // Try to generate — only alert if retry ALSO fails
+        console.log(`${LOG} [briefs] No brief for ${account.email} — retrying...`);
         try {
           await generateBrief({ accountId: account.id, briefDate: lastSnap.snapshot_date });
 
@@ -149,24 +181,39 @@ async function checkBriefs(
           if (newBrief?.status === 'ready') {
             console.log(`${LOG} [briefs] ✅ Brief regenerated for ${account.email}`);
             await sendBriefEmail(newBrief.id);
+          } else {
+            // Retry succeeded but brief not ready — CRITICAL
+            alerts.push({
+              alert_type: 'brief_failed',
+              account_id: account.id,
+              message: `Brief generation failed for ${account.email} after retry (status: ${newBrief?.status})`,
+            });
           }
         } catch (err) {
-          console.error(`${LOG} [briefs] Retry failed for ${account.email}:`, err instanceof Error ? err.message : err);
+          // Retry failed — CRITICAL
+          alerts.push({
+            alert_type: 'brief_failed',
+            account_id: account.id,
+            message: `Brief generation failed for ${account.email}: ${err instanceof Error ? err.message : err}`,
+          });
         }
       } else {
-        console.log(`${LOG} [briefs] ${account.email} — no snapshots at all (new account or disconnected)`);
+        // No snapshots at all — NOT critical (new account), just log
+        console.log(`${LOG} [briefs] ${account.email} — no snapshots (new account)`);
       }
     } else if (brief.status === 'failed') {
-      const msg = `Brief ${brief.brief_date} FAILED for ${account.email}: ${brief.generation_error}`;
-      console.log(`${LOG} [briefs] ⚠️  ${msg}`);
-      alerts.push(msg);
-
-      // Retry generation
-      console.log(`${LOG} [briefs] Retrying failed brief for ${account.email}...`);
+      // Try to retry
+      console.log(`${LOG} [briefs] Brief ${brief.brief_date} FAILED for ${account.email} — retrying...`);
       try {
         await generateBrief({ accountId: account.id, briefDate: brief.brief_date });
+        console.log(`${LOG} [briefs] ✅ Brief retried for ${account.email}`);
       } catch (err) {
-        console.error(`${LOG} [briefs] Retry failed:`, err instanceof Error ? err.message : err);
+        // Retry also failed — CRITICAL
+        alerts.push({
+          alert_type: 'brief_failed',
+          account_id: account.id,
+          message: `Brief ${brief.brief_date} FAILED for ${account.email} and retry failed: ${err instanceof Error ? err.message : err}`,
+        });
       }
     } else {
       console.log(`${LOG} [briefs] ✅ ${account.email} — brief ${brief.brief_date} status: ${brief.status}`);
@@ -178,7 +225,7 @@ async function checkBriefs(
 
 async function checkTokens(
   accounts: Array<{ id: string; email: string; language: string | null }>,
-  alerts: string[],
+  alerts: CriticalAlert[],
 ): Promise<void> {
   console.log(`${LOG} [tokens] Checking Shopify tokens...`);
 
@@ -189,36 +236,34 @@ async function checkTokens(
   if (!connections || connections.length === 0) return;
 
   for (const conn of connections) {
-    // Skip already-invalid tokens (admin has been alerted, waiting for manual reconnection)
     if (conn.token_status === 'invalid') {
       const account = accounts.find(a => a.id === conn.account_id);
       const hoursSinceFailure = conn.token_failing_since
         ? Math.floor((Date.now() - new Date(conn.token_failing_since).getTime()) / 3600000)
         : 0;
 
-      console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — invalid for ${hoursSinceFailure}h, waiting for reconnection`);
+      console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — invalid for ${hoursSinceFailure}h`);
 
-      // Send escalated alert if >72h
+      // Only alert for CRITICAL: >72h invalid
       if (hoursSinceFailure > 72) {
-        alerts.push(`CRITICAL: ${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h — consider sending reconnect link manually`);
-      } else if (hoursSinceFailure > 24) {
-        alerts.push(`${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h`);
+        alerts.push({
+          alert_type: 'token_invalid_critical',
+          account_id: conn.account_id,
+          message: `CRITICAL: ${conn.shop_domain} (${account?.email}) token invalid for ${hoursSinceFailure}h — send reconnect link manually`,
+        });
       }
       continue;
     }
 
-    // For 'failing' tokens, check if enough time has passed for a retry
     if (conn.token_status === 'failing' && conn.token_failing_since) {
       if (!shouldRetryNow(conn.token_retry_count ?? 0, conn.token_failing_since)) {
-        console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — failing (retry ${conn.token_retry_count}/3), waiting for backoff`);
+        console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — failing (retry ${conn.token_retry_count}/3), waiting`);
         continue;
       }
     }
 
-    // Proactive refresh — if token expires within 2 hours, refresh now
     await ensureTokenFresh(conn.shop_domain, 2 * 3600000);
 
-    // Re-read token after potential refresh
     const { data: freshConn } = await supabase
       .from('shopify_connections')
       .select('access_token')
@@ -226,29 +271,28 @@ async function checkTokens(
       .single();
     const currentToken = freshConn?.access_token ?? conn.access_token;
 
-    // Test the token
     try {
       await axios.get(`https://${conn.shop_domain}/admin/api/2024-04/shop.json`, {
         headers: { 'X-Shopify-Access-Token': currentToken },
         timeout: 10000,
       });
-
-      // Token works — reset to healthy
       await markTokenHealthy(conn.shop_domain);
       console.log(`${LOG} [tokens] ✅ ${conn.shop_domain} — token valid`);
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : null;
       if (status === 401 || status === 403) {
-        // Use tokenGuard for graduated retry + alerting
         const canRetry = await handleTokenFailure(conn.shop_domain);
         const account = accounts.find(a => a.id === conn.account_id);
 
-        if (canRetry) {
-          console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — failing, will retry later`);
+        if (!canRetry) {
+          // Token exhausted all retries — CRITICAL, first time going invalid
+          alerts.push({
+            alert_type: 'token_invalid_new',
+            account_id: conn.account_id,
+            message: `Token INVALID for ${conn.shop_domain} (${account?.email}) — all retries exhausted`,
+          });
         } else {
-          const msg = `Token INVALID for ${conn.shop_domain} (${account?.email}) — admin alerted, merchant NOT notified`;
-          console.log(`${LOG} [tokens] ❌ ${msg}`);
-          alerts.push(msg);
+          console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — failing, will retry later`);
         }
       } else {
         console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — non-auth error: ${axios.isAxiosError(err) ? err.response?.status : err}`);
@@ -259,12 +303,11 @@ async function checkTokens(
 
 // ── CHECK 3: Acciones estancadas ────────────────────────────────────────────
 
-async function checkStaleActions(alerts: string[]): Promise<void> {
+async function checkStaleActions(alerts: CriticalAlert[]): Promise<void> {
   console.log(`${LOG} [actions] Checking stale actions...`);
 
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 
-  // Find actions that are 'approved' but never executed (approved_at > 1 hour ago)
   const { data: stale } = await supabase
     .from('pending_actions')
     .select('id, account_id, type, title, approved_at')
@@ -278,18 +321,22 @@ async function checkStaleActions(alerts: string[]): Promise<void> {
   }
 
   console.log(`${LOG} [actions] ⚠️  Found ${stale.length} stale action(s) — retrying execution`);
-  alerts.push(`${stale.length} action(s) stuck in 'approved' without execution for >1 hour`);
+
+  // Only alert if >3 stale actions (occasional stale is normal)
+  if (stale.length >= 3) {
+    alerts.push({
+      alert_type: 'stale_actions',
+      account_id: null,
+      message: `${stale.length} action(s) stuck in 'approved' without execution for >1 hour`,
+    });
+  }
 
   for (const action of stale) {
     console.log(`${LOG} [actions] Retrying: ${action.type} "${action.title}" (${action.id})`);
-
-    // Re-set to pending so the approve flow can re-execute
     await supabase
       .from('pending_actions')
       .update({ status: 'pending', approved_at: null })
       .eq('id', action.id);
-
-    console.log(`${LOG} [actions] Reset ${action.id} to pending for retry`);
   }
 }
 
@@ -297,7 +344,7 @@ async function checkStaleActions(alerts: string[]): Promise<void> {
 
 async function checkDataFreshness(
   accounts: Array<{ id: string; email: string; language: string | null }>,
-  alerts: string[],
+  alerts: CriticalAlert[],
 ): Promise<void> {
   console.log(`${LOG} [freshness] Checking data freshness...`);
 
@@ -321,24 +368,28 @@ async function checkDataFreshness(
       const daysBehind = Math.floor(
         (new Date(yesterday).getTime() - new Date(latestSnap.snapshot_date).getTime()) / 86400000,
       );
-      console.log(`${LOG} [freshness] ⚠️  ${account.email} — data is ${daysBehind} day(s) behind (last: ${latestSnap.snapshot_date})`);
+      console.log(`${LOG} [freshness] ⚠️  ${account.email} — data is ${daysBehind} day(s) behind`);
 
-      if (daysBehind >= 2) {
-        alerts.push(`${account.email} data is ${daysBehind} days stale (last snapshot: ${latestSnap.snapshot_date})`);
-      }
-
-      // Try to sync
-      console.log(`${LOG} [freshness] Attempting sync for ${account.email}...`);
+      // Try to sync silently
       try {
         await syncYesterdayForAccount(account.id);
         console.log(`${LOG} [freshness] ✅ Sync successful for ${account.email}`);
       } catch (err) {
         const status = axios.isAxiosError(err) ? err.response?.status : null;
         if (status === 401 || status === 403) {
-          console.log(`${LOG} [freshness] ${account.email} — Shopify token invalid, can't sync`);
+          console.log(`${LOG} [freshness] ${account.email} — token invalid, can't sync`);
         } else {
           console.error(`${LOG} [freshness] Sync failed for ${account.email}:`, err instanceof Error ? err.message : err);
         }
+      }
+
+      // Only alert if data is 3+ days stale (not for 1-2 day gaps — those self-resolve)
+      if (daysBehind >= 3) {
+        alerts.push({
+          alert_type: 'data_stale',
+          account_id: account.id,
+          message: `${account.email} data is ${daysBehind} days stale (last: ${latestSnap.snapshot_date}). Sync attempted.`,
+        });
       }
     } else {
       console.log(`${LOG} [freshness] ✅ ${account.email} — data up to date (${latestSnap.snapshot_date})`);
@@ -346,7 +397,7 @@ async function checkDataFreshness(
   }
 }
 
-// ── CHECK 5: Measure previous actions (improvement loop) ────────────────────
+// ── CHECK 5: Measure previous actions ────────────────────────────────────────
 
 async function measurePreviousActions(
   accounts: Array<{ id: string; email: string; language: string | null }>,
@@ -355,7 +406,6 @@ async function measurePreviousActions(
 
   const twoDaysAgo = new Date(Date.now() - 48 * 3600000).toISOString();
 
-  // Find completed actions from the last 48h that haven't been measured yet
   const { data: completedActions } = await supabase
     .from('pending_actions')
     .select('id, account_id, type, title, content, result, executed_at')
@@ -369,7 +419,6 @@ async function measurePreviousActions(
   }
 
   for (const action of completedActions) {
-    // Skip if already measured
     const result = action.result as Record<string, unknown> | null;
     if (result?.measured_impact) continue;
 
@@ -379,7 +428,6 @@ async function measurePreviousActions(
       } else if (action.type === 'product_highlight') {
         await measureProductHighlight(action);
       }
-      // Other types don't have automated measurement yet
     } catch (err) {
       console.error(`${LOG} [measure] Failed to measure action ${action.id}:`, err instanceof Error ? err.message : err);
     }
@@ -392,37 +440,26 @@ async function measureDiscount(action: {
   const discountCode = (action.content?.discount_code as string) ?? (action.result?.code as string);
   if (!discountCode) return;
 
-  // Get Shopify connection
   const { data: conn } = await supabase
     .from('shopify_connections')
     .select('shop_domain, access_token, token_status')
     .eq('account_id', action.account_id)
     .single();
 
-  if (!conn || conn.token_status === 'invalid') {
-    console.log(`${LOG} [measure] Cannot measure discount ${discountCode} — no valid connection`);
-    return;
-  }
+  if (!conn || conn.token_status === 'invalid') return;
 
-  // Check orders with this discount code via REST API
   try {
     const resp = await axios.get(
       `https://${conn.shop_domain}/admin/api/2024-04/orders.json`,
       {
         headers: { 'X-Shopify-Access-Token': conn.access_token },
-        params: {
-          status: 'any',
-          limit: 50,
-          fields: 'id,total_price,discount_codes,created_at',
-        },
+        params: { status: 'any', limit: 50, fields: 'id,total_price,discount_codes,created_at' },
         timeout: 10000,
       },
     );
 
     const orders = resp.data.orders as Array<{
-      id: number;
-      total_price: string;
-      discount_codes: Array<{ code: string; amount: string }>;
+      id: number; total_price: string; discount_codes: Array<{ code: string; amount: string }>;
     }>;
 
     const matchingOrders = orders.filter(o =>
@@ -432,24 +469,19 @@ async function measureDiscount(action: {
     const timesUsed = matchingOrders.length;
     const revenueGenerated = matchingOrders.reduce((sum, o) => sum + parseFloat(o.total_price), 0);
 
-    // Update the action result with measured impact
-    const updatedResult = {
-      ...(action.result ?? {}),
-      measured_impact: {
-        times_used: timesUsed,
-        revenue_generated: revenueGenerated,
-        measured_at: new Date().toISOString(),
-      },
-    };
-
     await supabase
       .from('pending_actions')
-      .update({ result: updatedResult })
+      .update({
+        result: {
+          ...(action.result ?? {}),
+          measured_impact: { times_used: timesUsed, revenue_generated: revenueGenerated, measured_at: new Date().toISOString() },
+        },
+      })
       .eq('id', action.id);
 
-    console.log(`${LOG} [measure] Discount ${discountCode}: used ${timesUsed} times, €${revenueGenerated.toFixed(2)} revenue`);
+    console.log(`${LOG} [measure] Discount ${discountCode}: ${timesUsed} uses, €${revenueGenerated.toFixed(2)}`);
   } catch (err) {
-    console.error(`${LOG} [measure] Failed to check orders for discount ${discountCode}:`, err instanceof Error ? err.message : err);
+    console.error(`${LOG} [measure] Failed to check discount ${discountCode}:`, err instanceof Error ? err.message : err);
   }
 }
 
@@ -459,11 +491,9 @@ async function measureProductHighlight(action: {
   const productTitle = action.result?.product as string;
   if (!productTitle) return;
 
-  // Compare today's snapshot product sales vs the day before highlight
   const executedAt = action.result?.executed_at ?? new Date().toISOString();
   const executedDate = typeof executedAt === 'string' ? executedAt.slice(0, 10) : new Date().toISOString().slice(0, 10);
 
-  // Get snapshots after the highlight was applied
   const { data: snapshots } = await supabase
     .from('shopify_daily_snapshots')
     .select('snapshot_date, top_products')
@@ -474,7 +504,6 @@ async function measureProductHighlight(action: {
 
   if (!snapshots || snapshots.length === 0) return;
 
-  // Count sales of the highlighted product after the action
   let totalUnits = 0;
   let totalRevenue = 0;
   for (const snap of snapshots) {
@@ -486,36 +515,36 @@ async function measureProductHighlight(action: {
     }
   }
 
-  const updatedResult = {
-    ...(action.result ?? {}),
-    measured_impact: {
-      sales_after_highlight: totalUnits,
-      revenue_after_highlight: totalRevenue,
-      days_measured: snapshots.length,
-      measured_at: new Date().toISOString(),
-    },
-  };
-
   await supabase
     .from('pending_actions')
-    .update({ result: updatedResult })
+    .update({
+      result: {
+        ...(action.result ?? {}),
+        measured_impact: {
+          sales_after_highlight: totalUnits,
+          revenue_after_highlight: totalRevenue,
+          days_measured: snapshots.length,
+          measured_at: new Date().toISOString(),
+        },
+      },
+    })
     .eq('id', action.id);
 
-  console.log(`${LOG} [measure] Product highlight "${productTitle}": ${totalUnits} units, €${totalRevenue.toFixed(2)} in ${snapshots.length} days after`);
+  console.log(`${LOG} [measure] Product "${productTitle}": ${totalUnits} units, €${totalRevenue.toFixed(2)} in ${snapshots.length} days`);
 }
 
-// ── Alert email to admin ────────────────────────────────────────────────────
+// ── Alert email to admin (only for NEW critical alerts) ─────────────────────
 
-async function sendAlertEmail(alerts: string[]): Promise<void> {
-  const alertList = alerts.map((a, i) => `<li style="margin:8px 0;color:#2A1F14;">${i + 1}. ${a}</li>`).join('');
+async function sendAlertEmail(messages: string[]): Promise<void> {
+  const alertList = messages.map((a, i) => `<li style="margin:8px 0;color:#2A1F14;">${i + 1}. ${a}</li>`).join('');
 
   const html = `
     <div style="max-width:600px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
-      <h2 style="color:#D35400;margin:0 0 16px;">⚠️ Sillages Auditor Alert</h2>
-      <p style="color:#2A1F14;font-size:14px;">The auditor found ${alerts.length} issue(s) at ${new Date().toISOString()}:</p>
+      <h2 style="color:#D35400;margin:0 0 16px;">⚠️ Sillages — Critical Alert</h2>
+      <p style="color:#2A1F14;font-size:14px;">${messages.length} new issue(s) found at ${new Date().toISOString().slice(0, 16)}:</p>
       <ol style="font-size:14px;line-height:1.6;">${alertList}</ol>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-      <p style="font-size:11px;color:#A89880;">Sillages Auditor — automated system health check</p>
+      <p style="font-size:11px;color:#A89880;">These alerts won't repeat for 24h. Check <a href="${env.FRONTEND_URL}/admin/status">admin status</a> for live view.</p>
     </div>
   `;
 
@@ -523,7 +552,7 @@ async function sendAlertEmail(alerts: string[]): Promise<void> {
     await resend.emails.send({
       from: `Sillages Auditor <alerts@sillages.app>`,
       to: ADMIN_EMAIL,
-      subject: `[Sillages] ${alerts.length} auditor alert(s) — ${new Date().toISOString().slice(0, 16)}`,
+      subject: `[Sillages] ${messages.length} critical alert(s)`,
       html,
     });
     console.log(`${LOG} Alert email sent to ${ADMIN_EMAIL}`);

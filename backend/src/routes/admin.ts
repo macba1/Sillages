@@ -51,4 +51,107 @@ router.post('/run-auditor', requireAuth, requireAdmin, async (req: Request, res:
   }
 });
 
+// GET /api/admin/status
+// Returns full system status for the admin dashboard
+router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    // 1. All accounts with their connection status
+    const { data: accounts } = await supabase
+      .from('accounts')
+      .select('id, email, full_name, language, subscription_status')
+      .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
+
+    const stores = [];
+    for (const account of accounts ?? []) {
+      // Connection info
+      const { data: conn } = await supabase
+        .from('shopify_connections')
+        .select('shop_domain, shop_name, token_status, token_failing_since, token_retry_count')
+        .eq('account_id', account.id)
+        .maybeSingle();
+
+      // Latest brief
+      const { data: brief } = await supabase
+        .from('intelligence_briefs')
+        .select('brief_date, status, generated_at, generation_error')
+        .eq('account_id', account.id)
+        .order('brief_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Latest executed action
+      const { data: lastAction } = await supabase
+        .from('pending_actions')
+        .select('type, title, status, executed_at')
+        .eq('account_id', account.id)
+        .not('executed_at', 'is', null)
+        .order('executed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Pending actions count
+      const { count: pendingCount } = await supabase
+        .from('pending_actions')
+        .select('*', { count: 'exact', head: true })
+        .eq('account_id', account.id)
+        .eq('status', 'pending');
+
+      stores.push({
+        account_id: account.id,
+        email: account.email,
+        name: account.full_name,
+        subscription: account.subscription_status ?? 'null',
+        shop_domain: conn?.shop_domain ?? null,
+        shop_name: conn?.shop_name ?? null,
+        token_status: conn?.token_status ?? 'no_connection',
+        token_failing_since: conn?.token_failing_since ?? null,
+        last_brief_date: brief?.brief_date ?? null,
+        last_brief_status: brief?.status ?? null,
+        last_brief_generated_at: brief?.generated_at ?? null,
+        last_brief_error: brief?.generation_error ?? null,
+        last_action_type: lastAction?.type ?? null,
+        last_action_title: lastAction?.title ?? null,
+        last_action_executed: lastAction?.executed_at ?? null,
+        pending_actions: pendingCount ?? 0,
+      });
+    }
+
+    // 2. Recent admin alerts
+    let recentAlerts: Array<{ id: string; alert_type: string; account_id: string | null; message: string; sent_at: string }> = [];
+    try {
+      const { data } = await supabase
+        .from('admin_alerts')
+        .select('id, alert_type, account_id, message, sent_at')
+        .order('sent_at', { ascending: false })
+        .limit(20);
+      recentAlerts = (data ?? []) as typeof recentAlerts;
+    } catch {
+      // table may not exist
+    }
+
+    // 3. Last audit run
+    let lastAudit = null;
+    try {
+      const { data } = await supabase
+        .from('audit_log')
+        .select('ran_at, alerts_count, duration_ms')
+        .order('ran_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lastAudit = data;
+    } catch {
+      // table may not exist
+    }
+
+    res.json({
+      stores,
+      recent_alerts: recentAlerts,
+      last_audit: lastAudit,
+      server_time: new Date().toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

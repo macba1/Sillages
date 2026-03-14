@@ -18,6 +18,7 @@ import Actions from './pages/Actions';
 import Reconnect from './pages/Reconnect';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import AdminStatus from './pages/AdminStatus';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -135,6 +136,16 @@ export default function App() {
           element={
             <RequireAuth>
               <Settings />
+            </RequireAuth>
+          }
+        />
+
+        {/* Admin — requires auth, server-side admin check */}
+        <Route
+          path="/admin/status"
+          element={
+            <RequireAuth>
+              <AdminStatus />
             </RequireAuth>
           }
         />
