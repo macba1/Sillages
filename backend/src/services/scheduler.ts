@@ -6,6 +6,9 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
+import { generateWeeklyBrief } from './weeklyBriefGenerator.js';
+import { sendWeeklyBriefEmail } from './weeklyEmailSender.js';
+import { logCommunication } from './commLog.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 
@@ -97,7 +100,7 @@ async function runBriefPipeline(accountId: string): Promise<void> {
   console.log(`[scheduler] Starting brief pipeline for account: ${accountId}`);
 
   // Step 1: Sync yesterday's Shopify data — with 403 fallback
-  console.log(`[scheduler] [${accountId}] Step 1/3 — Shopify sync`);
+  console.log(`[scheduler] [${accountId}] Step 1 — Shopify sync`);
   let snapshotDate: string;
 
   // Get shop domain for tokenGuard tracking
@@ -175,10 +178,10 @@ async function runBriefPipeline(accountId: string): Promise<void> {
 
   try {
     // Step 2: Generate the AI brief
-    console.log(`[scheduler] [${accountId}] Step 2/3 — Brief generation`);
+    console.log(`[scheduler] [${accountId}] Step 2 — Brief generation`);
     await generateBrief({ accountId, briefDate: snapshotDate });
 
-    // Step 3: Look up the brief record and send the email
+    // Step 3: Look up the brief record
     const { data: brief, error: briefError } = await supabase
       .from('intelligence_briefs')
       .select('id, status')
@@ -187,31 +190,69 @@ async function runBriefPipeline(accountId: string): Promise<void> {
       .single();
 
     if (briefError || !brief) {
-      console.warn(`[scheduler] [${accountId}] Could not find brief after generation — skipping email`);
+      console.warn(`[scheduler] [${accountId}] Could not find brief after generation — skipping delivery`);
       return;
     }
 
     if (brief.status === 'failed') {
-      console.warn(`[scheduler] [${accountId}] Brief generation failed — skipping email`);
+      console.warn(`[scheduler] [${accountId}] Brief generation failed — skipping delivery`);
       return;
     }
 
-    console.log(`[scheduler] [${accountId}] Step 3/4 — Email delivery`);
-    await sendBriefEmail(brief.id);
+    // Step 3: Deliver daily brief — PUSH ONLY (email as fallback)
+    console.log(`[scheduler] [${accountId}] Step 3 — Daily delivery (push-first)`);
+    await deliverDailyBrief(accountId, brief.id, snapshotDate);
 
-    // Step 4: Push notification (non-blocking)
-    console.log(`[scheduler] [${accountId}] Step 4/4 — Push notification`);
+    // Step 4: Monday → also generate + send weekly brief email
+    const now = new Date();
+    const localDay = getLocalDayOfWeek(
+      (await getAccountTimezone(accountId)) ?? 'UTC',
+      now,
+    );
+
+    if (localDay === 1) {
+      // Monday — generate weekly brief for the previous week (Mon→Sun)
+      console.log(`[scheduler] [${accountId}] Step 4 — Monday: generating weekly brief`);
+      await runWeeklyPipeline(accountId, now);
+    }
+
+    console.log(`[scheduler] [${accountId}] Pipeline complete`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[scheduler] [${accountId}] Pipeline error: ${message}`);
+    // Don't rethrow — one account's failure shouldn't block the rest
+  }
+}
+
+// ── Daily delivery: push-first, email fallback ─────────────────────────────
+
+async function deliverDailyBrief(
+  accountId: string,
+  briefId: string,
+  snapshotDate: string,
+): Promise<void> {
+  // Check if account has push subscriptions
+  const { count: pushCount } = await supabase
+    .from('push_subscriptions')
+    .select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId);
+
+  const hasPush = (pushCount ?? 0) > 0;
+
+  // Load data for push notification content
+  const [{ data: fullBrief }, { data: conn }, { data: acc }, { count: actionCount }] = await Promise.all([
+    supabase.from('intelligence_briefs').select('section_yesterday, section_activation').eq('id', briefId).single(),
+    supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
+    supabase.from('accounts').select('language').eq('id', accountId).single(),
+    supabase.from('pending_actions').select('*', { count: 'exact', head: true }).eq('account_id', accountId).eq('brief_date', snapshotDate).eq('status', 'pending'),
+  ]);
+
+  const lang: 'en' | 'es' = (acc as { language?: string } | null)?.language === 'es' ? 'es' : 'en';
+
+  if (hasPush) {
+    // ── Push notification (primary channel) ──
+    console.log(`[scheduler] [${accountId}] Sending daily push notification`);
     try {
-      // Fetch brief data, pending actions count, and account language
-      const [{ data: fullBrief }, { data: conn }, { data: acc }, { count: actionCount }] = await Promise.all([
-        supabase.from('intelligence_briefs').select('section_yesterday, section_activation').eq('id', brief.id).single(),
-        supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
-        supabase.from('accounts').select('language').eq('id', accountId).single(),
-        supabase.from('pending_actions').select('*', { count: 'exact', head: true }).eq('account_id', accountId).eq('brief_date', snapshotDate).eq('status', 'pending'),
-      ]);
-
-      const lang: 'en' | 'es' = (acc as { language?: string } | null)?.language === 'es' ? 'es' : 'en';
-
       if (fullBrief?.section_yesterday) {
         const y = fullBrief.section_yesterday as { revenue: number; orders: number };
         const defaultStore = lang === 'es' ? 'Tu tienda' : 'Your store';
@@ -224,13 +265,11 @@ async function runBriefPipeline(accountId: string): Promise<void> {
         const yesterdayWord = lang === 'es' ? 'Ayer' : 'Yesterday';
         const n = actionCount ?? 0;
 
-        // If there are pending actions, highlight them; otherwise show brief ready
         let body: string;
         if (n > 0) {
-          const actionsWord = lang === 'es'
+          body = lang === 'es'
             ? `${n} ${n === 1 ? 'acción preparada' : 'acciones preparadas'}. Toca para aprobar.`
             : `${n} ${n === 1 ? 'action ready' : 'actions ready'}. Tap to approve.`;
-          body = actionsWord;
         } else {
           body = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
         }
@@ -241,17 +280,90 @@ async function runBriefPipeline(accountId: string): Promise<void> {
           url: '/dashboard',
         });
       }
-    } catch (pushErr) {
-      console.error(`[scheduler] [${accountId}] Push notification failed (non-blocking): ${(pushErr as Error).message}`);
-    }
 
-    console.log(`[scheduler] [${accountId}] Pipeline complete`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[scheduler] [${accountId}] Pipeline error: ${message}`);
-    // Don't rethrow — one account's failure shouldn't block the rest
+      await logCommunication({
+        account_id: accountId,
+        brief_id: briefId,
+        channel: 'push',
+        status: 'sent',
+      });
+    } catch (pushErr) {
+      console.error(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
+      await logCommunication({
+        account_id: accountId,
+        brief_id: briefId,
+        channel: 'push',
+        status: 'failed',
+        error_message: (pushErr as Error).message,
+      });
+
+      // Push failed — fall back to email
+      console.log(`[scheduler] [${accountId}] Falling back to email`);
+      await sendDailyEmail(accountId, briefId);
+    }
+  } else {
+    // ── No push subscriptions → email fallback ──
+    console.log(`[scheduler] [${accountId}] No push subscriptions — sending email fallback`);
+    await sendDailyEmail(accountId, briefId);
   }
 }
+
+async function sendDailyEmail(accountId: string, briefId: string): Promise<void> {
+  try {
+    await sendBriefEmail(briefId);
+    await logCommunication({
+      account_id: accountId,
+      brief_id: briefId,
+      channel: 'email',
+      status: 'sent',
+    });
+  } catch (emailErr) {
+    console.error(`[scheduler] [${accountId}] Email fallback failed: ${(emailErr as Error).message}`);
+    await logCommunication({
+      account_id: accountId,
+      brief_id: briefId,
+      channel: 'email',
+      status: 'failed',
+      error_message: (emailErr as Error).message,
+    });
+  }
+}
+
+// ── Weekly pipeline (Monday only) ──────────────────────────────────────────
+
+async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
+  try {
+    // Week end = yesterday (Sunday)
+    const yesterday = new Date(now.getTime() - 86400000);
+    const weekEndDate = yesterday.toISOString().slice(0, 10);
+
+    console.log(`[scheduler] [${accountId}] Generating weekly brief for week ending ${weekEndDate}`);
+    const weeklyBriefId = await generateWeeklyBrief(accountId, weekEndDate);
+
+    console.log(`[scheduler] [${accountId}] Sending weekly email`);
+    await sendWeeklyBriefEmail(weeklyBriefId);
+
+    await logCommunication({
+      account_id: accountId,
+      weekly_brief_id: weeklyBriefId,
+      channel: 'weekly_email',
+      status: 'sent',
+    });
+
+    console.log(`[scheduler] [${accountId}] Weekly pipeline complete`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[scheduler] [${accountId}] Weekly pipeline failed: ${message}`);
+    await logCommunication({
+      account_id: accountId,
+      channel: 'weekly_email',
+      status: 'failed',
+      error_message: message,
+    });
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function getLocalHour(timezone: string, utcDate: Date): number {
   try {
@@ -261,4 +373,22 @@ function getLocalHour(timezone: string, utcDate: Date): number {
     // Invalid timezone — fall back to UTC
     return utcDate.getUTCHours();
   }
+}
+
+function getLocalDayOfWeek(timezone: string, utcDate: Date): number {
+  try {
+    const zonedDate = toZonedTime(utcDate, timezone);
+    return zonedDate.getDay(); // 0=Sunday, 1=Monday, ...
+  } catch {
+    return utcDate.getUTCDay();
+  }
+}
+
+async function getAccountTimezone(accountId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('user_intelligence_config')
+    .select('timezone')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  return data?.timezone ?? null;
 }

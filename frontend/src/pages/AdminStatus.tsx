@@ -20,6 +20,13 @@ interface Store {
   last_action_title: string | null;
   last_action_executed: string | null;
   pending_actions: number;
+  push_subscriptions: number;
+  last_comm_channel: string | null;
+  last_comm_status: string | null;
+  last_comm_at: string | null;
+  last_weekly_week: string | null;
+  last_weekly_status: string | null;
+  last_weekly_sent_at: string | null;
 }
 
 interface AdminAlert {
@@ -83,6 +90,32 @@ function BriefBadge({ status }: { status: string | null }) {
       color: c.text,
     }}>
       {status}
+    </span>
+  );
+}
+
+function CommBadge({ channel, status }: { channel: string | null; status: string | null }) {
+  if (!channel) return <span style={{ color: '#666', fontSize: 12 }}>—</span>;
+  const colors: Record<string, { bg: string; text: string }> = {
+    push: { bg: '#cce5ff', text: '#004085' },
+    email: { bg: '#fff3cd', text: '#856404' },
+    weekly_email: { bg: '#d4edda', text: '#155724' },
+  };
+  const c = colors[channel] ?? { bg: '#e2e3e5', text: '#383d41' };
+  const failed = status === 'failed';
+
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      backgroundColor: failed ? '#f8d7da' : c.bg,
+      color: failed ? '#721c24' : c.text,
+    }}>
+      {channel}{failed ? ' FAIL' : ''}
     </span>
   );
 }
@@ -179,7 +212,7 @@ export default function AdminStatus() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #444' }}>
-              {['Store', 'Email', 'Token', 'Last Brief', 'Status', 'Generated', 'Last Action', 'Pending'].map(h => (
+              {['Store', 'Email', 'Token', 'Last Brief', 'Status', 'Generated', 'Last Comm', 'Push', 'Weekly', 'Pending'].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: '#999', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {h}
                 </th>
@@ -211,10 +244,25 @@ export default function AdminStatus() {
                 </td>
                 <td style={{ padding: '10px 12px', fontSize: 12, color: '#aaa' }}>{timeAgo(store.last_brief_generated_at)}</td>
                 <td style={{ padding: '10px 12px', fontSize: 12 }}>
-                  {store.last_action_title ? (
+                  <CommBadge channel={store.last_comm_channel} status={store.last_comm_status} />
+                  {store.last_comm_at && (
+                    <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{timeAgo(store.last_comm_at)}</div>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                  {store.push_subscriptions > 0 ? (
+                    <span style={{ background: '#004085', color: '#fff', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 700 }}>
+                      {store.push_subscriptions}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#666', fontSize: 12 }}>0</span>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', fontSize: 12 }}>
+                  {store.last_weekly_week ? (
                     <div>
-                      <span style={{ color: '#ccc' }}>{store.last_action_title}</span>
-                      <div style={{ fontSize: 10, color: '#888' }}>{timeAgo(store.last_action_executed)}</div>
+                      <BriefBadge status={store.last_weekly_status} />
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{store.last_weekly_week}</div>
                     </div>
                   ) : (
                     <span style={{ color: '#666' }}>—</span>

@@ -96,6 +96,56 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
         .eq('account_id', account.id)
         .eq('status', 'pending');
 
+      // Push subscription count
+      const { count: pushSubCount } = await supabase
+        .from('push_subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .eq('account_id', account.id);
+
+      // Last communication from email_log
+      let lastCommChannel: string | null = null;
+      let lastCommStatus: string | null = null;
+      let lastCommAt: string | null = null;
+      try {
+        const { data: commRow } = await supabase
+          .from('email_log')
+          .select('channel, status, sent_at')
+          .eq('account_id', account.id)
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (commRow) {
+          const cr = commRow as Record<string, string>;
+          lastCommChannel = cr.channel ?? null;
+          lastCommStatus = cr.status ?? null;
+          lastCommAt = cr.sent_at ?? null;
+        }
+      } catch {
+        // table may not exist
+      }
+
+      // Last weekly brief
+      let lastWeeklyWeek: string | null = null;
+      let lastWeeklyStatus: string | null = null;
+      let lastWeeklySentAt: string | null = null;
+      try {
+        const { data: weeklyRow } = await supabase
+          .from('weekly_briefs')
+          .select('week_start, week_end, status, sent_at')
+          .eq('account_id', account.id)
+          .order('week_end', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (weeklyRow) {
+          const wr = weeklyRow as Record<string, string>;
+          lastWeeklyWeek = `${wr.week_start}→${wr.week_end}`;
+          lastWeeklyStatus = wr.status ?? null;
+          lastWeeklySentAt = wr.sent_at ?? null;
+        }
+      } catch {
+        // table may not exist
+      }
+
       stores.push({
         account_id: account.id,
         email: account.email,
@@ -113,6 +163,13 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
         last_action_title: lastAction?.title ?? null,
         last_action_executed: lastAction?.executed_at ?? null,
         pending_actions: pendingCount ?? 0,
+        push_subscriptions: pushSubCount ?? 0,
+        last_comm_channel: lastCommChannel,
+        last_comm_status: lastCommStatus,
+        last_comm_at: lastCommAt,
+        last_weekly_week: lastWeeklyWeek,
+        last_weekly_status: lastWeeklyStatus,
+        last_weekly_sent_at: lastWeeklySentAt,
       });
     }
 
