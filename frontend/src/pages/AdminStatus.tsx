@@ -37,10 +37,21 @@ interface AdminAlert {
   sent_at: string;
 }
 
+interface DeliveryLog {
+  account_email: string;
+  channel: string;
+  status: string;
+  sent_at: string;
+  error_message: string | null;
+  brief_id: string | null;
+  weekly_brief_id: string | null;
+}
+
 interface StatusData {
   stores: Store[];
   recent_alerts: AdminAlert[];
   last_audit: { ran_at: string; alerts_count: number; duration_ms: number } | null;
+  recent_deliveries?: DeliveryLog[];
   server_time: string;
 }
 
@@ -316,6 +327,75 @@ export default function AdminStatus() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Recent Deliveries */}
+      {data.recent_deliveries && data.recent_deliveries.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 12, marginTop: 32 }}>Recent Deliveries ({data.recent_deliveries.length})</h2>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #444' }}>
+                  {['Time', 'Email', 'Channel', 'Status', 'Error'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: '#999', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.recent_deliveries.map((d, i) => {
+                  const channelColors: Record<string, { bg: string; text: string }> = {
+                    push: { bg: '#cce5ff', text: '#004085' },
+                    email: { bg: '#fff3cd', text: '#856404' },
+                    weekly_email: { bg: '#d4edda', text: '#155724' },
+                  };
+                  const cc = channelColors[d.channel] ?? { bg: '#e2e3e5', text: '#383d41' };
+                  const statusColor = d.status === 'sent' ? '#4caf50' : d.status === 'failed' ? '#ff6b6b' : '#aaa';
+
+                  return (
+                    <tr key={`${d.sent_at}-${i}`} style={{ borderBottom: '1px solid #333' }}>
+                      <td style={{ padding: '8px 12px', fontSize: 12, color: '#aaa' }}>{timeAgo(d.sent_at)}</td>
+                      <td style={{ padding: '8px 12px', fontSize: 12, color: '#ccc' }}>{d.account_email}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          backgroundColor: cc.bg,
+                          color: cc.text,
+                        }}>
+                          {d.channel}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          backgroundColor: d.status === 'sent' ? '#d4edda' : d.status === 'failed' ? '#f8d7da' : '#e2e3e5',
+                          color: statusColor,
+                        }}>
+                          {d.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 12, color: '#ff6b6b', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {d.error_message ?? ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

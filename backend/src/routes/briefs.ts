@@ -188,4 +188,80 @@ STRICT RULES for this chat:
   }
 });
 
+// POST /api/briefs/:id/feedback
+// Auth-protected. Submits feedback for a brief. One per brief per account.
+router.post('/:id/feedback', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.accountId!;
+    const briefId = req.params.id;
+
+    const { rating, want_more_topic, free_text } = req.body as {
+      rating: 'useful' | 'not_useful' | 'want_more';
+      want_more_topic?: 'customers' | 'social_media' | 'products' | 'competition' | null;
+      free_text?: string | null;
+    };
+
+    if (!['useful', 'not_useful', 'want_more'].includes(rating)) {
+      throw new AppError(400, 'rating must be useful, not_useful, or want_more');
+    }
+
+    // Verify the brief belongs to this account
+    const { data: brief, error: briefErr } = await supabase
+      .from('intelligence_briefs')
+      .select('id')
+      .eq('id', briefId)
+      .eq('account_id', accountId)
+      .single();
+
+    if (briefErr || !brief) {
+      throw new AppError(404, 'Brief not found');
+    }
+
+    const { error: insertErr } = await supabase
+      .from('brief_feedback')
+      .upsert(
+        {
+          brief_id: briefId,
+          account_id: accountId,
+          rating,
+          want_more_topic: want_more_topic ?? null,
+          free_text: free_text ?? null,
+        },
+        { onConflict: 'brief_id,account_id' },
+      );
+
+    if (insertErr) {
+      throw new AppError(500, `Failed to save feedback: ${insertErr.message}`);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/briefs/:id/feedback
+// Auth-protected. Returns existing feedback for this brief + account.
+router.get('/:id/feedback', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.accountId!;
+    const briefId = req.params.id;
+
+    const { data, error } = await supabase
+      .from('brief_feedback')
+      .select('*')
+      .eq('brief_id', briefId)
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (error) {
+      throw new AppError(500, `Failed to fetch feedback: ${error.message}`);
+    }
+
+    res.json({ feedback: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

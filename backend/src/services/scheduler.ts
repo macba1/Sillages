@@ -231,6 +231,8 @@ async function deliverDailyBrief(
   briefId: string,
   snapshotDate: string,
 ): Promise<void> {
+  console.log(`[scheduler] [${accountId}] deliverDailyBrief — brief_id=${briefId} snapshot_date=${snapshotDate}`);
+
   // Check if account has push subscriptions
   const { count: pushCount } = await supabase
     .from('push_subscriptions')
@@ -238,6 +240,7 @@ async function deliverDailyBrief(
     .eq('account_id', accountId);
 
   const hasPush = (pushCount ?? 0) > 0;
+  console.log(`[scheduler] [${accountId}] Push subscriptions found: ${pushCount ?? 0}`);
 
   // Load data for push notification content
   const [{ data: fullBrief }, { data: conn }, { data: acc }, { count: actionCount }] = await Promise.all([
@@ -251,7 +254,7 @@ async function deliverDailyBrief(
 
   if (hasPush) {
     // ── Push notification (primary channel) ──
-    console.log(`[scheduler] [${accountId}] Sending daily push notification`);
+    console.log(`[scheduler] [${accountId}] Sending daily push notification (primary channel)`);
     try {
       if (fullBrief?.section_yesterday) {
         const y = fullBrief.section_yesterday as { revenue: number; orders: number };
@@ -274,11 +277,17 @@ async function deliverDailyBrief(
           body = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
         }
 
-        await sendPushNotification(accountId, {
+        const pushPayload = {
           title: `${storeName} — ${yesterdayWord} ${cs}${y.revenue.toFixed(0)} · ${y.orders} ${ordersWord}`,
           body,
           url: '/dashboard',
-        });
+        };
+        console.log(`[scheduler] [${accountId}] Push payload: ${JSON.stringify(pushPayload)}`);
+
+        await sendPushNotification(accountId, pushPayload);
+        console.log(`[scheduler] [${accountId}] Push notification sent successfully`);
+      } else {
+        console.log(`[scheduler] [${accountId}] No section_yesterday data — skipping push content, logging as sent`);
       }
 
       await logCommunication({
@@ -288,22 +297,23 @@ async function deliverDailyBrief(
         status: 'sent',
       });
     } catch (pushErr) {
-      console.error(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
+      const pushErrMsg = (pushErr as Error).message;
+      console.error(`[scheduler] [${accountId}] Push failed: ${pushErrMsg}`);
       await logCommunication({
         account_id: accountId,
         brief_id: briefId,
         channel: 'push',
         status: 'failed',
-        error_message: (pushErr as Error).message,
+        error_message: pushErrMsg,
       });
 
       // Push failed — fall back to email
-      console.log(`[scheduler] [${accountId}] Falling back to email`);
+      console.log(`[scheduler] [${accountId}] Email fallback reason: push notification failed (${pushErrMsg})`);
       await sendDailyEmail(accountId, briefId);
     }
   } else {
     // ── No push subscriptions → email fallback ──
-    console.log(`[scheduler] [${accountId}] No push subscriptions — sending email fallback`);
+    console.log(`[scheduler] [${accountId}] Email fallback reason: no push subscriptions (count=0)`);
     await sendDailyEmail(accountId, briefId);
   }
 }
@@ -332,16 +342,20 @@ async function sendDailyEmail(accountId: string, briefId: string): Promise<void>
 // ── Weekly pipeline (Monday only) ──────────────────────────────────────────
 
 async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
+  const weeklyStart = Date.now();
   try {
     // Week end = yesterday (Sunday)
     const yesterday = new Date(now.getTime() - 86400000);
     const weekEndDate = yesterday.toISOString().slice(0, 10);
 
-    console.log(`[scheduler] [${accountId}] Generating weekly brief for week ending ${weekEndDate}`);
+    console.log(`[scheduler] [${accountId}] Weekly brief generation START for week ending ${weekEndDate}`);
     const weeklyBriefId = await generateWeeklyBrief(accountId, weekEndDate);
+    const genDuration = Date.now() - weeklyStart;
+    console.log(`[scheduler] [${accountId}] Weekly brief generation END — weekly_brief_id=${weeklyBriefId} duration=${genDuration}ms`);
 
-    console.log(`[scheduler] [${accountId}] Sending weekly email`);
+    console.log(`[scheduler] [${accountId}] Sending weekly email for weekly_brief_id=${weeklyBriefId}`);
     await sendWeeklyBriefEmail(weeklyBriefId);
+    console.log(`[scheduler] [${accountId}] Weekly email sent successfully`);
 
     await logCommunication({
       account_id: accountId,
@@ -350,10 +364,12 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
       status: 'sent',
     });
 
-    console.log(`[scheduler] [${accountId}] Weekly pipeline complete`);
+    const totalDuration = Date.now() - weeklyStart;
+    console.log(`[scheduler] [${accountId}] Weekly pipeline complete — total duration=${totalDuration}ms`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[scheduler] [${accountId}] Weekly pipeline failed: ${message}`);
+    const totalDuration = Date.now() - weeklyStart;
+    console.error(`[scheduler] [${accountId}] Weekly pipeline failed after ${totalDuration}ms: ${message}`);
     await logCommunication({
       account_id: accountId,
       channel: 'weekly_email',

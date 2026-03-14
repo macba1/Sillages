@@ -164,9 +164,56 @@ function buildCustomerIntelBlock(ci: CustomerIntelligence | null | undefined): s
   return lines.join('\n');
 }
 
+// ── Load recent brief feedback ───────────────────────────────────────────────
+
+interface BriefFeedbackRow {
+  rating: 'useful' | 'not_useful' | 'want_more';
+  want_more_topic: string | null;
+  free_text: string | null;
+  created_at: string;
+}
+
+async function loadRecentFeedback(accountId: string): Promise<BriefFeedbackRow[]> {
+  const { data } = await supabase
+    .from('brief_feedback')
+    .select('rating, want_more_topic, free_text, created_at')
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  return (data as BriefFeedbackRow[] | null) ?? [];
+}
+
+function buildFeedbackBlock(feedback: BriefFeedbackRow[]): string {
+  if (feedback.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '═══ MERCHANT FEEDBACK (from recent briefs) ═══',
+    'The store owner has given feedback on recent briefs. Adjust your analysis accordingly:',
+  ];
+
+  for (const fb of feedback) {
+    const date = fb.created_at.slice(0, 10);
+    let line = `- [${date}] rated "${fb.rating}"`;
+    if (fb.want_more_topic) {
+      const topicLabel = fb.want_more_topic.toUpperCase().replace('_', ' ');
+      line += ` topic: "${fb.want_more_topic}" — GIVE MORE DETAIL ON ${topicLabel}`;
+    }
+    if (fb.free_text) {
+      line += ` free_text: "${fb.free_text}"`;
+    }
+    lines.push(line);
+  }
+
+  lines.push('Use this feedback to prioritize what you analyze. If they want more of something, go deeper on that topic.');
+
+  return lines.join('\n');
+}
+
 // ── Build user prompt ───────────────────────────────────────────────────────
 
-function buildAnalystUserPrompt(input: AnalystInput, actionsHistory: AnalystOutput['actions_history']): string {
+function buildAnalystUserPrompt(input: AnalystInput, actionsHistory: AnalystOutput['actions_history'], feedbackBlock: string): string {
   const { snapshot, historicalSnapshots, config, storeName, currency, briefDate, language } = input;
 
   const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
@@ -255,7 +302,7 @@ ${config.competitor_context ? `- Competitor context: ${config.competitor_context
 ${buildCustomerIntelBlock(input.customerIntelligence)}
 
 Return the AnalystOutput JSON. Include ALL 5 analysis areas (conversion, merchandising, retention, seo, acquisition), plus weekly_patterns, calendar_opportunities, trends, actions_history, and signals.
-
+${feedbackBlock}
 Schema:
 {
   "period": { "date": "${briefDate}", "revenue": <number>, "orders": <number>, "avg_order": <number>, "currency": "${currency}" },
@@ -314,13 +361,20 @@ export async function runAnalyst(input: AnalystInput): Promise<AnalystResult> {
   const actionsHistory = await loadActionsHistory(input.accountId);
   console.log(`[analyst] Loaded ${actionsHistory.length} previous actions for the loop`);
 
+  // Load recent merchant feedback
+  const recentFeedback = await loadRecentFeedback(input.accountId);
+  const feedbackBlock = buildFeedbackBlock(recentFeedback);
+  if (recentFeedback.length > 0) {
+    console.log(`[analyst] Loaded ${recentFeedback.length} recent feedback entries`);
+  }
+
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     temperature: 0.2,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildAnalystUserPrompt(input, actionsHistory) },
+      { role: 'user', content: buildAnalystUserPrompt(input, actionsHistory, feedbackBlock) },
     ],
   });
 

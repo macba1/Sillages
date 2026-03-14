@@ -8,6 +8,7 @@ import { useBrief } from '../hooks/useBriefs';
 import { useLanguage } from '../contexts/LanguageContext';
 import api from '../lib/api';
 import type { IntelligenceBrief } from '../types/index';
+import { BriefFeedback } from '../components/BriefFeedback';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -392,6 +393,9 @@ export default function BriefDetail() {
             <div style={{ height: 1, background: 'rgba(201,150,74,0.2)', marginBottom: 48 }} />
 
             <BriefBody brief={brief} t={t} />
+
+            {/* Feedback */}
+            <BriefFeedback briefId={brief.id} />
 
             {/* Deepen chat button */}
             <div style={{ paddingTop: 16, paddingBottom: chatOpen ? 0 : 8 }}>

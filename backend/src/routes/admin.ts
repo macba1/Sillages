@@ -200,10 +200,51 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
       // table may not exist
     }
 
+    // 4. Recent deliveries from email_log
+    let recentDeliveries: Array<{
+      account_email: string;
+      channel: string;
+      status: string;
+      sent_at: string;
+      error_message: string | null;
+      brief_id: string | null;
+      weekly_brief_id: string | null;
+    }> = [];
+    try {
+      const { data: logs } = await supabase
+        .from('email_log')
+        .select('account_id, channel, status, sent_at, error_message, brief_id, weekly_brief_id')
+        .order('sent_at', { ascending: false })
+        .limit(20);
+
+      if (logs && logs.length > 0) {
+        // Join with account emails
+        const accountIds = [...new Set(logs.map(l => l.account_id))];
+        const { data: accs } = await supabase
+          .from('accounts')
+          .select('id, email')
+          .in('id', accountIds);
+        const emailMap = new Map((accs ?? []).map(a => [a.id, a.email]));
+
+        recentDeliveries = logs.map(l => ({
+          account_email: emailMap.get(l.account_id) ?? l.account_id,
+          channel: l.channel,
+          status: l.status,
+          sent_at: l.sent_at,
+          error_message: l.error_message ?? null,
+          brief_id: l.brief_id ?? null,
+          weekly_brief_id: l.weekly_brief_id ?? null,
+        }));
+      }
+    } catch {
+      // table may not exist
+    }
+
     res.json({
       stores,
       recent_alerts: recentAlerts,
       last_audit: lastAudit,
+      recent_deliveries: recentDeliveries,
       server_time: new Date().toISOString(),
     });
   } catch (err) {
