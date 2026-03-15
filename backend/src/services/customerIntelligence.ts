@@ -178,7 +178,7 @@ export async function buildCustomerIntelligence(
   // About to repeat: repeat customers within 2 days of their cycle
   const about_to_repeat = profiles
     .filter(p => {
-      if (!p.avg_days_between_purchases || p.total_orders < 2) return false;
+      if (!p.avg_days_between_purchases || p.total_orders < 3) return false; // need 3+ orders for reliable cycle
       const expected = p.avg_days_between_purchases - p.days_since_last_purchase;
       return expected >= -2 && expected <= 3; // within window
     })

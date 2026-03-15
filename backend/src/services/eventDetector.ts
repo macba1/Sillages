@@ -243,7 +243,7 @@ async function detectOverdueCustomers(accountId: string): Promise<DetectedEvent[
   const now = Date.now();
 
   for (const [, cust] of customerMap) {
-    if (cust.orders.length < 2) continue; // need repeat customers
+    if (cust.orders.length < 3) continue; // need 3+ orders for a reliable purchase cycle
 
     const sorted = cust.orders.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const gaps: number[] = [];
