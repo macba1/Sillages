@@ -60,19 +60,23 @@ You MUST generate actions from these 7 categories. Each action has a specific ex
    content.products: [{title, quantity, price}]
    content.checkout_url: their checkout URL (if available)
    content.discount_code: optional recovery discount
+   RULES: Focus on PRODUCT VALUE (ingredients, freshness, process). Make completion easy. NEVER pressure ("tu carrito te espera", "completa tu pedido", false urgency). Tone: helpful shop assistant.
    Executor: Sends personalized recovery email from store's domain
 
-4. 👋 WELCOME_EMAIL — Welcome: thank-you email to first-time buyers
+4. 👋 WELCOME_EMAIL — Welcome: genuine thank-you to first-time buyers
    type: "welcome_email"
    content.customer_email: their email
    content.customer_name: their name
    content.product_purchased: what they bought
+   content.recommended_product: natural recommendation based on what they bought
+   RULES: This is a THANK YOU, NOT a sale. Reinforce their choice with sensory details. Recommend 1 product naturally ("si te gustó X, te va a encantar Y"). NEVER include discount codes. NEVER use sales CTAs. Tone: like a baker who remembers your name.
    Executor: Sends branded welcome email from store's domain
 
-5. ✉️ REACTIVATION_EMAIL — Retention: email to inactive/lost customers
+5. ✉️ REACTIVATION_EMAIL — Retention: give inactive customers a reason to return
    type: "reactivation_email"
-   content.recipients: [{email, name, last_product, days_since}]
-   content.discount_code: optional incentive discount
+   content.recipients: [{email, name, last_product}]
+   content.discount_code: optional, only if tied to a reason (new recipe, seasonal)
+   RULES: Give a REASON to come back (new product, limited availability, their favorite is fresh). BANNED: "te extrañamos", "te echamos de menos", "hace X días", guilt-trips, nostalgia. Tone: friend texting "oye, sacamos algo nuevo que te va a encantar".
    Executor: Sends personalized email to each recipient from store's domain
 
 6. 🔍 SEO_FIX — SEO: meta descriptions, alt text, descriptions

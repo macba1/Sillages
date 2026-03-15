@@ -46,6 +46,11 @@ If ANY of these appear, REWRITE the copy completely:
 "¡No te lo pierdas!", "¡Haz tu pedido ahora!", "Pura fantasía", "Te transporta", "Un clásico reinventado", "Descubre nuestra selección", "Celebra con nuestras deliciosas", "Personaliza tu regalo", "¡Te encantará!", "No te arrepentirás", "Un abrazo dulce", "Explosión de sabor", "Una experiencia única", "No dejes escapar tu antojo", "¿Ya pensaste en el regalo perfecto?"
 Also banned: any phrase with ¡...! that sounds like a TV ad.
 
+═══ RULE 2B: ACTION-TYPE-SPECIFIC BANS ═══
+- welcome_email with a discount code or sales CTA ("compra", "pide", "haz tu pedido") → REJECT and rewrite as genuine thank-you with sensory product details and a natural recommendation.
+- reactivation_email containing "te extrañamos", "te echamos de menos", "no te hemos visto", "hace X días que no vienes/compras", "we miss you", "it's been X days" → REJECT and rewrite with a concrete reason to return (new product, availability, recommendation).
+- cart_recovery with pressure language ("tu carrito te espera", "completa tu pedido", "no te lo pierdas", urgency timers, countdown) → REJECT and rewrite focusing on product value and easy completion.
+
 ═══ RULE 3: SENSORY + SPECIFIC ═══
 Every customer-facing copy must have:
 - At least 1 sensory detail (taste, smell, texture, sight): "se deshace", "huele a horno", "corteza crujiente", "ácido y dulce"
@@ -66,7 +71,15 @@ GOOD instagram_post: "Me acabo de comer una tarta entera. ENTERA. Y es sin glute
 
 GOOD discount_code: "Tu padre no quiere una corbata. Quiere sentarse en el sofá con un café y un trozo de algo que se deshaga en la boca. Algo que huela a horno de verdad, no a fábrica. Tarta Corazón Fresas, hecha por encargo con fresas de temporada. PAPA25 para un 25% → nicolina.es"
 
-GOOD email: Subject: "María ya ha repetido 6 veces" — Body: "La Hogaza de Pasas y Nueces que pediste hace 3 semanas la horneamos los martes y viernes a las 6 de la mañana. María la pide cada semana. Este viernes quedan 4. ¿Te reservo una?"
+GOOD welcome_email: "Alicia, gracias por probar nuestro Volcán de Chocolate. Lo horneamos esta mañana con chocolate belga al 70% — se deshace en la boca y el centro sale caliente. Esperamos que lo disfrutes. Si te gusta el chocolate intenso, te va a encantar la Tarta de Cacao y Frambuesa — tiene ese punto ácido que equilibra perfecto."
+
+GOOD reactivation_email: "Cristina, esta semana estrenamos receta: Tarta de Pistacho con masa de almendra. Sin gluten, como siempre. Solo la hacemos los viernes. ¿Te reservamos una?"
+
+GOOD cart_recovery: "Cristina, la Tarta de Limón que elegiste la hacemos con limones de Málaga y crema pastelera casera. Si la pides antes del viernes, te la tenemos fresca para el finde."
+
+BAD welcome_email: "Gracias por tu compra. Aquí tienes un 10% para tu próximo pedido." (sale, not thank you)
+BAD reactivation_email: "Te extrañamos en Nicolina. Han pasado 29 días." (guilt trip)
+BAD cart_recovery: "Tu carrito te espera. Completa tu pedido antes de que expire." (pressure)
 
 If any copy in the input is NOT at this level → REWRITE it until it is.
 
@@ -96,7 +109,10 @@ function buildCustomerIntelSummary(analystOutput: AnalystOutput): string {
     lines.push(`Abandoned carts: ${ci.abandoned_carts.map(c => `${c.customer_name} (€${c.total_value})`).join(', ')}`);
   }
   lines.push('\nVERIFY ALL OF THESE:');
-  lines.push('- reactivation_email MUST have real recipients array with email, name, last_product, days_since from lost customers');
+  lines.push('- reactivation_email MUST have real recipients array with email, name, last_product from lost customers');
+  lines.push('- reactivation_email MUST NOT contain "te extrañamos", "te echamos de menos", "hace X días" — give a REASON to return instead');
+  lines.push('- welcome_email MUST NOT contain discount codes or sales CTAs — it is a genuine thank-you');
+  lines.push('- cart_recovery MUST focus on product value, NOT pressure ("tu carrito te espera" is BANNED)');
   lines.push('- cart_recovery MUST have customer_email, customer_name, and products array from abandoned carts');
   lines.push('- yesterday_summary MUST include "Tienes X clientes. Y son habituales, Z compraron una vez..."');
   lines.push('- about_to_repeat customers MUST appear by name in the narrative');

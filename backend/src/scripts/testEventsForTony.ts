@@ -227,7 +227,7 @@ async function main() {
     const custName = (event.data as any).customer_name;
 
     process.stdout.write(`  ${typeName} para ${custName}... `);
-    const actionId = await generateEventAction(tony.id, event, lang, storeName, currency);
+    const actionId = await generateEventAction(tony.id, event, lang, storeName, currency, andrea.id);
 
     if (actionId) {
       generated.push({ actionId, event });

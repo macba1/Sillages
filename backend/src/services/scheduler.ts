@@ -62,6 +62,16 @@ async function runEventLoop(): Promise<void> {
   }
 }
 
+// Max event push notifications per day per merchant (daily_summary doesn't count)
+const MAX_EVENT_PUSHES_PER_DAY = 2;
+
+// Priority order for push notifications: higher priority events get sent first
+const EVENT_PRIORITY: Record<string, number> = {
+  abandoned_cart: 1,    // highest — money on the table
+  new_first_buyer: 2,
+  overdue_customer: 3,  // lowest — can wait a day
+};
+
 async function processEventsForAccount(accountId: string): Promise<void> {
   // 1. Sync Shopify data
   await ensureShopifySync(accountId);
@@ -89,32 +99,61 @@ async function processEventsForAccount(accountId: string): Promise<void> {
   const storeName = conn?.shop_name ?? 'Tu tienda';
   const currency = conn?.shop_currency ?? 'EUR';
 
-  // 5. Generate action + send push for each event
-  for (const event of events) {
+  // 5. Sort events by priority (cart_recovery > welcome > reactivation)
+  const sortedEvents = [...events].sort((a, b) =>
+    (EVENT_PRIORITY[a.type] ?? 99) - (EVENT_PRIORITY[b.type] ?? 99),
+  );
+
+  // 6. Check how many event pushes were already sent today
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const { count: pushesToday } = await supabase
+    .from('email_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('channel', 'event_push')
+    .eq('status', 'sent')
+    .gte('sent_at', todayStart.toISOString());
+
+  const pushesRemaining = MAX_EVENT_PUSHES_PER_DAY - (pushesToday ?? 0);
+
+  if (pushesRemaining <= 0) {
+    console.log(`[scheduler] [${accountId}] Already sent ${pushesToday} event pushes today — max ${MAX_EVENT_PUSHES_PER_DAY}/day. Actions still generated, push deferred.`);
+  }
+
+  // 7. Generate actions for ALL events, but only send push for top priority ones
+  let pushesSent = 0;
+
+  for (const event of sortedEvents) {
     const actionId = await generateEventAction(accountId, event, lang, storeName, currency);
     if (!actionId) continue;
 
-    // Build push notification
-    const push = buildEventPush(event, lang, storeName, currency, actionId);
+    // Send push only if we haven't hit the daily limit
+    if (pushesSent < pushesRemaining) {
+      const push = buildEventPush(event, lang, storeName, currency, actionId);
 
-    try {
-      await sendPushNotification(accountId, push);
-      console.log(`[scheduler] [${accountId}] Push sent: ${push.title}`);
+      try {
+        await sendPushNotification(accountId, push);
+        pushesSent++;
+        console.log(`[scheduler] [${accountId}] Push ${pushesSent}/${MAX_EVENT_PUSHES_PER_DAY} sent: ${event.type}`);
 
-      // Mark push as sent in event_log
-      await supabase
-        .from('event_log')
-        .update({ push_sent: true })
-        .eq('account_id', accountId)
-        .eq('event_key', event.key);
+        // Mark push as sent in event_log
+        await supabase
+          .from('event_log')
+          .update({ push_sent: true })
+          .eq('account_id', accountId)
+          .eq('event_key', event.key);
 
-      await logCommunication({
-        account_id: accountId,
-        channel: 'event_push',
-        status: 'sent',
-      });
-    } catch (pushErr) {
-      console.warn(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
+        await logCommunication({
+          account_id: accountId,
+          channel: 'event_push',
+          status: 'sent',
+        });
+      } catch (pushErr) {
+        console.warn(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
+      }
+    } else {
+      console.log(`[scheduler] [${accountId}] Action generated for ${event.type} — push deferred (daily limit reached)`);
     }
   }
 }
