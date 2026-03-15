@@ -19,7 +19,7 @@ EXAMPLES:
 
 FRAMEWORK 2: THE SPECIFIC DETAIL
 Lead with ONE hyper-specific detail that makes it real and tangible.
-USE FOR: instagram_post, product_highlight, email_campaign
+USE FOR: instagram_post, product_highlight, reactivation_email
 FORMULA: "[One very specific detail about ingredient/process/origin] + [emotional payoff]"
 EXAMPLES:
 - "Las fresas de nuestra Tarta Corazón vienen de Aranjuez. Las recogieron ayer. Hoy las estamos colocando una a una sobre crema pastelera de vainilla natural. Solo 8 unidades este viernes. 🍓"
@@ -28,7 +28,7 @@ EXAMPLES:
 
 FRAMEWORK 3: THE SOCIAL PROOF FLIP
 Don't say "our customers love us." Show it through a real story or data point.
-USE FOR: instagram_post, email_campaign, whatsapp_message
+USE FOR: instagram_post, reactivation_email, whatsapp_message
 FORMULA: "[Real customer action/behavior] + [what it says about the product]"
 EXAMPLES:
 - "María pidió la Tarta de Zanahoria 3 veces este mes. La tercera vez nos escribió: 'Es para mí sola, no juzguéis.' María, no juzgamos. Entendemos. 🥕"
@@ -46,7 +46,7 @@ EXAMPLES:
 
 FRAMEWORK 5: THE FRIEND DISCOVERY
 Write as if you're telling a friend about something amazing you just found.
-USE FOR: instagram_post, whatsapp_message, email_campaign
+USE FOR: instagram_post, whatsapp_message, reactivation_email
 FORMULA: "[Casual, conversational tone] + [what makes it special] + [implicit recommendation]"
 EXAMPLES:
 - "Oye, ¿has probado la Tarta de Limón de Nicolina? Tiene esa cosa de que es ácida y dulce a la vez, y el merengue está tostado con soplete. Pídela el viernes, me lo agradecerás. 🍋"
@@ -67,7 +67,7 @@ FRAMEWORK SELECTION RULES
 ═══════════════════════════════════════════════════════════════════
 - instagram_post → use THE CONTRAST, THE SPECIFIC DETAIL, or THE QUESTION HOOK
 - discount_code → use THE FOMO
-- email_campaign → use THE SOCIAL PROOF FLIP or THE FRIEND DISCOVERY
+- reactivation_email → use THE SOCIAL PROOF FLIP or THE FRIEND DISCOVERY
 - whatsapp_message → use THE FRIEND DISCOVERY or THE FOMO
 - product_highlight → use THE CONTRAST or THE SPECIFIC DETAIL
 - seo_fix → no framework needed (focus on keywords and search intent)

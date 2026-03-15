@@ -103,60 +103,52 @@ Return ONLY valid JSON matching the AnalystOutput schema. No preamble, no explan
 
 // ── Store history types ──────────────────────────────────────────────────────
 
-interface StoreHistoryRow {
-  month: string;         // YYYY-MM
-  total_orders: number;
-  total_revenue: number;
-  total_customers: number;
-  new_customers: number;
-  returning_customers: number;
+interface MonthlyRevenue {
+  month: string;       // "2025-01"
+  revenue: number;
+  orders: number;
 }
 
 interface StoreHistoryContext {
-  first_order_date: string;
+  first_order_date: string | null;
+  last_order_date: string | null;
   lifetime_orders: number;
   lifetime_revenue: number;
-  monthly_trend: StoreHistoryRow[];
-  vip_count: number;
-  total_customer_count: number;
+  monthly_trend: MonthlyRevenue[];
+  customer_segments: { total: number; one_time: number; occasional: number; regular: number; vip: number };
+  top_products: Array<{ title: string; total_revenue: number; total_units: number; order_count: number }>;
 }
 
 async function loadStoreHistory(accountId: string): Promise<StoreHistoryContext | null> {
-  // Load store_history rows (monthly aggregates)
-  const { data: rows, error } = await supabase
+  // store_history is a single row per account with JSON columns
+  const { data: row, error } = await supabase
     .from('store_history')
     .select('*')
     .eq('account_id', accountId)
-    .order('month', { ascending: true });
+    .maybeSingle();
 
   if (error) {
-    // Table may not exist yet — fail gracefully
-    if (error.message.includes('relation') || error.message.includes('does not exist')) {
-      console.log('[analyst] store_history table does not exist yet — skipping');
-      return null;
-    }
     console.warn(`[analyst] Failed to load store_history: ${error.message}`);
     return null;
   }
 
-  if (!rows || rows.length === 0) return null;
+  if (!row) {
+    console.log('[analyst] No store_history found for this account');
+    return null;
+  }
 
-  const typedRows = rows as StoreHistoryRow[];
-  const lifetimeOrders = typedRows.reduce((sum, r) => sum + (r.total_orders ?? 0), 0);
-  const lifetimeRevenue = typedRows.reduce((sum, r) => sum + (r.total_revenue ?? 0), 0);
-  const firstMonth = typedRows[0]?.month ?? 'unknown';
-
-  // VIP count: sum of returning_customers across all months (approximate)
-  const totalCustomerCount = typedRows.reduce((sum, r) => sum + (r.total_customers ?? 0), 0);
-  const vipCount = typedRows.reduce((sum, r) => sum + (r.returning_customers ?? 0), 0);
+  const monthlyRevenue = (row.monthly_revenue as MonthlyRevenue[] | null) ?? [];
+  const customerSegments = (row.customer_segments as StoreHistoryContext['customer_segments'] | null) ?? { total: 0, one_time: 0, occasional: 0, regular: 0, vip: 0 };
+  const topProducts = (row.top_products_alltime as StoreHistoryContext['top_products'] | null) ?? [];
 
   return {
-    first_order_date: firstMonth + '-01',
-    lifetime_orders: lifetimeOrders,
-    lifetime_revenue: Math.round(lifetimeRevenue * 100) / 100,
-    monthly_trend: typedRows.slice(-12), // last 12 months
-    vip_count: vipCount,
-    total_customer_count: totalCustomerCount,
+    first_order_date: row.first_order_date as string | null,
+    last_order_date: row.last_order_date as string | null,
+    lifetime_orders: (row.total_orders as number) ?? 0,
+    lifetime_revenue: Math.round(((row.total_revenue as number) ?? 0) * 100) / 100,
+    monthly_trend: monthlyRevenue,
+    customer_segments: customerSegments,
+    top_products: topProducts.slice(0, 10),
   };
 }
 
@@ -166,43 +158,40 @@ function buildStoreHistoryBlock(history: StoreHistoryContext | null, currency: s
   const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
   const cs = sym[currency] ?? `${currency} `;
 
+  const seg = history.customer_segments;
   const lines: string[] = [
     '',
-    '═══ HISTORICAL CONTEXT (from store_history) ═══',
-    `This store has been operating since ${history.first_order_date}.`,
+    '═══ HISTORICAL CONTEXT (from store_history — full order history) ═══',
+    `Store active since: ${history.first_order_date ?? 'unknown'} → ${history.last_order_date ?? 'unknown'}`,
     `Lifetime: ${history.lifetime_orders} orders, ${cs}${history.lifetime_revenue.toFixed(2)} revenue`,
-    `Total customers tracked: ${history.total_customer_count} | VIP/returning: ${history.vip_count}`,
-    '',
-    'Monthly revenue trend (last 12 months):',
+    `Customers: ${seg.total} total — ${seg.one_time} one-time, ${seg.occasional} occasional (2-3), ${seg.regular} regular (4-9), ${seg.vip} VIP (10+)`,
   ];
 
-  for (const row of history.monthly_trend) {
-    lines.push(`  ${row.month}: ${cs}${(row.total_revenue ?? 0).toFixed(2)} revenue, ${row.total_orders ?? 0} orders, ${row.new_customers ?? 0} new customers`);
+  if (history.top_products.length > 0) {
+    lines.push('');
+    lines.push('Top products all-time:');
+    for (const p of history.top_products.slice(0, 5)) {
+      lines.push(`  ${p.title}: ${cs}${p.total_revenue.toFixed(2)} revenue, ${p.total_units} units, ${p.order_count} orders`);
+    }
   }
 
-  // Seasonal patterns — find best and worst months
-  if (history.monthly_trend.length >= 3) {
-    const sorted = [...history.monthly_trend].sort((a, b) => (b.total_revenue ?? 0) - (a.total_revenue ?? 0));
-    const best = sorted[0];
-    const worst = sorted[sorted.length - 1];
-    if (best && worst) {
-      const bestMonthName = new Date(best.month + '-15').toLocaleString('en', { month: 'long' });
-      const worstMonthName = new Date(worst.month + '-15').toLocaleString('en', { month: 'long' });
-      lines.push('');
-      lines.push('Seasonal patterns:');
-      lines.push(`  Best month: ${bestMonthName} at ${cs}${(best.total_revenue ?? 0).toFixed(2)}`);
-      lines.push(`  Worst month: ${worstMonthName} at ${cs}${(worst.total_revenue ?? 0).toFixed(2)}`);
+  if (history.monthly_trend.length > 0) {
+    lines.push('');
+    lines.push('Monthly revenue trend (last 12 months):');
+    for (const row of history.monthly_trend.slice(-12)) {
+      lines.push(`  ${row.month}: ${cs}${row.revenue.toFixed(2)} revenue, ${row.orders} orders`);
     }
 
-    // Year-over-year: compare same month last year if available
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const lastYearMonth = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const currentRow = history.monthly_trend.find(r => r.month === currentMonth);
-    const lastYearRow = history.monthly_trend.find(r => r.month === lastYearMonth);
-    if (currentRow && lastYearRow && lastYearRow.total_revenue > 0) {
-      const yoyPct = ((currentRow.total_revenue - lastYearRow.total_revenue) / lastYearRow.total_revenue * 100).toFixed(1);
-      lines.push(`  Year-over-year (${currentMonth} vs ${lastYearMonth}): ${Number(yoyPct) >= 0 ? '+' : ''}${yoyPct}%`);
+    // Best/worst months
+    if (history.monthly_trend.length >= 3) {
+      const sorted = [...history.monthly_trend].sort((a, b) => b.revenue - a.revenue);
+      const best = sorted[0];
+      const worst = sorted[sorted.length - 1];
+      if (best && worst) {
+        const bestName = new Date(best.month + '-15').toLocaleString('en', { month: 'long', year: 'numeric' });
+        const worstName = new Date(worst.month + '-15').toLocaleString('en', { month: 'long', year: 'numeric' });
+        lines.push(`  Best: ${bestName} (${cs}${best.revenue.toFixed(2)}) | Worst: ${worstName} (${cs}${worst.revenue.toFixed(2)})`);
+      }
     }
   }
 

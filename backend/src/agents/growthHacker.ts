@@ -152,7 +152,7 @@ RULE 5: PLAN GATING
 ═══════════════════════════════════════════════════════════════════
 RULE 6: NO ACTIONS WITHOUT SUFFICIENT DATA
 ═══════════════════════════════════════════════════════════════════
-If the analyst data is thin (new store, few orders, empty fields), DO NOT generate discount_code or email_campaign actions.
+If the analyst data is thin (new store, few orders, empty fields), DO NOT generate discount_code or reactivation_email actions.
 Instead, generate ONLY:
 - seo_fix: there is ALWAYS something to improve
 - product_highlight: recommend which product to feature based on whatever data exists
@@ -371,7 +371,7 @@ OUTPUT FORMAT — return exactly this JSON:
   },
   "actions": [
     {
-      "type": "<instagram_post|discount_code|product_highlight|cart_recovery|welcome_email|reactivation_email|seo_fix|whatsapp_message>",
+      "type": "<discount_code|product_highlight|cart_recovery|welcome_email|reactivation_email|seo_fix|instagram_post>",
       "title": "<Short action title, 3-6 words>",
       "description": "<1-2 sentences: the data point that justifies this + what it does + WHEN to execute>",
       "priority": "<high|medium|low>",
@@ -381,9 +381,8 @@ OUTPUT FORMAT — return exactly this JSON:
         "discount_code": "<if type=discount_code: the code, e.g. TARTA10>",
         "discount_percentage": "<if type=discount_code: number, e.g. 10>",
         "discount_product": "<if type=discount_code: product name>",
-        "email_subject": "<if type=email_campaign: subject line>",
-        "email_body": "<if type=email_campaign: full email text>",
-        "email_recipients": ["<if type=email_campaign: email addresses from retention.overdue_customers>"],
+        "discount_value": "<if type=discount_code: string like '10%' or '5€'>",
+        "discount_type": "<if type=discount_code: 'percentage' or 'fixed_amount'>",
         "seo_field": "<if type=seo_fix: 'meta_description'|'alt_text'|'collection_description'>",
         "seo_product_handle": "<if type=seo_fix: product handle>",
         "seo_new_value": "<if type=seo_fix: the exact new text to apply>",
@@ -493,6 +492,8 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
           { title: "Volcán de Chocolate", quantity: 2, price: 36.90 }
         ],
         discount_code: "ANA10",
+        discount_value: "10%",
+        discount_type: "percentage",
       },
       plan_required: "growth",
     },
@@ -509,6 +510,8 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
           { email: "sara@mail.com", name: "Sara Gómez", last_product: "Volcán de Chocolate", days_since: 16 }
         ],
         discount_code: "VUELVE10",
+        discount_value: "10%",
+        discount_type: "percentage",
       },
       plan_required: "growth",
     },
@@ -576,7 +579,7 @@ export async function runGrowthHacker(input: GrowthHackerInput): Promise<GrowthH
   }
 
   // Validate action types
-  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'email_campaign', 'product_highlight', 'seo_fix', 'whatsapp_message', 'cart_recovery', 'welcome_email', 'reactivation_email'];
+  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'product_highlight', 'seo_fix', 'whatsapp_message', 'cart_recovery', 'welcome_email', 'reactivation_email'];
   output.actions = output.actions.filter(a => validTypes.includes(a.type));
 
   const usage = {

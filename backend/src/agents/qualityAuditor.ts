@@ -292,7 +292,7 @@ export async function runQualityAuditor(input: QualityAuditorInput): Promise<Qua
   }
 
   // Validate action types
-  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'email_campaign', 'product_highlight', 'seo_fix', 'whatsapp_message', 'cart_recovery', 'welcome_email', 'reactivation_email'];
+  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'product_highlight', 'seo_fix', 'whatsapp_message', 'cart_recovery', 'welcome_email', 'reactivation_email'];
   output.actions = output.actions.filter(a => validTypes.includes(a.type));
 
   // Ensure audit fields exist

@@ -116,7 +116,7 @@ export interface AnalystOutput {
 // ── Growth Actions ──────────────────────────────────────────────────────────
 
 export interface GrowthAction {
-  type: 'instagram_post' | 'discount_code' | 'email_campaign' | 'product_highlight' | 'seo_fix' | 'whatsapp_message' | 'cart_recovery' | 'welcome_email' | 'reactivation_email';
+  type: 'instagram_post' | 'discount_code' | 'product_highlight' | 'seo_fix' | 'whatsapp_message' | 'cart_recovery' | 'welcome_email' | 'reactivation_email';
   title: string;
   description: string;
   priority: 'high' | 'medium' | 'low';

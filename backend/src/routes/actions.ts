@@ -3,7 +3,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { shopifyGraphQL } from '../lib/shopify.js';
-import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { sendMerchantEmail } from '../services/merchantEmail.js';
@@ -136,7 +135,6 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
       discount_code: executeDiscount,
       seo_fix: executeSeoFix,
       product_highlight: executeProductHighlight,
-      email_campaign: executeEmailCampaign,
       instagram_post: executeInstagramPost,
       whatsapp_message: executeWhatsAppMessage,
       cart_recovery: executeCartRecovery,
@@ -583,75 +581,6 @@ async function executeInstagramPost(_accountId: string, actionId: string, conten
 
 // ── Email Campaign Executor ─────────────────────────────────────────────────
 // Sends the email via Resend to the recipients specified in the action content.
-
-async function executeEmailCampaign(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
-  const subject = (content.email_subject as string) ?? '';
-  const body = (content.email_body as string) ?? (content.copy as string) ?? '';
-  const recipients = (content.email_recipients as string[]) ?? [];
-
-  if (!subject || !body) {
-    await markFailed(actionId, 'Missing email_subject or email_body');
-    return;
-  }
-
-  if (recipients.length === 0) {
-    await markFailed(actionId, 'No email recipients specified');
-    return;
-  }
-
-  // Get shop name for the from address
-  const { data: conn } = await supabase
-    .from('shopify_connections')
-    .select('shop_name')
-    .eq('account_id', accountId)
-    .single();
-
-  const shopName = conn?.shop_name ?? 'Sillages';
-  const slug = shopName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const from = `${shopName} via Sillages <${slug}@sillages.app>`;
-
-  try {
-    // Build HTML from the body text
-    const htmlBody = body.split('\n').map(line => `<p style="margin:0 0 12px;color:#2A1F14;font-size:15px;line-height:1.5;">${line}</p>`).join('');
-    const html = `
-      <div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
-        ${htmlBody}
-        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-        <p style="font-size:11px;color:#A89880;">Sent via Sillages</p>
-      </div>
-    `;
-
-    const sent: string[] = [];
-    const failed: string[] = [];
-
-    // Send to each recipient individually (Resend free tier limit)
-    for (const to of recipients.slice(0, 20)) {
-      try {
-        await resend.emails.send({ from, to, subject, html });
-        sent.push(to);
-      } catch (err) {
-        console.error(`[actions] Failed to send to ${to}:`, err instanceof Error ? err.message : err);
-        failed.push(to);
-      }
-    }
-
-    if (sent.length === 0) {
-      await markFailed(actionId, `All emails failed. First error for: ${failed[0]}`);
-      return;
-    }
-
-    await markCompleted(actionId, {
-      sent_to: sent,
-      failed: failed.length > 0 ? failed : undefined,
-      total_sent: sent.length,
-      subject,
-    });
-
-    console.log(`[actions] Email campaign sent to ${sent.length}/${recipients.length} recipients for action ${actionId}`);
-  } catch (err) {
-    await markFailed(actionId, err instanceof Error ? err.message : String(err));
-  }
-}
 
 // ── WhatsApp Message Executor ───────────────────────────────────────────────
 // Returns a wa.me link with the message pre-filled for the merchant to send.
