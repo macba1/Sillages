@@ -326,7 +326,8 @@ export async function syncFullHistory(accountId: string): Promise<void> {
 async function fetchAllHistoricalOrders(shopDomain: string, accessToken: string): Promise<ShopifyOrder[]> {
   const LOG = '[fullHistorySync]';
   const allOrders: ShopifyOrder[] = [];
-  let url: string | null = `https://${shopDomain}/admin/api/2024-04/orders.json?status=any&limit=250`;
+  // created_at_min is required to get orders older than 60 days (even with read_all_orders scope)
+  let url: string | null = `https://${shopDomain}/admin/api/2024-04/orders.json?status=any&limit=250&created_at_min=2010-01-01T00:00:00Z`;
 
   while (url) {
     let response;
