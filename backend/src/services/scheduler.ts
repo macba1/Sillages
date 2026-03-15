@@ -4,8 +4,8 @@ import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
-import { generateBrief } from './briefGenerator.js';
-import { sendBriefEmail } from './emailSender.js';
+import { detectEvents } from './eventDetector.js';
+import { generateEventAction } from './eventActionGenerator.js';
 import { sendPushNotification } from './pushNotifier.js';
 import { generateWeeklyBrief } from './weeklyBriefGenerator.js';
 import { sendWeeklyBriefEmail } from './weeklyEmailSender.js';
@@ -13,69 +13,187 @@ import { logCommunication } from './commLog.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 
-// Runs every hour at :05 — checks which accounts are due for their brief
-// based on their configured timezone and send_hour
-export async function runSchedulerForced(): Promise<string[]> {
-  return runHourlyCheck(true);
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENT-DRIVEN SCHEDULER
+// 3 loops: event detection (hourly), daily summary (at send_hour), weekly (Monday)
+// ═══════════════════════════════════════════════════════════════════════════
 
 export function startScheduler(): void {
-  cron.schedule('5 * * * *', () => {
-    runHourlyCheck(false).catch((err) => {
-      console.error('[scheduler] Unhandled error in hourly check:', err);
+  // Event detection: every hour at :10
+  cron.schedule('10 * * * *', () => {
+    runEventLoop().catch(err => {
+      console.error('[scheduler] Event loop error:', err);
     });
   });
 
-  console.log('[scheduler] Started — checking every hour at :05 for due briefs');
+  // Daily summary + weekly: every hour at :05 (checks send_hour)
+  cron.schedule('5 * * * *', () => {
+    runDailyAndWeeklyCheck().catch(err => {
+      console.error('[scheduler] Daily/weekly check error:', err);
+    });
+  });
+
+  console.log('[scheduler] Started — event detection at :10, daily/weekly at :05');
 }
 
-async function runHourlyCheck(force: boolean): Promise<string[]> {
+// Force run for testing
+export async function runSchedulerForced(): Promise<string[]> {
+  return runDailyAndWeeklyCheck(true);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOOP 1: EVENT DETECTION (every hour)
+// Sync data, detect events, generate actions, send push notifications
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function runEventLoop(): Promise<void> {
   const now = new Date();
-  console.log(`[scheduler] ${force ? 'FORCED run' : 'Hourly check'} at ${now.toISOString()}`);
+  console.log(`[scheduler] Event loop at ${now.toISOString()}`);
 
-  // Step 1: get all eligible accounts — active, trialing, beta, or null (beta fallback)
-  const { data: accounts, error: accountsError } = await supabase
-    .from('accounts')
-    .select('id, subscription_status')
-    .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
+  const accounts = await getEligibleAccounts();
+  if (accounts.length === 0) return;
 
-  if (accountsError) {
-    console.error('[scheduler] Failed to load accounts:', accountsError.message);
-    return [];
+  for (const accountId of accounts) {
+    try {
+      await processEventsForAccount(accountId);
+    } catch (err) {
+      console.error(`[scheduler] [${accountId}] Event processing failed: ${(err as Error).message}`);
+    }
+  }
+}
+
+async function processEventsForAccount(accountId: string): Promise<void> {
+  // 1. Sync Shopify data
+  await ensureShopifySync(accountId);
+
+  // 2. Sync abandoned carts
+  try {
+    await syncAbandonedCarts(accountId);
+  } catch (err) {
+    console.warn(`[scheduler] [${accountId}] Cart sync failed (non-fatal): ${(err as Error).message}`);
   }
 
-  if (!accounts || accounts.length === 0) {
-    console.log('[scheduler] No eligible accounts found');
-    return [];
+  // 3. Detect events
+  const events = await detectEvents(accountId);
+  if (events.length === 0) return;
+
+  console.log(`[scheduler] [${accountId}] ${events.length} event(s) detected`);
+
+  // 4. Load account metadata
+  const [{ data: acc }, { data: conn }] = await Promise.all([
+    supabase.from('accounts').select('language, full_name').eq('id', accountId).single(),
+    supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
+  ]);
+
+  const lang: 'en' | 'es' = acc?.language === 'es' ? 'es' : 'en';
+  const storeName = conn?.shop_name ?? 'Tu tienda';
+  const currency = conn?.shop_currency ?? 'EUR';
+
+  // 5. Generate action + send push for each event
+  for (const event of events) {
+    const actionId = await generateEventAction(accountId, event, lang, storeName, currency);
+    if (!actionId) continue;
+
+    // Build push notification
+    const push = buildEventPush(event, lang, storeName, currency, actionId);
+
+    try {
+      await sendPushNotification(accountId, push);
+      console.log(`[scheduler] [${accountId}] Push sent: ${push.title}`);
+
+      // Mark push as sent in event_log
+      await supabase
+        .from('event_log')
+        .update({ push_sent: true })
+        .eq('account_id', accountId)
+        .eq('event_key', event.key);
+
+      await logCommunication({
+        account_id: accountId,
+        channel: 'event_push',
+        status: 'sent',
+      });
+    } catch (pushErr) {
+      console.warn(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
+    }
   }
+}
 
-  const eligibleIds = accounts.map(a => a.id);
-  console.log(`[scheduler] ${eligibleIds.length} eligible account(s) — statuses: ${accounts.map(a => a.subscription_status ?? 'null').join(', ')}`);
+// ── Build event-specific push notification ──────────────────────────────
 
-  // Step 2: get send-enabled configs for those accounts
-  const { data: configs, error: configsError } = await supabase
+function buildEventPush(
+  event: import('./eventDetector.js').DetectedEvent,
+  lang: 'en' | 'es',
+  storeName: string,
+  currency: string,
+  actionId: string,
+): { title: string; body: string; url: string } {
+  const isEs = lang === 'es';
+  const cs = currency === 'EUR' ? '€' : '$';
+
+  switch (event.type) {
+    case 'new_first_buyer': {
+      const d = event.data as import('./eventDetector.js').NewFirstBuyerData;
+      return {
+        title: storeName,
+        body: isEs
+          ? `${d.customer_name} compró ${d.product_purchased} por primera vez. ¿Le mandamos un agradecimiento?`
+          : `${d.customer_name} bought ${d.product_purchased} for the first time. Send a thank you?`,
+        url: `/actions?highlight=${actionId}`,
+      };
+    }
+
+    case 'abandoned_cart': {
+      const d = event.data as import('./eventDetector.js').AbandonedCartData;
+      const productNames = d.products.map(p => p.title).join(', ');
+      return {
+        title: storeName,
+        body: isEs
+          ? `${d.customer_name} dejó ${cs}${d.total_value.toFixed(0)} en su carrito (${productNames}). ¿La recuperamos?`
+          : `${d.customer_name} left ${cs}${d.total_value.toFixed(0)} in their cart (${productNames}). Recover it?`,
+        url: `/actions?highlight=${actionId}`,
+      };
+    }
+
+    case 'overdue_customer': {
+      const d = event.data as import('./eventDetector.js').OverdueCustomerData;
+      return {
+        title: storeName,
+        body: isEs
+          ? `${d.customer_name} no compra desde hace ${d.days_since} días. Suele comprar cada ${d.usual_cycle_days}. ¿Le escribimos?`
+          : `${d.customer_name} hasn't bought in ${d.days_since} days. Usually buys every ${d.usual_cycle_days}. Reach out?`,
+        url: `/actions?highlight=${actionId}`,
+      };
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOOP 2: DAILY SUMMARY + WEEKLY EMAIL (at send_hour)
+// Daily: simple push with yesterday's numbers
+// Monday: full weekly email pipeline
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function runDailyAndWeeklyCheck(force = false): Promise<string[]> {
+  const now = new Date();
+  console.log(`[scheduler] ${force ? 'FORCED' : 'Hourly'} daily/weekly check at ${now.toISOString()}`);
+
+  const accounts = await getEligibleAccounts();
+  if (accounts.length === 0) return [];
+
+  // Get configs to check send_hour
+  const { data: configs } = await supabase
     .from('user_intelligence_config')
     .select('account_id, timezone, send_hour')
     .eq('send_enabled', true)
-    .in('account_id', eligibleIds);
+    .in('account_id', accounts);
 
-  if (configsError) {
-    console.error('[scheduler] Failed to load configs:', configsError.message);
-    return [];
-  }
-
-  if (!configs || configs.length === 0) {
-    console.log('[scheduler] No send-enabled configs found');
-    return [];
-  }
-
-  console.log(`[scheduler] ${configs.length} send-enabled config(s) to check`);
+  if (!configs || configs.length === 0) return [];
 
   const due: string[] = [];
 
   for (const config of configs) {
     const localHour = getLocalHour(config.timezone, now);
-    console.log(`[scheduler] Account ${config.account_id} — localHour=${localHour} send_hour=${config.send_hour} timezone=${config.timezone} force=${force}`);
     if (force || localHour === config.send_hour) {
       due.push(config.account_id);
     }
@@ -86,285 +204,127 @@ async function runHourlyCheck(force: boolean): Promise<string[]> {
     return [];
   }
 
-  console.log(`[scheduler] ${due.length} account(s) due — running pipelines`);
+  console.log(`[scheduler] ${due.length} account(s) due for daily summary`);
 
-  // Process each account sequentially to avoid overloading external APIs
   for (const accountId of due) {
-    console.log(`[scheduler] Account ${accountId} is due — running pipeline`);
-    await runBriefPipeline(accountId);
+    try {
+      // Daily summary push (every day)
+      await sendDailySummaryPush(accountId);
+
+      // Monday → weekly email
+      const tz = configs.find(c => c.account_id === accountId)?.timezone ?? 'UTC';
+      const localDay = getLocalDayOfWeek(tz, now);
+      if (localDay === 1) {
+        console.log(`[scheduler] [${accountId}] Monday — running weekly pipeline`);
+        await runWeeklyPipeline(accountId, now);
+      }
+
+      // Pending actions reminder
+      await sendPendingActionsReminder(accountId);
+    } catch (err) {
+      console.error(`[scheduler] [${accountId}] Daily/weekly error: ${(err as Error).message}`);
+    }
   }
 
   return due;
 }
 
-async function runBriefPipeline(accountId: string): Promise<void> {
-  console.log(`[scheduler] Starting brief pipeline for account: ${accountId}`);
+// ── Daily summary push (Type 4) ─────────────────────────────────────────
 
-  // Step 1: Sync yesterday's Shopify data — with 403 fallback
-  console.log(`[scheduler] [${accountId}] Step 1 — Shopify sync`);
-  let snapshotDate: string;
+async function sendDailySummaryPush(accountId: string): Promise<void> {
+  // Get yesterday's snapshot
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const [{ data: snap }, { data: conn }, { data: acc }] = await Promise.all([
+    supabase.from('shopify_daily_snapshots').select('total_revenue, total_orders, new_customers')
+      .eq('account_id', accountId).eq('snapshot_date', yesterday).maybeSingle(),
+    supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
+    supabase.from('accounts').select('language').eq('id', accountId).single(),
+  ]);
 
-  // Get shop domain for tokenGuard tracking
-  const { data: connRow } = await supabase
-    .from('shopify_connections')
-    .select('shop_domain, token_status')
-    .eq('account_id', accountId)
-    .maybeSingle();
-
-  // Skip accounts with definitively invalid tokens (they need to reconnect)
-  if (connRow?.token_status === 'invalid') {
-    console.log(`[scheduler] [${accountId}] Skipping — token marked invalid for ${connRow.shop_domain}. Merchant needs to reconnect.`);
+  if (!snap) {
+    console.log(`[scheduler] [${accountId}] No snapshot for ${yesterday} — skipping daily summary`);
     return;
   }
 
-  // Proactive token refresh — if token expires within 1 hour, refresh now
-  if (connRow?.shop_domain) {
-    await ensureTokenFresh(connRow.shop_domain);
+  const isEs = acc?.language === 'es';
+  const cs = (conn?.shop_currency === 'EUR' ? '€' : '$');
+  const storeName = conn?.shop_name ?? 'Tu tienda';
+  const ordersWord = isEs ? 'pedidos' : 'orders';
+  const yesterdayWord = isEs ? 'Ayer' : 'Yesterday';
+
+  // Build one-liner body
+  let body = `${yesterdayWord} ${cs}${snap.total_revenue.toFixed(0)} · ${snap.total_orders} ${ordersWord}`;
+  if (snap.new_customers > 0) {
+    body += isEs
+      ? `. ${snap.new_customers} ${snap.new_customers === 1 ? 'cliente nuevo' : 'clientes nuevos'}.`
+      : `. ${snap.new_customers} new ${snap.new_customers === 1 ? 'customer' : 'customers'}.`;
   }
 
-  try {
-    const result = await syncYesterdayForAccount(accountId);
-    snapshotDate = result.snapshotDate;
+  await sendPushNotification(accountId, {
+    title: storeName,
+    body,
+    url: '/dashboard',
+  });
 
-    // Sync succeeded — mark token healthy
-    if (connRow?.shop_domain) {
-      await markTokenHealthy(connRow.shop_domain);
-    }
-  } catch (syncErr) {
-    const httpStatus = axios.isAxiosError(syncErr) ? syncErr.response?.status : null;
-    const is403or401 = httpStatus === 403 || httpStatus === 401;
+  await logCommunication({
+    account_id: accountId,
+    channel: 'daily_summary_push',
+    status: 'sent',
+  });
 
-    if (is403or401 && connRow?.shop_domain) {
-      console.log(`[scheduler] Shopify ${httpStatus} for ${connRow.shop_domain} — running tokenGuard`);
-      const canRetry = await handleTokenFailure(connRow.shop_domain);
-
-      if (canRetry) {
-        // Try once more
-        try {
-          const retryResult = await syncYesterdayForAccount(accountId);
-          snapshotDate = retryResult.snapshotDate;
-          await markTokenHealthy(connRow.shop_domain);
-        } catch {
-          // Retry also failed — fall back to last snapshot
-          console.log(`[scheduler] Retry also failed for ${connRow.shop_domain} — falling back to last snapshot`);
-        }
-      }
-    }
-
-    // If snapshotDate is not set, fall back to last available
-    if (!snapshotDate!) {
-      if (is403or401) {
-        const { data: lastSnapshot } = await supabase
-          .from('shopify_daily_snapshots')
-          .select('snapshot_date')
-          .eq('account_id', accountId)
-          .order('snapshot_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!lastSnapshot) {
-          console.log(`[scheduler] No data available for account ${accountId} — skipping`);
-          return;
-        }
-        snapshotDate = lastSnapshot.snapshot_date;
-      } else {
-        const msg = axios.isAxiosError(syncErr)
-          ? `HTTP ${syncErr.response?.status}: ${JSON.stringify(syncErr.response?.data)}`
-          : String(syncErr);
-        console.error(`[scheduler] Shopify sync failed for account ${accountId}: ${msg}`);
-        return;
-      }
-    }
-  }
-
-  // Step 1b: Sync abandoned carts (non-fatal)
-  try {
-    console.log(`[scheduler] [${accountId}] Step 1b — Abandoned carts sync`);
-    await syncAbandonedCarts(accountId);
-  } catch (cartErr) {
-    console.warn(`[scheduler] [${accountId}] Abandoned carts sync failed (non-fatal): ${cartErr instanceof Error ? cartErr.message : String(cartErr)}`);
-  }
-
-  try {
-    // Step 2: Generate the AI brief
-    console.log(`[scheduler] [${accountId}] Step 2 — Brief generation`);
-    await generateBrief({ accountId, briefDate: snapshotDate });
-
-    // Step 3: Look up the brief record
-    const { data: brief, error: briefError } = await supabase
-      .from('intelligence_briefs')
-      .select('id, status')
-      .eq('account_id', accountId)
-      .eq('brief_date', snapshotDate)
-      .single();
-
-    if (briefError || !brief) {
-      console.warn(`[scheduler] [${accountId}] Could not find brief after generation — skipping delivery`);
-      return;
-    }
-
-    if (brief.status === 'failed') {
-      console.warn(`[scheduler] [${accountId}] Brief generation failed — skipping delivery`);
-      return;
-    }
-
-    // Step 3: Deliver daily brief — PUSH ONLY (email as fallback)
-    console.log(`[scheduler] [${accountId}] Step 3 — Daily delivery (push-first)`);
-    await deliverDailyBrief(accountId, brief.id, snapshotDate);
-
-    // Step 4: Monday → also generate + send weekly brief email
-    const now = new Date();
-    const localDay = getLocalDayOfWeek(
-      (await getAccountTimezone(accountId)) ?? 'UTC',
-      now,
-    );
-
-    if (localDay === 1) {
-      // Monday — generate weekly brief for the previous week (Mon→Sun)
-      console.log(`[scheduler] [${accountId}] Step 4 — Monday: generating weekly brief`);
-      await runWeeklyPipeline(accountId, now);
-    }
-
-    console.log(`[scheduler] [${accountId}] Pipeline complete`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[scheduler] [${accountId}] Pipeline error: ${message}`);
-    // Don't rethrow — one account's failure shouldn't block the rest
-  }
+  console.log(`[scheduler] [${accountId}] Daily summary push sent: ${body}`);
 }
 
-// ── Daily delivery: push-first, email fallback ─────────────────────────────
+// ── Pending actions reminder (Type 5) ───────────────────────────────────
 
-async function deliverDailyBrief(
-  accountId: string,
-  briefId: string,
-  snapshotDate: string,
-): Promise<void> {
-  console.log(`[scheduler] [${accountId}] deliverDailyBrief — brief_id=${briefId} snapshot_date=${snapshotDate}`);
-
-  // Check if account has push subscriptions
-  const { count: pushCount } = await supabase
-    .from('push_subscriptions')
+async function sendPendingActionsReminder(accountId: string): Promise<void> {
+  const { count } = await supabase
+    .from('pending_actions')
     .select('*', { count: 'exact', head: true })
-    .eq('account_id', accountId);
+    .eq('account_id', accountId)
+    .eq('status', 'pending');
 
-  const hasPush = (pushCount ?? 0) > 0;
-  console.log(`[scheduler] [${accountId}] Push subscriptions found: ${pushCount ?? 0}`);
+  const n = count ?? 0;
+  if (n === 0) return;
 
-  // Load data for push notification content
-  const [{ data: fullBrief }, { data: conn }, { data: acc }, { count: actionCount }] = await Promise.all([
-    supabase.from('intelligence_briefs').select('section_yesterday, section_activation').eq('id', briefId).single(),
-    supabase.from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle(),
-    supabase.from('accounts').select('language').eq('id', accountId).single(),
-    supabase.from('pending_actions').select('*', { count: 'exact', head: true }).eq('account_id', accountId).eq('brief_date', snapshotDate).eq('status', 'pending'),
-  ]);
+  const { data: acc } = await supabase
+    .from('accounts').select('language').eq('id', accountId).single();
+  const { data: conn } = await supabase
+    .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
 
-  const lang: 'en' | 'es' = (acc as { language?: string } | null)?.language === 'es' ? 'es' : 'en';
+  const isEs = acc?.language === 'es';
+  const storeName = conn?.shop_name ?? 'Sillages';
 
-  if (hasPush) {
-    // ── Push notification (primary channel) ──
-    console.log(`[scheduler] [${accountId}] Sending daily push notification (primary channel)`);
-    try {
-      if (fullBrief?.section_yesterday) {
-        const y = fullBrief.section_yesterday as { revenue: number; orders: number };
-        const defaultStore = lang === 'es' ? 'Tu tienda' : 'Your store';
-        const storeName = (conn as { shop_name: string | null } | null)?.shop_name ?? defaultStore;
-        const cur = (conn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
-        const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$' };
-        const cs = sym[cur] ?? `${cur} `;
+  await sendPushNotification(accountId, {
+    title: storeName,
+    body: isEs
+      ? `Tienes ${n} ${n === 1 ? 'acción lista' : 'acciones listas'} para aprobar.`
+      : `You have ${n} ${n === 1 ? 'action ready' : 'actions ready'} to approve.`,
+    url: '/actions',
+  });
 
-        const ordersWord = lang === 'es' ? 'pedidos' : 'orders';
-        const yesterdayWord = lang === 'es' ? 'Ayer' : 'Yesterday';
-        const n = actionCount ?? 0;
-
-        let body: string;
-        if (n > 0) {
-          body = lang === 'es'
-            ? `${n} ${n === 1 ? 'acción preparada' : 'acciones preparadas'}. Toca para aprobar.`
-            : `${n} ${n === 1 ? 'action ready' : 'actions ready'}. Tap to approve.`;
-        } else {
-          body = lang === 'es' ? 'Tu brief diario está listo — Toca para verlo →' : 'Your daily brief is ready — Tap to view →';
-        }
-
-        const pushPayload = {
-          title: `${storeName} — ${yesterdayWord} ${cs}${y.revenue.toFixed(0)} · ${y.orders} ${ordersWord}`,
-          body,
-          url: '/dashboard',
-        };
-        console.log(`[scheduler] [${accountId}] Push payload: ${JSON.stringify(pushPayload)}`);
-
-        await sendPushNotification(accountId, pushPayload);
-        console.log(`[scheduler] [${accountId}] Push notification sent successfully`);
-      } else {
-        console.log(`[scheduler] [${accountId}] No section_yesterday data — skipping push content, logging as sent`);
-      }
-
-      await logCommunication({
-        account_id: accountId,
-        brief_id: briefId,
-        channel: 'push',
-        status: 'sent',
-      });
-    } catch (pushErr) {
-      const pushErrMsg = (pushErr as Error).message;
-      console.error(`[scheduler] [${accountId}] Push failed: ${pushErrMsg}`);
-      await logCommunication({
-        account_id: accountId,
-        brief_id: briefId,
-        channel: 'push',
-        status: 'failed',
-        error_message: pushErrMsg,
-      });
-
-      // Push failed — fall back to email
-      console.log(`[scheduler] [${accountId}] Email fallback reason: push notification failed (${pushErrMsg})`);
-      await sendDailyEmail(accountId, briefId);
-    }
-  } else {
-    // ── No push subscriptions → email fallback ──
-    console.log(`[scheduler] [${accountId}] Email fallback reason: no push subscriptions (count=0)`);
-    await sendDailyEmail(accountId, briefId);
-  }
+  console.log(`[scheduler] [${accountId}] Pending actions reminder: ${n} actions`);
 }
 
-async function sendDailyEmail(accountId: string, briefId: string): Promise<void> {
-  try {
-    await sendBriefEmail(briefId);
-    await logCommunication({
-      account_id: accountId,
-      brief_id: briefId,
-      channel: 'email',
-      status: 'sent',
-    });
-  } catch (emailErr) {
-    console.error(`[scheduler] [${accountId}] Email fallback failed: ${(emailErr as Error).message}`);
-    await logCommunication({
-      account_id: accountId,
-      brief_id: briefId,
-      channel: 'email',
-      status: 'failed',
-      error_message: (emailErr as Error).message,
-    });
-  }
-}
-
-// ── Weekly pipeline (Monday only) ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// LOOP 3: WEEKLY PIPELINE (Monday only)
+// Full Analyst → Growth Hacker → Auditor → Email
+// ═══════════════════════════════════════════════════════════════════════════
 
 async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
   const weeklyStart = Date.now();
   try {
-    // Week end = yesterday (Sunday)
     const yesterday = new Date(now.getTime() - 86400000);
     const weekEndDate = yesterday.toISOString().slice(0, 10);
 
     console.log(`[scheduler] [${accountId}] Weekly brief generation START for week ending ${weekEndDate}`);
     const weeklyBriefId = await generateWeeklyBrief(accountId, weekEndDate);
     const genDuration = Date.now() - weeklyStart;
-    console.log(`[scheduler] [${accountId}] Weekly brief generation END — weekly_brief_id=${weeklyBriefId} duration=${genDuration}ms`);
+    console.log(`[scheduler] [${accountId}] Weekly brief generation END — ${genDuration}ms`);
 
-    console.log(`[scheduler] [${accountId}] Sending weekly email for weekly_brief_id=${weeklyBriefId}`);
+    console.log(`[scheduler] [${accountId}] Sending weekly email`);
     await sendWeeklyBriefEmail(weeklyBriefId);
-    console.log(`[scheduler] [${accountId}] Weekly email sent successfully`);
+    console.log(`[scheduler] [${accountId}] Weekly email sent`);
 
     await logCommunication({
       account_id: accountId,
@@ -373,10 +333,25 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
       status: 'sent',
     });
 
+    // Push notification about weekly email
+    const { data: conn } = await supabase
+      .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
+    const { data: acc } = await supabase
+      .from('accounts').select('language').eq('id', accountId).single();
+    const isEs = acc?.language === 'es';
+
+    await sendPushNotification(accountId, {
+      title: conn?.shop_name ?? 'Sillages',
+      body: isEs
+        ? 'Tu resumen semanal está en tu email.'
+        : 'Your weekly summary is in your email.',
+      url: '/dashboard',
+    });
+
     const totalDuration = Date.now() - weeklyStart;
-    console.log(`[scheduler] [${accountId}] Weekly pipeline complete — total duration=${totalDuration}ms`);
+    console.log(`[scheduler] [${accountId}] Weekly pipeline complete — ${totalDuration}ms`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = (err as Error).message;
     const totalDuration = Date.now() - weeklyStart;
     console.error(`[scheduler] [${accountId}] Weekly pipeline failed after ${totalDuration}ms: ${message}`);
     await logCommunication({
@@ -388,32 +363,92 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// SHARED HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function getEligibleAccounts(): Promise<string[]> {
+  const { data: accounts, error } = await supabase
+    .from('accounts')
+    .select('id')
+    .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
+
+  if (error || !accounts) {
+    console.error('[scheduler] Failed to load accounts:', error?.message);
+    return [];
+  }
+
+  return accounts.map(a => a.id);
+}
+
+async function ensureShopifySync(accountId: string): Promise<string | null> {
+  const { data: connRow } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain, token_status')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (connRow?.token_status === 'invalid') {
+    console.log(`[scheduler] [${accountId}] Skipping — token invalid`);
+    return null;
+  }
+
+  if (connRow?.shop_domain) {
+    await ensureTokenFresh(connRow.shop_domain);
+  }
+
+  try {
+    const result = await syncYesterdayForAccount(accountId);
+    if (connRow?.shop_domain) {
+      await markTokenHealthy(connRow.shop_domain);
+    }
+    return result.snapshotDate;
+  } catch (syncErr) {
+    const httpStatus = axios.isAxiosError(syncErr) ? syncErr.response?.status : null;
+
+    if ((httpStatus === 403 || httpStatus === 401) && connRow?.shop_domain) {
+      console.log(`[scheduler] Shopify ${httpStatus} for ${connRow.shop_domain} — running tokenGuard`);
+      const canRetry = await handleTokenFailure(connRow.shop_domain);
+
+      if (canRetry) {
+        try {
+          const retryResult = await syncYesterdayForAccount(accountId);
+          await markTokenHealthy(connRow.shop_domain);
+          return retryResult.snapshotDate;
+        } catch {
+          console.log(`[scheduler] Retry also failed for ${connRow.shop_domain}`);
+        }
+      }
+
+      // Fall back to last snapshot
+      const { data: last } = await supabase
+        .from('shopify_daily_snapshots')
+        .select('snapshot_date')
+        .eq('account_id', accountId)
+        .order('snapshot_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return last?.snapshot_date ?? null;
+    }
+
+    console.error(`[scheduler] [${accountId}] Sync failed: ${(syncErr as Error).message}`);
+    return null;
+  }
+}
 
 function getLocalHour(timezone: string, utcDate: Date): number {
   try {
-    const zonedDate = toZonedTime(utcDate, timezone);
-    return zonedDate.getHours();
+    return toZonedTime(utcDate, timezone).getHours();
   } catch {
-    // Invalid timezone — fall back to UTC
     return utcDate.getUTCHours();
   }
 }
 
 function getLocalDayOfWeek(timezone: string, utcDate: Date): number {
   try {
-    const zonedDate = toZonedTime(utcDate, timezone);
-    return zonedDate.getDay(); // 0=Sunday, 1=Monday, ...
+    return toZonedTime(utcDate, timezone).getDay();
   } catch {
     return utcDate.getUTCDay();
   }
-}
-
-async function getAccountTimezone(accountId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('user_intelligence_config')
-    .select('timezone')
-    .eq('account_id', accountId)
-    .maybeSingle();
-  return data?.timezone ?? null;
 }

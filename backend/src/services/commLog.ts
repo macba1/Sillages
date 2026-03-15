@@ -7,7 +7,7 @@ export async function logCommunication(input: {
   account_id: string;
   brief_id?: string | null;
   weekly_brief_id?: string | null;
-  channel: 'push' | 'email' | 'weekly_email';
+  channel: 'push' | 'email' | 'weekly_email' | 'event_push' | 'daily_summary_push';
   status: 'sent' | 'failed';
   error_message?: string | null;
   message_id?: string | null;
