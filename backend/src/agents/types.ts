@@ -116,7 +116,7 @@ export interface AnalystOutput {
 // ── Growth Actions ──────────────────────────────────────────────────────────
 
 export interface GrowthAction {
-  type: 'instagram_post' | 'discount_code' | 'email_campaign' | 'product_highlight' | 'seo_fix' | 'whatsapp_message';
+  type: 'instagram_post' | 'discount_code' | 'email_campaign' | 'product_highlight' | 'seo_fix' | 'whatsapp_message' | 'cart_recovery' | 'welcome_email' | 'reactivation_email';
   title: string;
   description: string;
   priority: 'high' | 'medium' | 'low';
@@ -128,13 +128,29 @@ export interface GrowthAction {
     discount_code?: string;
     discount_percentage?: number;
     discount_product?: string;
+    discount_value?: string;
+    discount_type?: 'percentage' | 'fixed_amount';
     email_subject?: string;
     email_body?: string;
     email_recipients?: string[];
     seo_field?: string; // 'meta_description', 'alt_text', 'collection_description'
     seo_product_handle?: string;
     seo_new_value?: string;
+    meta_description?: string;
+    alt_text?: string;
     template?: string; // 'story_product', 'post_square', 'email_promo'
+    product?: string;
+    visual_concept?: string;
+    hashtags?: string;
+    // cart_recovery fields
+    customer_email?: string;
+    customer_name?: string;
+    products?: Array<{ title: string; quantity: number; price: number }>;
+    checkout_url?: string;
+    // welcome_email fields
+    product_purchased?: string;
+    // reactivation_email fields
+    recipients?: Array<{ email: string; name: string; last_product: string; days_since: number }>;
   };
   plan_required: 'growth' | 'pro';
 }

@@ -215,39 +215,71 @@ export async function buildCustomerIntelligence(
     new Date(p.first_purchase_date) >= sevenDaysAgo && p.total_orders === 1,
   ).length;
 
-  // Abandoned carts
-  console.log(`${LOG} Fetching abandoned carts...`);
-  let abandonedCheckouts: ShopifyAbandonedCheckout[] = [];
-  try {
-    abandonedCheckouts = await client.getAbandonedCheckouts({
-      created_at_min: new Date(briefDateObj.getTime() - 3 * 86400000).toISOString(),
-      created_at_max: new Date(briefDateObj.getTime() + 86400000).toISOString(),
-      limit: 20,
+  // Abandoned carts — load from DB first (synced by abandonedCartsSync), fallback to Shopify API
+  console.log(`${LOG} Loading abandoned carts...`);
+  let abandoned_carts: AbandonedCart[] = [];
+
+  // Try loading from the abandoned_carts table (populated by abandonedCartsSync)
+  const threeDaysAgo = new Date(briefDateObj.getTime() - 3 * 86400000).toISOString();
+  const { data: dbCarts, error: dbCartsError } = await supabase
+    .from('abandoned_carts')
+    .select('*')
+    .eq('account_id', accountId)
+    .gte('abandoned_at', threeDaysAgo)
+    .order('abandoned_at', { ascending: false })
+    .limit(20);
+
+  if (!dbCartsError && dbCarts && dbCarts.length > 0) {
+    console.log(`${LOG} Loaded ${dbCarts.length} abandoned carts from DB`);
+    abandoned_carts = dbCarts.map((row: Record<string, unknown>) => {
+      const email = (row.customer_email as string) ?? '';
+      const custProfile = profiles.find(p => p.email === email);
+      const products = (row.products as Array<{ title: string; quantity: number; price: number }>) ?? [];
+
+      return {
+        customer_name: (row.customer_name as string) ?? 'Visitante',
+        customer_email: email,
+        products,
+        total_value: row.total_price as number,
+        abandoned_at: row.abandoned_at as string,
+        is_returning_customer: custProfile ? custProfile.total_orders > 0 : false,
+      };
     });
-  } catch {
-    console.log(`${LOG} Could not fetch abandoned carts`);
+  } else {
+    // Fallback to Shopify API directly
+    console.log(`${LOG} No DB carts available, fetching from Shopify API...`);
+    let abandonedCheckouts: ShopifyAbandonedCheckout[] = [];
+    try {
+      abandonedCheckouts = await client.getAbandonedCheckouts({
+        created_at_min: threeDaysAgo,
+        created_at_max: new Date(briefDateObj.getTime() + 86400000).toISOString(),
+        limit: 20,
+      });
+    } catch {
+      console.log(`${LOG} Could not fetch abandoned carts`);
+    }
+
+    abandoned_carts = abandonedCheckouts.map(ac => {
+      const name = ac.customer
+        ? `${ac.customer.first_name ?? ''} ${ac.customer.last_name ?? ''}`.trim() || 'Visitante'
+        : 'Visitante';
+      const email = ac.customer?.email ?? '';
+      const custProfile = profiles.find(p => p.email === email);
+
+      return {
+        customer_name: name,
+        customer_email: email,
+        products: ac.line_items.map(li => ({
+          title: li.title,
+          quantity: li.quantity,
+          price: parseFloat(li.price),
+        })),
+        total_value: parseFloat(ac.total_price),
+        abandoned_at: ac.created_at,
+        is_returning_customer: custProfile ? custProfile.total_orders > 0 : false,
+      };
+    });
   }
-
-  const abandoned_carts: AbandonedCart[] = abandonedCheckouts.map(ac => {
-    const name = ac.customer
-      ? `${ac.customer.first_name ?? ''} ${ac.customer.last_name ?? ''}`.trim() || 'Visitante'
-      : 'Visitante';
-    const email = ac.customer?.email ?? '';
-    const custProfile = profiles.find(p => p.email === email);
-
-    return {
-      customer_name: name,
-      customer_email: email,
-      products: ac.line_items.map(li => ({
-        title: li.title,
-        quantity: li.quantity,
-        price: parseFloat(li.price),
-      })),
-      total_value: parseFloat(ac.total_price),
-      abandoned_at: ac.created_at,
-      is_returning_customer: custProfile ? custProfile.total_orders > 0 : false,
-    };
-  });
 
   const repeatCustomers = profiles.filter(p => p.total_orders > 1).length;
   const oneTimeCustomers = profiles.filter(p => p.total_orders === 1).length;

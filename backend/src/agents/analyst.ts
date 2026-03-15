@@ -71,6 +71,19 @@ ALSO ANALYZE:
 
 CRITICAL: For each insight, include the DATA that supports it. Numbers, percentages, comparisons. The Growth Hacker will use your data to justify every action.
 
+HISTORICAL CONTEXT:
+If store_history data is provided, use it to:
+- Compare current performance against historical averages
+- Identify seasonal patterns and year-over-year trends
+- Highlight if the store is growing or declining long-term
+- Reference lifetime metrics to contextualize daily performance
+
+ABANDONED CARTS:
+When abandoned cart data is available with customer names and products:
+- Always mention the specific products abandoned and their value
+- Highlight returning customers who abandoned (higher recovery potential)
+- Include total abandoned cart value as a recovery opportunity
+
 ALSO TRACK PREVIOUS ACTIONS:
 You will receive actions_history — previously executed actions for this account.
 - Include them verbatim in your output's actions_history field
@@ -87,6 +100,114 @@ IMPORTANT:
 - weekly_patterns: only include days that have data points. Use language-appropriate day names.
 
 Return ONLY valid JSON matching the AnalystOutput schema. No preamble, no explanation.`;
+
+// ── Store history types ──────────────────────────────────────────────────────
+
+interface StoreHistoryRow {
+  month: string;         // YYYY-MM
+  total_orders: number;
+  total_revenue: number;
+  total_customers: number;
+  new_customers: number;
+  returning_customers: number;
+}
+
+interface StoreHistoryContext {
+  first_order_date: string;
+  lifetime_orders: number;
+  lifetime_revenue: number;
+  monthly_trend: StoreHistoryRow[];
+  vip_count: number;
+  total_customer_count: number;
+}
+
+async function loadStoreHistory(accountId: string): Promise<StoreHistoryContext | null> {
+  // Load store_history rows (monthly aggregates)
+  const { data: rows, error } = await supabase
+    .from('store_history')
+    .select('*')
+    .eq('account_id', accountId)
+    .order('month', { ascending: true });
+
+  if (error) {
+    // Table may not exist yet — fail gracefully
+    if (error.message.includes('relation') || error.message.includes('does not exist')) {
+      console.log('[analyst] store_history table does not exist yet — skipping');
+      return null;
+    }
+    console.warn(`[analyst] Failed to load store_history: ${error.message}`);
+    return null;
+  }
+
+  if (!rows || rows.length === 0) return null;
+
+  const typedRows = rows as StoreHistoryRow[];
+  const lifetimeOrders = typedRows.reduce((sum, r) => sum + (r.total_orders ?? 0), 0);
+  const lifetimeRevenue = typedRows.reduce((sum, r) => sum + (r.total_revenue ?? 0), 0);
+  const firstMonth = typedRows[0]?.month ?? 'unknown';
+
+  // VIP count: sum of returning_customers across all months (approximate)
+  const totalCustomerCount = typedRows.reduce((sum, r) => sum + (r.total_customers ?? 0), 0);
+  const vipCount = typedRows.reduce((sum, r) => sum + (r.returning_customers ?? 0), 0);
+
+  return {
+    first_order_date: firstMonth + '-01',
+    lifetime_orders: lifetimeOrders,
+    lifetime_revenue: Math.round(lifetimeRevenue * 100) / 100,
+    monthly_trend: typedRows.slice(-12), // last 12 months
+    vip_count: vipCount,
+    total_customer_count: totalCustomerCount,
+  };
+}
+
+function buildStoreHistoryBlock(history: StoreHistoryContext | null, currency: string): string {
+  if (!history) return '';
+
+  const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
+  const cs = sym[currency] ?? `${currency} `;
+
+  const lines: string[] = [
+    '',
+    '═══ HISTORICAL CONTEXT (from store_history) ═══',
+    `This store has been operating since ${history.first_order_date}.`,
+    `Lifetime: ${history.lifetime_orders} orders, ${cs}${history.lifetime_revenue.toFixed(2)} revenue`,
+    `Total customers tracked: ${history.total_customer_count} | VIP/returning: ${history.vip_count}`,
+    '',
+    'Monthly revenue trend (last 12 months):',
+  ];
+
+  for (const row of history.monthly_trend) {
+    lines.push(`  ${row.month}: ${cs}${(row.total_revenue ?? 0).toFixed(2)} revenue, ${row.total_orders ?? 0} orders, ${row.new_customers ?? 0} new customers`);
+  }
+
+  // Seasonal patterns — find best and worst months
+  if (history.monthly_trend.length >= 3) {
+    const sorted = [...history.monthly_trend].sort((a, b) => (b.total_revenue ?? 0) - (a.total_revenue ?? 0));
+    const best = sorted[0];
+    const worst = sorted[sorted.length - 1];
+    if (best && worst) {
+      const bestMonthName = new Date(best.month + '-15').toLocaleString('en', { month: 'long' });
+      const worstMonthName = new Date(worst.month + '-15').toLocaleString('en', { month: 'long' });
+      lines.push('');
+      lines.push('Seasonal patterns:');
+      lines.push(`  Best month: ${bestMonthName} at ${cs}${(best.total_revenue ?? 0).toFixed(2)}`);
+      lines.push(`  Worst month: ${worstMonthName} at ${cs}${(worst.total_revenue ?? 0).toFixed(2)}`);
+    }
+
+    // Year-over-year: compare same month last year if available
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const lastYearMonth = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentRow = history.monthly_trend.find(r => r.month === currentMonth);
+    const lastYearRow = history.monthly_trend.find(r => r.month === lastYearMonth);
+    if (currentRow && lastYearRow && lastYearRow.total_revenue > 0) {
+      const yoyPct = ((currentRow.total_revenue - lastYearRow.total_revenue) / lastYearRow.total_revenue * 100).toFixed(1);
+      lines.push(`  Year-over-year (${currentMonth} vs ${lastYearMonth}): ${Number(yoyPct) >= 0 ? '+' : ''}${yoyPct}%`);
+    }
+  }
+
+  return lines.join('\n');
+}
 
 // ── Load previous actions for the loop ──────────────────────────────────────
 
@@ -213,7 +334,7 @@ function buildFeedbackBlock(feedback: BriefFeedbackRow[]): string {
 
 // ── Build user prompt ───────────────────────────────────────────────────────
 
-function buildAnalystUserPrompt(input: AnalystInput, actionsHistory: AnalystOutput['actions_history'], feedbackBlock: string): string {
+function buildAnalystUserPrompt(input: AnalystInput, actionsHistory: AnalystOutput['actions_history'], feedbackBlock: string, storeHistoryBlock: string = ''): string {
   const { snapshot, historicalSnapshots, config, storeName, currency, briefDate, language } = input;
 
   const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', MXN: 'MX$', COP: 'COP$' };
@@ -300,6 +421,16 @@ ${config.store_context ? `- Store context: ${config.store_context}` : ''}
 ${config.competitor_context ? `- Competitor context: ${config.competitor_context}` : ''}
 
 ${buildCustomerIntelBlock(input.customerIntelligence)}
+${storeHistoryBlock}
+
+MANDATORY DATA IN SIGNALS:
+Your "signals" array MUST include these data lines (adapt language to ${input.language}):
+- "Tienes X clientes. Y habituales, Z de una sola compra, W inactivos." (customer breakdown)
+- Names of customers who bought yesterday with what they bought
+- Star customers with their history and spend
+- Lost customers with name and last product purchased
+- About-to-repeat customers with their purchase cycle
+- Abandoned carts with customer name and products left behind
 
 Return the AnalystOutput JSON. Include ALL 5 analysis areas (conversion, merchandising, retention, seo, acquisition), plus weekly_patterns, calendar_opportunities, trends, actions_history, and signals.
 ${feedbackBlock}
@@ -357,16 +488,24 @@ Schema:
 export async function runAnalyst(input: AnalystInput): Promise<AnalystResult> {
   console.log('[analyst] Running analyst agent...');
 
-  // Load previous actions for the improvement loop
-  const actionsHistory = await loadActionsHistory(input.accountId);
-  console.log(`[analyst] Loaded ${actionsHistory.length} previous actions for the loop`);
+  // Load previous actions, store history, and feedback in parallel
+  const [actionsHistory, storeHistory, recentFeedback] = await Promise.all([
+    loadActionsHistory(input.accountId),
+    loadStoreHistory(input.accountId),
+    loadRecentFeedback(input.accountId),
+  ]);
 
-  // Load recent merchant feedback
-  const recentFeedback = await loadRecentFeedback(input.accountId);
+  console.log(`[analyst] Loaded ${actionsHistory.length} previous actions for the loop`);
+  if (storeHistory) {
+    console.log(`[analyst] Loaded store history — ${storeHistory.lifetime_orders} lifetime orders, ${storeHistory.monthly_trend.length} months`);
+  }
+
   const feedbackBlock = buildFeedbackBlock(recentFeedback);
   if (recentFeedback.length > 0) {
     console.log(`[analyst] Loaded ${recentFeedback.length} recent feedback entries`);
   }
+
+  const storeHistoryBlock = buildStoreHistoryBlock(storeHistory, input.currency);
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -374,7 +513,7 @@ export async function runAnalyst(input: AnalystInput): Promise<AnalystResult> {
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildAnalystUserPrompt(input, actionsHistory, feedbackBlock) },
+      { role: 'user', content: buildAnalystUserPrompt(input, actionsHistory, feedbackBlock, storeHistoryBlock) },
     ],
   });
 

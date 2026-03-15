@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
+import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { sendPushNotification } from './pushNotifier.js';
@@ -174,6 +175,14 @@ async function runBriefPipeline(accountId: string): Promise<void> {
         return;
       }
     }
+  }
+
+  // Step 1b: Sync abandoned carts (non-fatal)
+  try {
+    console.log(`[scheduler] [${accountId}] Step 1b — Abandoned carts sync`);
+    await syncAbandonedCarts(accountId);
+  } catch (cartErr) {
+    console.warn(`[scheduler] [${accountId}] Abandoned carts sync failed (non-fatal): ${cartErr instanceof Error ? cartErr.message : String(cartErr)}`);
   }
 
   try {

@@ -96,8 +96,8 @@ function buildCustomerIntelSummary(analystOutput: AnalystOutput): string {
     lines.push(`Abandoned carts: ${ci.abandoned_carts.map(c => `${c.customer_name} (€${c.total_value})`).join(', ')}`);
   }
   lines.push('\nVERIFY ALL OF THESE:');
-  lines.push('- email_campaign MUST have real email addresses in email_recipients from lost customers');
-  lines.push('- email_body MUST mention each person by name + their specific product');
+  lines.push('- reactivation_email MUST have real recipients array with email, name, last_product, days_since from lost customers');
+  lines.push('- cart_recovery MUST have customer_email, customer_name, and products array from abandoned carts');
   lines.push('- yesterday_summary MUST include "Tienes X clientes. Y son habituales, Z compraron una vez..."');
   lines.push('- about_to_repeat customers MUST appear by name in the narrative');
   lines.push('- abandoned carts MUST list the product names, not just the amount');
@@ -292,7 +292,7 @@ export async function runQualityAuditor(input: QualityAuditorInput): Promise<Qua
   }
 
   // Validate action types
-  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'email_campaign', 'product_highlight', 'seo_fix', 'whatsapp_message'];
+  const validTypes: GrowthAction['type'][] = ['instagram_post', 'discount_code', 'email_campaign', 'product_highlight', 'seo_fix', 'whatsapp_message', 'cart_recovery', 'welcome_email', 'reactivation_email'];
   output.actions = output.actions.filter(a => validTypes.includes(a.type));
 
   // Ensure audit fields exist

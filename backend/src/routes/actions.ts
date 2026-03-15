@@ -6,6 +6,8 @@ import { shopifyGraphQL } from '../lib/shopify.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { sendMerchantEmail } from '../services/merchantEmail.js';
+import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail } from '../services/emailTemplates.js';
 
 const router = Router();
 
@@ -137,6 +139,9 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
       email_campaign: executeEmailCampaign,
       instagram_post: executeInstagramPost,
       whatsapp_message: executeWhatsAppMessage,
+      cart_recovery: executeCartRecovery,
+      welcome_email: executeWelcomeEmail,
+      reactivation_email: executeReactivationEmail,
     };
 
     const executor = executors[actionType];
@@ -669,6 +674,187 @@ async function executeWhatsAppMessage(_accountId: string, actionId: string, cont
   });
 
   console.log(`[actions] WhatsApp link prepared for action ${actionId}`);
+}
+
+// ── Cart Recovery Executor ───────────────────────────────────────────────────
+
+async function executeCartRecovery(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const customerEmail = content.customer_email as string | undefined;
+  const customerName = content.customer_name as string ?? '';
+  const products = (content.products as Array<{ title: string; quantity: number; price: number }>) ?? [];
+  const totalPrice = (content.total_price as number) ?? 0;
+  const checkoutUrl = content.checkout_url as string | undefined;
+  const discountCode = content.discount_code as string | undefined;
+  const discountPercent = content.discount_percent as number | undefined;
+  const checkoutId = content.shopify_checkout_id as string | undefined;
+
+  if (!customerEmail) {
+    await markFailed(actionId, 'Missing customer_email');
+    return;
+  }
+
+  try {
+    // Load account language and shop info
+    const [{ data: acc }, { data: conn }] = await Promise.all([
+      supabase.from('accounts').select('language').eq('id', accountId).single(),
+      supabase.from('shopify_connections').select('shop_name, shop_domain, shop_currency').eq('account_id', accountId).single(),
+    ]);
+
+    const language = (acc?.language === 'es' ? 'es' : 'en') as 'en' | 'es';
+    const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
+    const currency = (conn as Record<string, unknown>)?.shop_currency as string ?? 'USD';
+
+    const { subject, html } = buildCartRecoveryEmail({
+      customerName,
+      storeName,
+      products,
+      totalPrice,
+      currency,
+      checkoutUrl,
+      discountCode,
+      discountPercent,
+      language,
+    });
+
+    const { messageId } = await sendMerchantEmail({
+      accountId,
+      to: customerEmail,
+      subject,
+      html,
+    });
+
+    // Mark abandoned cart as recovered if we have a checkout ID
+    if (checkoutId) {
+      await supabase
+        .from('abandoned_carts')
+        .update({ recovered: true, recovery_action_id: actionId })
+        .eq('shopify_checkout_id', checkoutId);
+    }
+
+    await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
+    console.log(`[actions] Cart recovery email sent to ${customerEmail} for action ${actionId}`);
+  } catch (err) {
+    await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ── Welcome Email Executor ──────────────────────────────────────────────────
+
+async function executeWelcomeEmail(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const customerEmail = content.customer_email as string | undefined;
+  const customerName = content.customer_name as string ?? '';
+  const productPurchased = content.product_purchased as string ?? '';
+
+  if (!customerEmail) {
+    await markFailed(actionId, 'Missing customer_email');
+    return;
+  }
+
+  try {
+    const [{ data: acc }, { data: conn }] = await Promise.all([
+      supabase.from('accounts').select('language').eq('id', accountId).single(),
+      supabase.from('shopify_connections').select('shop_name, shop_domain').eq('account_id', accountId).single(),
+    ]);
+
+    const language = (acc?.language === 'es' ? 'es' : 'en') as 'en' | 'es';
+    const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
+    const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
+
+    const { subject, html } = buildWelcomeEmail({
+      customerName,
+      storeName,
+      productPurchased,
+      language,
+      storeUrl,
+    });
+
+    const { messageId } = await sendMerchantEmail({
+      accountId,
+      to: customerEmail,
+      subject,
+      html,
+    });
+
+    await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
+    console.log(`[actions] Welcome email sent to ${customerEmail} for action ${actionId}`);
+  } catch (err) {
+    await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ── Reactivation Email Executor ─────────────────────────────────────────────
+
+async function executeReactivationEmail(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+  const recipients = content.recipients as Array<{
+    email: string;
+    name: string;
+    last_product: string;
+    days_since: number;
+  }> | undefined;
+
+  if (!recipients || recipients.length === 0) {
+    await markFailed(actionId, 'Missing or empty recipients array');
+    return;
+  }
+
+  const discountCode = content.discount_code as string | undefined;
+  const discountPercent = content.discount_percent as number | undefined;
+
+  try {
+    const [{ data: acc }, { data: conn }] = await Promise.all([
+      supabase.from('accounts').select('language').eq('id', accountId).single(),
+      supabase.from('shopify_connections').select('shop_name, shop_domain').eq('account_id', accountId).single(),
+    ]);
+
+    const language = (acc?.language === 'es' ? 'es' : 'en') as 'en' | 'es';
+    const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
+    const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
+
+    const messageIds: string[] = [];
+    const failed: string[] = [];
+
+    for (const recipient of recipients) {
+      try {
+        const { subject, html } = buildReactivationEmail({
+          customerName: recipient.name,
+          storeName,
+          lastProduct: recipient.last_product,
+          daysSinceLastPurchase: recipient.days_since,
+          discountCode,
+          discountPercent,
+          language,
+          storeUrl,
+        });
+
+        const { messageId } = await sendMerchantEmail({
+          accountId,
+          to: recipient.email,
+          subject,
+          html,
+        });
+
+        messageIds.push(messageId);
+      } catch (err) {
+        console.error(`[actions] Failed to send reactivation to ${recipient.email}:`, err instanceof Error ? err.message : err);
+        failed.push(recipient.email);
+      }
+    }
+
+    if (messageIds.length === 0) {
+      await markFailed(actionId, `All reactivation emails failed. First: ${failed[0]}`);
+      return;
+    }
+
+    await markCompleted(actionId, {
+      sent_count: messageIds.length,
+      message_ids: messageIds,
+      failed: failed.length > 0 ? failed : undefined,
+    });
+
+    console.log(`[actions] Reactivation emails sent to ${messageIds.length}/${recipients.length} recipients for action ${actionId}`);
+  } catch (err) {
+    await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
 }
 
 // ── Helper: mark action completed ───────────────────────────────────────────
