@@ -22,7 +22,7 @@ export async function sendMerchantEmail(input: MerchantEmailInput): Promise<{ me
   const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
   const merchantEmail = acc?.email ?? '';
   const slug = storeName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const fromAddress = `${slug}@mail.sillages.app`;
+  const fromAddress = `${slug}@sillages.app`;
   const fromField = `${storeName} <${fromAddress}>`;
 
   const recipients = Array.isArray(input.to) ? input.to : [input.to];
