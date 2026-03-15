@@ -406,6 +406,12 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
 // SHARED HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Accounts temporarily excluded from event detection + push notifications.
+// Andrea (NICOLINA / taart-madrid) is paused until she reinstalls with new scopes.
+const PAUSED_ACCOUNTS: Set<string> = new Set([
+  'e77572ee-83df-43e8-8f69-f143a227fe56', // andrea@nicolina.es
+]);
+
 async function getEligibleAccounts(): Promise<string[]> {
   const { data: accounts, error } = await supabase
     .from('accounts')
@@ -417,7 +423,15 @@ async function getEligibleAccounts(): Promise<string[]> {
     return [];
   }
 
-  return accounts.map(a => a.id);
+  const eligible = accounts
+    .map(a => a.id)
+    .filter(id => !PAUSED_ACCOUNTS.has(id));
+
+  if (eligible.length < accounts.length) {
+    console.log(`[scheduler] ${accounts.length - eligible.length} account(s) paused, ${eligible.length} eligible`);
+  }
+
+  return eligible;
 }
 
 async function ensureShopifySync(accountId: string): Promise<string | null> {
