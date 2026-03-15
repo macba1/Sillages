@@ -379,7 +379,6 @@ OUTPUT FORMAT — return exactly this JSON:
       "content": {
         "copy": "<EXACT text to use — full caption, message, etc. Ready to copy-paste. Include emojis if appropriate.>",
         "discount_code": "<if type=discount_code: the code, e.g. TARTA10>",
-        "discount_percentage": "<if type=discount_code: number, e.g. 10>",
         "discount_product": "<if type=discount_code: product name>",
         "discount_value": "<if type=discount_code: string like '10%' or '5€'>",
         "discount_type": "<if type=discount_code: 'percentage' or 'fixed_amount'>",

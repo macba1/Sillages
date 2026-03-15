@@ -315,6 +315,13 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
     console.log(`[briefGenerator] Brief ready — account ${accountId} date ${briefDate}`);
 
     // ── 8. Save pending actions (using audited actions) ─────────────────
+    // Clean up old pending actions for this brief (in case of re-generation)
+    await supabase
+      .from('pending_actions')
+      .delete()
+      .eq('brief_id', briefId)
+      .eq('status', 'pending');
+
     if (finalActions.length > 0) {
       const actionRows = finalActions.map((a: GrowthAction) => ({
         account_id: accountId,
