@@ -355,6 +355,23 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
   try {
     const yesterday = new Date(now.getTime() - 86400000);
     const weekEndDate = yesterday.toISOString().slice(0, 10);
+    const weekEnd = new Date(weekEndDate + 'T23:59:59Z');
+    const weekStart = new Date(weekEnd.getTime() - 6 * 86400000);
+    const weekStartStr = weekStart.toISOString().slice(0, 10);
+
+    // Check if weekly brief already exists for this week (prevent duplicate key)
+    const { data: existing } = await supabase
+      .from('weekly_briefs')
+      .select('id, status')
+      .eq('account_id', accountId)
+      .eq('week_start', weekStartStr)
+      .eq('week_end', weekEndDate)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[scheduler] [${accountId}] Weekly brief already exists (id=${existing.id}, status=${existing.status}) — skipping`);
+      return;
+    }
 
     console.log(`[scheduler] [${accountId}] Weekly brief generation START for week ending ${weekEndDate}`);
     const weeklyBriefId = await generateWeeklyBrief(accountId, weekEndDate);
