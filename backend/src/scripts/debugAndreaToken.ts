@@ -25,7 +25,7 @@ async function main() {
   console.log('');
 
   // Parse scopes
-  const currentScopes = (conn.scopes ?? '').split(',').map(s => s.trim()).sort();
+  const currentScopes = (conn.scopes ?? '').split(',').map((s: string) => s.trim()).sort();
   const requiredScopes = 'read_all_orders,read_products,write_products,read_customers,write_customers,read_analytics,read_inventory,read_reports,read_pixels,write_discounts,read_checkouts,write_marketing_events'.split(',').sort();
 
   console.log('=== SCOPE COMPARISON ===');
@@ -33,7 +33,7 @@ async function main() {
   console.log('');
 
   const missing = requiredScopes.filter(s => !currentScopes.includes(s));
-  const extra = currentScopes.filter(s => !requiredScopes.includes(s));
+  const extra = currentScopes.filter((s: string) => !requiredScopes.includes(s));
 
   if (missing.length > 0) {
     console.log('MISSING SCOPES:', missing.join(', '));
