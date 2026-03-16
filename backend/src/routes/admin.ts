@@ -252,4 +252,134 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
   }
 });
 
+// GET /api/admin/actions — All actions across all accounts with full details
+router.get('/actions', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data: actions } = await supabase
+      .from('pending_actions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!actions || actions.length === 0) {
+      res.json({ actions: [] });
+      return;
+    }
+
+    // Join with account info and shop info
+    const accountIds = [...new Set(actions.map(a => a.account_id))];
+    const [{ data: accounts }, { data: connections }] = await Promise.all([
+      supabase.from('accounts').select('id, email, full_name').in('id', accountIds),
+      supabase.from('shopify_connections').select('account_id, shop_name, shop_domain').in('account_id', accountIds),
+    ]);
+
+    const accountMap = new Map((accounts ?? []).map(a => [a.id, a]));
+    const connMap = new Map((connections ?? []).map(c => [c.account_id, c]));
+
+    const enriched = actions.map(action => ({
+      ...action,
+      account_email: accountMap.get(action.account_id)?.email ?? null,
+      account_name: accountMap.get(action.account_id)?.full_name ?? null,
+      shop_name: connMap.get(action.account_id)?.shop_name ?? null,
+      shop_domain: connMap.get(action.account_id)?.shop_domain ?? null,
+    }));
+
+    res.json({ actions: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/actions/:id/approve — Admin approves and executes
+router.put('/actions/:id/approve', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const actionId = req.params.id;
+
+    const { data: action, error: fetchError } = await supabase
+      .from('pending_actions')
+      .select('*')
+      .eq('id', actionId)
+      .single();
+
+    if (fetchError || !action) throw new AppError(404, 'Action not found');
+    if (action.status !== 'pending') throw new AppError(400, `Action is already ${action.status}`);
+
+    // Mark as approved by admin
+    await supabase
+      .from('pending_actions')
+      .update({
+        status: 'completed',
+        approved_at: new Date().toISOString(),
+        executed_at: new Date().toISOString(),
+        result: { approved_by: 'admin', note: 'Approved via admin panel' },
+      })
+      .eq('id', actionId);
+
+    const { data: updated } = await supabase.from('pending_actions').select('*').eq('id', actionId).single();
+    res.json({ action: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/actions/:id/reject — Admin rejects
+router.put('/actions/:id/reject', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const actionId = req.params.id;
+
+    const { data: action, error: fetchError } = await supabase
+      .from('pending_actions')
+      .select('id, status')
+      .eq('id', actionId)
+      .single();
+
+    if (fetchError || !action) throw new AppError(404, 'Action not found');
+    if (action.status !== 'pending') throw new AppError(400, `Action is already ${action.status}`);
+
+    await supabase
+      .from('pending_actions')
+      .update({ status: 'rejected' })
+      .eq('id', actionId);
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/admin/email-log — Full email tracking log
+router.get('/email-log', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data: logs } = await supabase
+      .from('email_log')
+      .select('*')
+      .order('sent_at', { ascending: false })
+      .limit(50);
+
+    if (!logs || logs.length === 0) {
+      res.json({ logs: [] });
+      return;
+    }
+
+    const accountIds = [...new Set(logs.map(l => l.account_id))];
+    const [{ data: accounts }, { data: connections }] = await Promise.all([
+      supabase.from('accounts').select('id, email, full_name').in('id', accountIds),
+      supabase.from('shopify_connections').select('account_id, shop_name').in('account_id', accountIds),
+    ]);
+
+    const accountMap = new Map((accounts ?? []).map(a => [a.id, a]));
+    const connMap = new Map((connections ?? []).map(c => [c.account_id, c]));
+
+    const enriched = logs.map(log => ({
+      ...log,
+      account_email: accountMap.get(log.account_id)?.email ?? null,
+      shop_name: connMap.get(log.account_id)?.shop_name ?? null,
+    }));
+
+    res.json({ logs: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
