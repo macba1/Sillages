@@ -1,7 +1,7 @@
 {
-  "name": "Sillages",
+  "name": "Sillages — AI Growth for Shopify",
   "short_name": "Sillages",
-  "description": "Daily intelligence briefs for your Shopify store",
+  "description": "AI-powered growth platform for Shopify stores",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#F5F0E8",
