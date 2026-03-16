@@ -17,6 +17,8 @@ import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
 import { syncYesterdayForAccount } from '../services/shopifySync.js';
+import { syncFullHistory } from '../services/fullHistorySync.js';
+import { syncAbandonedCarts } from '../services/abandonedCartsSync.js';
 import { generateBrief } from '../services/briefGenerator.js';
 
 const router = Router();
@@ -246,9 +248,14 @@ router.get(
         // Reconnection — skip billing, sync fresh data, go straight to dashboard
         console.log(`[shopify/callback] Reconnection detected — skipping billing, syncing data`);
 
-        // Fire-and-forget: sync + brief with fresh data
+        // Fire-and-forget: full sync + abandoned carts + brief with fresh data
         void (async () => {
           try {
+            console.log(`[shopify/callback] Reconnection: starting full history sync for ${accountId}`);
+            await syncFullHistory(accountId);
+            console.log(`[shopify/callback] Reconnection: full history sync done, syncing abandoned carts`);
+            await syncAbandonedCarts(accountId);
+            console.log(`[shopify/callback] Reconnection: abandoned carts done, syncing yesterday`);
             await syncYesterdayForAccount(accountId);
             const snap = await supabase
               .from('shopify_daily_snapshots')
@@ -259,10 +266,10 @@ router.get(
               .single();
             if (snap.data) {
               await generateBrief({ accountId, briefDate: snap.data.snapshot_date });
-              console.log(`[shopify/callback] Reconnection brief generated for ${accountId}`);
+              console.log(`[shopify/callback] Reconnection: brief generated for ${accountId}`);
             }
           } catch (err) {
-            console.error(`[shopify/callback] Reconnection sync/brief failed (non-fatal):`, err instanceof Error ? err.message : err);
+            console.error(`[shopify/callback] Reconnection sync failed (non-fatal):`, err instanceof Error ? err.message : err);
           }
         })();
 
