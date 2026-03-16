@@ -407,9 +407,9 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Accounts temporarily excluded from event detection + push notifications.
-// Andrea (NICOLINA / taart-madrid) is paused until she reinstalls with new scopes.
+// Empty = all eligible accounts are active.
 const PAUSED_ACCOUNTS: Set<string> = new Set([
-  'e77572ee-83df-43e8-8f69-f143a227fe56', // andrea@nicolina.es
+  // 'e77572ee-83df-43e8-8f69-f143a227fe56', // andrea@nicolina.es — reactivated 2026-03-16
 ]);
 
 async function getEligibleAccounts(): Promise<string[]> {

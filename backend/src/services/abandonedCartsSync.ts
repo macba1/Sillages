@@ -77,7 +77,6 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
       total_price: totalPrice,
       currency,
       abandoned_at: checkout.created_at,
-      updated_at: new Date().toISOString(),
     };
 
     const { error: upsertError } = await supabase
