@@ -6,10 +6,9 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { detectEvents } from './eventDetector.js';
 import { generateEventAction } from './eventActionGenerator.js';
-import { sendPushNotification } from './pushNotifier.js';
 import { generateWeeklyBrief } from './weeklyBriefGenerator.js';
-import { sendWeeklyBriefEmail } from './weeklyEmailSender.js';
 import { logCommunication } from './commLog.js';
+import { isSendEnabled, gatePush, gateWeeklyEmail } from './commsGate.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 
@@ -133,9 +132,9 @@ async function processEventsForAccount(accountId: string): Promise<void> {
       const push = buildEventPush(event, lang, storeName, currency, actionId);
 
       try {
-        await sendPushNotification(accountId, push);
+        const result = await gatePush(accountId, push, 'event_push');
         pushesSent++;
-        console.log(`[scheduler] [${accountId}] Push ${pushesSent}/${MAX_EVENT_PUSHES_PER_DAY} sent: ${event.type}`);
+        console.log(`[scheduler] [${accountId}] Push ${pushesSent}/${MAX_EVENT_PUSHES_PER_DAY} ${result.sent ? 'sent' : 'queued'}: ${event.type}`);
 
         // Mark push as sent in event_log
         await supabase
@@ -143,12 +142,6 @@ async function processEventsForAccount(accountId: string): Promise<void> {
           .update({ push_sent: true })
           .eq('account_id', accountId)
           .eq('event_key', event.key);
-
-        await logCommunication({
-          account_id: accountId,
-          channel: 'event_push',
-          status: 'sent',
-        });
       } catch (pushErr) {
         console.warn(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
       }
@@ -299,19 +292,8 @@ async function sendDailySummaryPush(accountId: string): Promise<void> {
       : `. ${snap.new_customers} new ${snap.new_customers === 1 ? 'customer' : 'customers'}.`;
   }
 
-  await sendPushNotification(accountId, {
-    title: storeName,
-    body,
-    url: '/dashboard',
-  });
-
-  await logCommunication({
-    account_id: accountId,
-    channel: 'daily_summary_push',
-    status: 'sent',
-  });
-
-  console.log(`[scheduler] [${accountId}] Daily summary push sent: ${body}`);
+  const result = await gatePush(accountId, { title: storeName, body, url: '/dashboard' }, 'daily_summary_push');
+  console.log(`[scheduler] [${accountId}] Daily summary push ${result.sent ? 'sent' : 'queued'}: ${body}`);
 }
 
 // ── Pending actions reminder (Type 5) ───────────────────────────────────
@@ -334,7 +316,7 @@ async function sendPendingActionsReminder(accountId: string): Promise<void> {
   const isEs = acc?.language === 'es';
   const storeName = conn?.shop_name ?? 'Sillages';
 
-  await sendPushNotification(accountId, {
+  const result = await gatePush(accountId, {
     title: storeName,
     body: isEs
       ? `Tienes ${n} ${n === 1 ? 'acción lista' : 'acciones listas'} para aprobar.`
@@ -342,7 +324,7 @@ async function sendPendingActionsReminder(accountId: string): Promise<void> {
     url: '/actions',
   });
 
-  console.log(`[scheduler] [${accountId}] Pending actions reminder: ${n} actions`);
+  console.log(`[scheduler] [${accountId}] Pending actions reminder ${result.sent ? 'sent' : 'queued'}: ${n} actions`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -378,16 +360,9 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
     const genDuration = Date.now() - weeklyStart;
     console.log(`[scheduler] [${accountId}] Weekly brief generation END — ${genDuration}ms`);
 
-    console.log(`[scheduler] [${accountId}] Sending weekly email`);
-    await sendWeeklyBriefEmail(weeklyBriefId);
-    console.log(`[scheduler] [${accountId}] Weekly email sent`);
-
-    await logCommunication({
-      account_id: accountId,
-      weekly_brief_id: weeklyBriefId,
-      channel: 'weekly_email',
-      status: 'sent',
-    });
+    console.log(`[scheduler] [${accountId}] Gating weekly email`);
+    const emailResult = await gateWeeklyEmail(accountId, weeklyBriefId);
+    console.log(`[scheduler] [${accountId}] Weekly email ${emailResult.sent ? 'sent' : 'queued for approval'}`);
 
     // Push notification about weekly email
     const { data: conn } = await supabase
@@ -396,7 +371,7 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
       .from('accounts').select('language').eq('id', accountId).single();
     const isEs = acc?.language === 'es';
 
-    await sendPushNotification(accountId, {
+    await gatePush(accountId, {
       title: conn?.shop_name ?? 'Sillages',
       body: isEs
         ? 'Tu resumen semanal está en tu email.'
@@ -440,12 +415,17 @@ async function getEligibleAccounts(): Promise<string[]> {
     return [];
   }
 
-  const eligible = accounts
-    .map(a => a.id)
-    .filter(id => !PAUSED_ACCOUNTS.has(id));
+  // Filter by paused list AND send_enabled
+  const allIds = accounts.map(a => a.id).filter(id => !PAUSED_ACCOUNTS.has(id));
+  const eligible: string[] = [];
+  for (const id of allIds) {
+    if (await isSendEnabled(id)) {
+      eligible.push(id);
+    }
+  }
 
   if (eligible.length < accounts.length) {
-    console.log(`[scheduler] ${accounts.length - eligible.length} account(s) paused, ${eligible.length} eligible`);
+    console.log(`[scheduler] ${accounts.length - eligible.length} account(s) filtered out, ${eligible.length} eligible`);
   }
 
   return eligible;

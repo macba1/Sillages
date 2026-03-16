@@ -10,6 +10,7 @@ interface Store {
   email: string;
   name: string | null;
   subscription: string;
+  comms_approval: string;
   shop_domain: string | null;
   shop_name: string | null;
   token_status: string;
@@ -54,6 +55,7 @@ interface StatusData {
   recent_alerts: AdminAlert[];
   last_audit: { ran_at: string; alerts_count: number; duration_ms: number } | null;
   recent_deliveries?: DeliveryLog[];
+  pending_comms_count: number;
   server_time: string;
 }
 
@@ -84,6 +86,21 @@ interface EmailLog {
   error_message: string | null;
   message_id: string | null;
   account_email: string | null;
+  shop_name: string | null;
+}
+
+interface PendingComm {
+  id: string;
+  account_id: string;
+  type: string;
+  channel: string;
+  content: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
+  account_email: string | null;
+  account_name: string | null;
   shop_name: string | null;
 }
 
@@ -144,7 +161,7 @@ function shortTime(date: string | null): string {
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'actions' | 'activity' | 'emails';
+type Tab = 'overview' | 'actions' | 'comms' | 'activity' | 'emails';
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -152,6 +169,7 @@ export default function AdminStatus() {
   const [tab, setTab] = useState<Tab>('overview');
   const [data, setData] = useState<StatusData | null>(null);
   const [actions, setActions] = useState<AdminAction[]>([]);
+  const [pendingComms, setPendingComms] = useState<PendingComm[]>([]);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,13 +178,15 @@ export default function AdminStatus() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [statusRes, actionsRes, emailRes] = await Promise.all([
+      const [statusRes, actionsRes, commsRes, emailRes] = await Promise.all([
         api.get('/api/admin/status'),
         api.get('/api/admin/actions'),
+        api.get('/api/admin/pending-comms').catch(() => ({ data: { comms: [] } })),
         api.get('/api/admin/email-log').catch(() => ({ data: { logs: [] } })),
       ]);
       setData(statusRes.data);
       setActions(actionsRes.data.actions ?? []);
+      setPendingComms(commsRes.data.comms ?? []);
       setEmailLogs(emailRes.data.logs ?? []);
       setError(null);
       setLastRefresh(new Date());
@@ -209,6 +229,43 @@ export default function AdminStatus() {
     }
   }
 
+  async function handleCommApprove(commId: string) {
+    if (!confirm('Approve and SEND this communication?')) return;
+    setActionLoading(commId);
+    try {
+      await api.put(`/api/admin/pending-comms/${commId}/approve`);
+      await fetchAll();
+    } catch (err) {
+      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleCommReject(commId: string) {
+    if (!confirm('Reject this communication?')) return;
+    setActionLoading(commId);
+    try {
+      await api.put(`/api/admin/pending-comms/${commId}/reject`);
+      await fetchAll();
+    } catch (err) {
+      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function toggleCommsApproval(accountId: string, current: string) {
+    const next = current === 'auto' ? 'manual' : 'auto';
+    if (!confirm(`Set comms_approval to "${next}" for this account?`)) return;
+    try {
+      await api.put(`/api/admin/accounts/${accountId}/comms-approval`, { comms_approval: next });
+      await fetchAll();
+    } catch (err) {
+      alert(`Failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   if (loading) return <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><p>Loading...</p></div>;
   if (error) return <div style={S.page}><h1 style={{ color: '#ff6b6b' }}>Error: {error}</h1></div>;
   if (!data) return null;
@@ -217,6 +274,7 @@ export default function AdminStatus() {
   const completedActions = actions.filter(a => a.status === 'completed');
   const rejectedActions = actions.filter(a => a.status === 'rejected');
   const failedActions = actions.filter(a => a.status === 'failed');
+  const pendingCommsList = pendingComms.filter(c => c.status === 'pending');
 
   return (
     <div style={S.page}>
@@ -236,7 +294,8 @@ export default function AdminStatus() {
       {/* Summary bar */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Pending', value: pendingActions.length, color: '#C9964A' },
+          { label: 'Pending Actions', value: pendingActions.length, color: '#C9964A' },
+          { label: 'Pending Comms', value: pendingCommsList.length, color: pendingCommsList.length > 0 ? '#ff6b6b' : '#2D6A4F' },
           { label: 'Completed', value: completedActions.length, color: '#2D6A4F' },
           { label: 'Rejected', value: rejectedActions.length, color: '#721c24' },
           { label: 'Failed', value: failedActions.length, color: '#dc3545' },
@@ -254,7 +313,8 @@ export default function AdminStatus() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {([
           ['overview', 'Overview'],
-          ['actions', `Pending Approval (${pendingActions.length})`],
+          ['actions', `Pending Actions (${pendingActions.length})`],
+          ['comms', `Pending Comms (${pendingCommsList.length})`],
           ['activity', 'Activity Log'],
           ['emails', 'Email Tracking'],
         ] as [Tab, string][]).map(([t, label]) => (
@@ -272,7 +332,7 @@ export default function AdminStatus() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #2a2a40' }}>
-                    {['Store', 'Email', 'Plan', 'Token', 'Brief', 'Push', 'Weekly', 'Pending'].map(h => (
+                    {['Store', 'Email', 'Plan', 'Comms', 'Token', 'Brief', 'Push', 'Weekly', 'Pending'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
                     ))}
                   </tr>
@@ -286,6 +346,14 @@ export default function AdminStatus() {
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11, color: '#888' }}>{store.email}</td>
                       <td style={{ padding: '8px 12px' }}><span style={statusBadge(store.subscription)}>{store.subscription}</span></td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <button
+                          onClick={() => toggleCommsApproval(store.account_id, store.comms_approval)}
+                          style={{ ...S.badge(store.comms_approval === 'auto' ? '#2D6A4F' : '#C9964A', store.comms_approval === 'auto' ? '#fff' : '#000'), cursor: 'pointer', border: 'none' }}
+                        >
+                          {store.comms_approval}
+                        </button>
+                      </td>
                       <td style={{ padding: '8px 12px' }}>
                         <span style={statusBadge(store.token_status)}>{store.token_status}</span>
                         {store.token_failing_since && <div style={{ fontSize: 9, color: '#ff6b6b', marginTop: 2 }}>since {timeAgo(store.token_failing_since)}</div>}
@@ -362,6 +430,103 @@ export default function AdminStatus() {
                 onReject={() => handleReject(action.id)}
               />
             ))
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Pending Comms ───────────────────────────────────────────────── */}
+      {tab === 'comms' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {pendingCommsList.length === 0 ? (
+            <div style={{ ...S.card, ...S.cardBody }}>
+              <p style={{ color: '#2D6A4F' }}>No pending communications</p>
+            </div>
+          ) : (
+            pendingCommsList.map(comm => (
+              <div key={comm.id} style={S.card}>
+                <div style={S.cardHeader}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                    <span style={channelBadge(comm.channel)}>{comm.channel}</span>
+                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>
+                      {comm.shop_name ?? comm.account_email ?? comm.account_id.slice(0, 8)}
+                    </span>
+                    <span style={{ color: '#555', fontSize: 11 }}>{comm.account_email}</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#555' }}>{shortTime(comm.created_at)}</span>
+                </div>
+                <div style={S.cardBody}>
+                  {/* Push content preview */}
+                  {comm.type === 'push' && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={S.label}>Push Notification</div>
+                      <div style={{ background: '#12122a', borderRadius: 6, padding: 12, border: '1px solid #2a2a40' }}>
+                        <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, marginBottom: 4 }}>
+                          {(comm.content as { title?: string }).title ?? 'Push'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.5 }}>
+                          {(comm.content as { body?: string }).body ?? ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Weekly email preview */}
+                  {comm.type === 'weekly_email' && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={S.label}>Weekly Email</div>
+                      <p style={{ fontSize: 12, color: '#ccc' }}>
+                        Brief ID: {(comm.content as { weekly_brief_id?: string }).weekly_brief_id ?? '—'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Raw JSON */}
+                  <details style={{ marginBottom: 12 }}>
+                    <summary style={{ ...S.label, cursor: 'pointer', userSelect: 'none' }}>Raw Content</summary>
+                    <pre style={{ background: '#12122a', borderRadius: 6, padding: 12, fontSize: 10, color: '#666', overflow: 'auto', maxHeight: 200, border: '1px solid #2a2a40', marginTop: 6 }}>
+                      {JSON.stringify(comm.content, null, 2)}
+                    </pre>
+                  </details>
+
+                  {/* Approve / Reject */}
+                  <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #2a2a40' }}>
+                    <button
+                      onClick={() => handleCommApprove(comm.id)}
+                      disabled={actionLoading === comm.id}
+                      style={{ ...S.btn('#2D6A4F'), opacity: actionLoading === comm.id ? 0.5 : 1 }}
+                    >
+                      {actionLoading === comm.id ? '...' : 'Approve & Send'}
+                    </button>
+                    <button
+                      onClick={() => handleCommReject(comm.id)}
+                      disabled={actionLoading === comm.id}
+                      style={{ ...S.btn('#721c24'), opacity: actionLoading === comm.id ? 0.5 : 1 }}
+                    >
+                      {actionLoading === comm.id ? '...' : 'Reject'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Show recent approved/rejected comms */}
+          {pendingComms.filter(c => c.status !== 'pending').length > 0 && (
+            <div style={S.card}>
+              <div style={S.cardHeader}><h2 style={S.h2}>Recent Comms History</h2></div>
+              <div style={S.cardBody}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pendingComms.filter(c => c.status !== 'pending').slice(0, 20).map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1f1f35' }}>
+                      <span style={statusBadge(c.status)}>{c.status}</span>
+                      <span style={channelBadge(c.channel)}>{c.channel}</span>
+                      <span style={{ color: '#ccc', fontSize: 12, flex: 1 }}>{c.shop_name ?? c.account_email}</span>
+                      <span style={{ fontSize: 10, color: '#555' }}>{shortTime(c.approved_at ?? c.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -502,9 +667,9 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           {isEmail && (
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Recipient</div>
-              {content.customer_email ? (
+              {Boolean(content.customer_email) ? (
                 <p style={{ margin: 0, fontSize: 13, color: '#ccc' }}>
-                  {content.customer_name as string ?? ''} &lt;{content.customer_email as string}&gt;
+                  {String(content.customer_name ?? '')} &lt;{String(content.customer_email)}&gt;
                 </p>
               ) : recipients ? (
                 <div>
@@ -517,17 +682,17 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           )}
 
           {/* Copy / Content preview */}
-          {content.copy && (
+          {Boolean(content.copy) && (
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Copy</div>
               <div style={{ background: '#12122a', borderRadius: 6, padding: 12, fontSize: 12, color: '#aaa', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #2a2a40' }}>
-                {content.copy as string}
+                {String(content.copy)}
               </div>
             </div>
           )}
 
           {/* Products (for cart recovery) */}
-          {content.products && (
+          {Boolean(content.products) && (
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Products</div>
               {(content.products as Array<{ title: string; quantity: number; price: number }>).map((p, i) => (
@@ -535,9 +700,9 @@ function ActionCard({ action, loading, onApprove, onReject }: {
                   {p.title} x{p.quantity} — {p.price}
                 </div>
               ))}
-              {content.total_price && (
+              {Boolean(content.total_price) && (
                 <div style={{ fontSize: 12, color: '#C9964A', fontWeight: 600, marginTop: 4 }}>
-                  Total: {content.total_price as number} {content.currency as string ?? ''}
+                  Total: {String(content.total_price)} {String(content.currency ?? '')}
                 </div>
               )}
             </div>
@@ -599,11 +764,11 @@ function ActivityRow({ action }: { action: AdminAction }) {
         <div style={{ padding: '8px 12px', borderTop: '1px solid #1f1f35' }}>
           <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>{action.description}</div>
 
-          {action.content?.copy && (
+          {Boolean(action.content?.copy) && (
             <div style={{ marginBottom: 8 }}>
               <div style={S.label}>Copy</div>
               <div style={{ background: '#0f0f1a', borderRadius: 4, padding: 8, fontSize: 11, color: '#888', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {action.content.copy as string}
+                {String(action.content.copy)}
               </div>
             </div>
           )}

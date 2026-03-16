@@ -5,6 +5,9 @@ import { AppError } from '../middleware/errorHandler.js';
 import { supabase } from '../lib/supabase.js';
 import { runSchedulerForced } from '../services/scheduler.js';
 import { runAudit } from '../services/auditor.js';
+import { sendPushNotification } from '../services/pushNotifier.js';
+import { sendWeeklyBriefEmail } from '../services/weeklyEmailSender.js';
+import { logCommunication } from '../services/commLog.js';
 
 const router = Router();
 
@@ -58,7 +61,7 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
     // 1. All accounts with their connection status
     const { data: accounts } = await supabase
       .from('accounts')
-      .select('id, email, full_name, language, subscription_status')
+      .select('id, email, full_name, language, subscription_status, comms_approval')
       .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
 
     const stores = [];
@@ -151,6 +154,7 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
         email: account.email,
         name: account.full_name,
         subscription: account.subscription_status ?? 'null',
+        comms_approval: account.comms_approval ?? 'manual',
         shop_domain: conn?.shop_domain ?? null,
         shop_name: conn?.shop_name ?? null,
         token_status: conn?.token_status ?? 'no_connection',
@@ -240,11 +244,24 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
       // table may not exist
     }
 
+    // 5. Pending comms count
+    let pendingCommsCount = 0;
+    try {
+      const { count } = await supabase
+        .from('pending_comms')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      pendingCommsCount = count ?? 0;
+    } catch {
+      // table may not exist
+    }
+
     res.json({
       stores,
       recent_alerts: recentAlerts,
       last_audit: lastAudit,
       recent_deliveries: recentDeliveries,
+      pending_comms_count: pendingCommsCount,
       server_time: new Date().toISOString(),
     });
   } catch (err) {
@@ -377,6 +394,143 @@ router.get('/email-log', requireAuth, requireAdmin, async (_req: Request, res: R
     }));
 
     res.json({ logs: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PENDING COMMS — Admin approval gate for merchant communications
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/admin/pending-comms — All pending communications
+router.get('/pending-comms', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data: comms } = await supabase
+      .from('pending_comms')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!comms || comms.length === 0) {
+      res.json({ comms: [] });
+      return;
+    }
+
+    const accountIds = [...new Set(comms.map(c => c.account_id))];
+    const [{ data: accounts }, { data: connections }] = await Promise.all([
+      supabase.from('accounts').select('id, email, full_name').in('id', accountIds),
+      supabase.from('shopify_connections').select('account_id, shop_name').in('account_id', accountIds),
+    ]);
+
+    const accountMap = new Map((accounts ?? []).map(a => [a.id, a]));
+    const connMap = new Map((connections ?? []).map(c => [c.account_id, c]));
+
+    const enriched = comms.map(c => ({
+      ...c,
+      account_email: accountMap.get(c.account_id)?.email ?? null,
+      account_name: accountMap.get(c.account_id)?.full_name ?? null,
+      shop_name: connMap.get(c.account_id)?.shop_name ?? null,
+    }));
+
+    res.json({ comms: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/pending-comms/:id/approve — Approve and execute the communication
+router.put('/pending-comms/:id/approve', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const commId = req.params.id;
+
+    const { data: comm, error: fetchError } = await supabase
+      .from('pending_comms')
+      .select('*')
+      .eq('id', commId)
+      .single();
+
+    if (fetchError || !comm) throw new AppError(404, 'Pending comm not found');
+    if (comm.status !== 'pending') throw new AppError(400, `Comm is already ${comm.status}`);
+
+    // Actually send the communication
+    if (comm.type === 'push') {
+      await sendPushNotification(comm.account_id, comm.content as { title: string; body: string; url?: string });
+      await logCommunication({
+        account_id: comm.account_id,
+        channel: comm.channel,
+        status: 'sent',
+      });
+    } else if (comm.type === 'weekly_email') {
+      const weeklyBriefId = (comm.content as { weekly_brief_id: string }).weekly_brief_id;
+      await sendWeeklyBriefEmail(weeklyBriefId);
+      await logCommunication({
+        account_id: comm.account_id,
+        weekly_brief_id: weeklyBriefId,
+        channel: 'weekly_email',
+        status: 'sent',
+      });
+    }
+
+    await supabase
+      .from('pending_comms')
+      .update({
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        approved_by: 'admin',
+      })
+      .eq('id', commId);
+
+    console.log(`[admin] Approved and sent pending comm ${commId} (${comm.type}/${comm.channel})`);
+    res.json({ ok: true, sent: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/pending-comms/:id/reject — Reject a pending communication
+router.put('/pending-comms/:id/reject', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const commId = req.params.id;
+
+    const { data: comm, error: fetchError } = await supabase
+      .from('pending_comms')
+      .select('id, status')
+      .eq('id', commId)
+      .single();
+
+    if (fetchError || !comm) throw new AppError(404, 'Pending comm not found');
+    if (comm.status !== 'pending') throw new AppError(400, `Comm is already ${comm.status}`);
+
+    await supabase
+      .from('pending_comms')
+      .update({ status: 'rejected' })
+      .eq('id', commId);
+
+    console.log(`[admin] Rejected pending comm ${commId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/admin/accounts/:id/comms-approval — Toggle comms_approval for an account
+router.put('/accounts/:id/comms-approval', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const accountId = req.params.id;
+    const { comms_approval } = req.body;
+
+    if (!['manual', 'auto'].includes(comms_approval)) {
+      throw new AppError(400, 'comms_approval must be "manual" or "auto"');
+    }
+
+    await supabase
+      .from('accounts')
+      .update({ comms_approval })
+      .eq('id', accountId);
+
+    console.log(`[admin] Set comms_approval=${comms_approval} for ${accountId}`);
+    res.json({ ok: true, comms_approval });
   } catch (err) {
     next(err);
   }

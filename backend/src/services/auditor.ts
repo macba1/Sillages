@@ -4,11 +4,9 @@ import { supabase } from '../lib/supabase.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
-import { generateBrief } from './briefGenerator.js';
-import { sendBriefEmail } from './emailSender.js';
-import { sendPushNotification } from './pushNotifier.js';
 import { handleTokenFailure, markTokenHealthy, shouldRetryNow } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
+import { isSendEnabled } from './commsGate.js';
 
 const ADMIN_EMAIL = 'tony@richmondpartner.com';
 const LOG = '[auditor]';
@@ -21,10 +19,6 @@ interface CriticalAlert {
   message: string;
 }
 
-/**
- * Check if an alert of the same type+account was already sent in the last 24h.
- * If not, record it and return true (should send). If yes, return false (skip).
- */
 async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600000).toISOString();
 
@@ -48,7 +42,6 @@ async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
       return false;
     }
 
-    // Record this alert
     await supabase.from('admin_alerts').insert({
       alert_type: alert.alert_type,
       account_id: alert.account_id,
@@ -57,7 +50,6 @@ async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
 
     return true;
   } catch {
-    // Table may not exist yet — send anyway to be safe
     return true;
   }
 }
@@ -93,14 +85,24 @@ export async function runAudit(): Promise<void> {
     return;
   }
 
-  console.log(`${LOG} Auditing ${accounts.length} active account(s)`);
+  // Filter out accounts with send_enabled = false
+  const enabledAccounts: typeof accounts = [];
+  for (const account of accounts) {
+    if (await isSendEnabled(account.id)) {
+      enabledAccounts.push(account);
+    } else {
+      console.log(`${LOG} Skipping ${account.email} — send_enabled=false`);
+    }
+  }
 
-  // Run all checks
-  await checkBriefs(accounts, criticalAlerts);
-  await checkTokens(accounts, criticalAlerts);
+  console.log(`${LOG} Auditing ${enabledAccounts.length} enabled account(s) (${accounts.length - enabledAccounts.length} disabled)`);
+
+  // Run all checks — MONITOR ONLY, no merchant comms
+  await checkBriefs(enabledAccounts, criticalAlerts);
+  await checkTokens(enabledAccounts, criticalAlerts);
   await checkStaleActions(criticalAlerts);
-  await checkDataFreshness(accounts, criticalAlerts);
-  await measurePreviousActions(accounts);
+  await checkDataFreshness(enabledAccounts, criticalAlerts);
+  await measurePreviousActions(enabledAccounts);
 
   // Filter to only NEW alerts (not sent in last 24h)
   const newAlerts: CriticalAlert[] = [];
@@ -111,7 +113,7 @@ export async function runAudit(): Promise<void> {
   }
 
   if (newAlerts.length > 0) {
-    console.log(`${LOG} ${newAlerts.length} NEW critical alert(s) — sending email`);
+    console.log(`${LOG} ${newAlerts.length} NEW critical alert(s) — sending email to admin`);
     await sendAlertEmail(newAlerts.map(a => a.message));
   } else if (criticalAlerts.length > 0) {
     console.log(`${LOG} ${criticalAlerts.length} alert(s) found but all already sent within 24h — no email`);
@@ -122,7 +124,6 @@ export async function runAudit(): Promise<void> {
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`${LOG} ══════ Audit complete in ${elapsed}s ══════`);
 
-  // Record this audit run
   try {
     await supabase.from('audit_log').insert({
       ran_at: new Date().toISOString(),
@@ -135,7 +136,7 @@ export async function runAudit(): Promise<void> {
   }
 }
 
-// ── CHECK 1: Briefs al día ──────────────────────────────────────────────────
+// ── CHECK 1: Briefs al día (MONITOR ONLY — no email, no generation) ────────
 
 async function checkBriefs(
   accounts: Array<{ id: string; email: string; language: string | null }>,
@@ -166,55 +167,20 @@ async function checkBriefs(
         .maybeSingle();
 
       if (lastSnap) {
-        // Try to generate — only alert if retry ALSO fails
-        console.log(`${LOG} [briefs] No brief for ${account.email} — retrying...`);
-        try {
-          await generateBrief({ accountId: account.id, briefDate: lastSnap.snapshot_date });
-
-          const { data: newBrief } = await supabase
-            .from('intelligence_briefs')
-            .select('id, status')
-            .eq('account_id', account.id)
-            .eq('brief_date', lastSnap.snapshot_date)
-            .single();
-
-          if (newBrief?.status === 'ready') {
-            console.log(`${LOG} [briefs] ✅ Brief regenerated for ${account.email}`);
-            await sendBriefEmail(newBrief.id);
-          } else {
-            // Retry succeeded but brief not ready — CRITICAL
-            alerts.push({
-              alert_type: 'brief_failed',
-              account_id: account.id,
-              message: `Brief generation failed for ${account.email} after retry (status: ${newBrief?.status})`,
-            });
-          }
-        } catch (err) {
-          // Retry failed — CRITICAL
-          alerts.push({
-            alert_type: 'brief_failed',
-            account_id: account.id,
-            message: `Brief generation failed for ${account.email}: ${err instanceof Error ? err.message : err}`,
-          });
-        }
+        alerts.push({
+          alert_type: 'brief_missing',
+          account_id: account.id,
+          message: `No brief for ${account.email} (last snapshot: ${lastSnap.snapshot_date}). Needs manual investigation.`,
+        });
       } else {
-        // No snapshots at all — NOT critical (new account), just log
         console.log(`${LOG} [briefs] ${account.email} — no snapshots (new account)`);
       }
     } else if (brief.status === 'failed') {
-      // Try to retry
-      console.log(`${LOG} [briefs] Brief ${brief.brief_date} FAILED for ${account.email} — retrying...`);
-      try {
-        await generateBrief({ accountId: account.id, briefDate: brief.brief_date });
-        console.log(`${LOG} [briefs] ✅ Brief retried for ${account.email}`);
-      } catch (err) {
-        // Retry also failed — CRITICAL
-        alerts.push({
-          alert_type: 'brief_failed',
-          account_id: account.id,
-          message: `Brief ${brief.brief_date} FAILED for ${account.email} and retry failed: ${err instanceof Error ? err.message : err}`,
-        });
-      }
+      alerts.push({
+        alert_type: 'brief_failed',
+        account_id: account.id,
+        message: `Brief ${brief.brief_date} FAILED for ${account.email}: ${brief.generation_error ?? 'unknown error'}`,
+      });
     } else {
       console.log(`${LOG} [briefs] ✅ ${account.email} — brief ${brief.brief_date} status: ${brief.status}`);
     }
@@ -235,7 +201,12 @@ async function checkTokens(
 
   if (!connections || connections.length === 0) return;
 
+  // Only check connections for enabled accounts
+  const enabledIds = new Set(accounts.map(a => a.id));
+
   for (const conn of connections) {
+    if (!enabledIds.has(conn.account_id)) continue;
+
     if (conn.token_status === 'invalid') {
       const account = accounts.find(a => a.id === conn.account_id);
       const hoursSinceFailure = conn.token_failing_since
@@ -244,7 +215,6 @@ async function checkTokens(
 
       console.log(`${LOG} [tokens] ⏳ ${conn.shop_domain} — invalid for ${hoursSinceFailure}h`);
 
-      // Only alert for CRITICAL: >72h invalid
       if (hoursSinceFailure > 72) {
         alerts.push({
           alert_type: 'token_invalid_critical',
@@ -285,7 +255,6 @@ async function checkTokens(
         const account = accounts.find(a => a.id === conn.account_id);
 
         if (!canRetry) {
-          // Token exhausted all retries — CRITICAL, first time going invalid
           alerts.push({
             alert_type: 'token_invalid_new',
             account_id: conn.account_id,
@@ -320,9 +289,8 @@ async function checkStaleActions(alerts: CriticalAlert[]): Promise<void> {
     return;
   }
 
-  console.log(`${LOG} [actions] ⚠️  Found ${stale.length} stale action(s) — retrying execution`);
+  console.log(`${LOG} [actions] ⚠️  Found ${stale.length} stale action(s) — resetting to pending`);
 
-  // Only alert if >3 stale actions (occasional stale is normal)
   if (stale.length >= 3) {
     alerts.push({
       alert_type: 'stale_actions',
@@ -332,7 +300,7 @@ async function checkStaleActions(alerts: CriticalAlert[]): Promise<void> {
   }
 
   for (const action of stale) {
-    console.log(`${LOG} [actions] Retrying: ${action.type} "${action.title}" (${action.id})`);
+    console.log(`${LOG} [actions] Resetting: ${action.type} "${action.title}" (${action.id})`);
     await supabase
       .from('pending_actions')
       .update({ status: 'pending', approved_at: null })
@@ -383,7 +351,6 @@ async function checkDataFreshness(
         }
       }
 
-      // Only alert if data is 3+ days stale (not for 1-2 day gaps — those self-resolve)
       if (daysBehind >= 3) {
         alerts.push({
           alert_type: 'data_stale',
@@ -405,11 +372,13 @@ async function measurePreviousActions(
   console.log(`${LOG} [measure] Measuring impact of completed actions...`);
 
   const twoDaysAgo = new Date(Date.now() - 48 * 3600000).toISOString();
+  const accountIds = accounts.map(a => a.id);
 
   const { data: completedActions } = await supabase
     .from('pending_actions')
     .select('id, account_id, type, title, content, result, executed_at')
     .eq('status', 'completed')
+    .in('account_id', accountIds)
     .gte('executed_at', twoDaysAgo)
     .not('result', 'is', null);
 
@@ -479,7 +448,7 @@ async function measureDiscount(action: {
       })
       .eq('id', action.id);
 
-    console.log(`${LOG} [measure] Discount ${discountCode}: ${timesUsed} uses, €${revenueGenerated.toFixed(2)}`);
+    console.log(`${LOG} [measure] Discount ${discountCode}: ${timesUsed} uses, ${revenueGenerated.toFixed(2)}`);
   } catch (err) {
     console.error(`${LOG} [measure] Failed to check discount ${discountCode}:`, err instanceof Error ? err.message : err);
   }
@@ -530,17 +499,17 @@ async function measureProductHighlight(action: {
     })
     .eq('id', action.id);
 
-  console.log(`${LOG} [measure] Product "${productTitle}": ${totalUnits} units, €${totalRevenue.toFixed(2)} in ${snapshots.length} days`);
+  console.log(`${LOG} [measure] Product "${productTitle}": ${totalUnits} units, ${totalRevenue.toFixed(2)} in ${snapshots.length} days`);
 }
 
-// ── Alert email to admin (only for NEW critical alerts) ─────────────────────
+// ── Alert email to ADMIN ONLY ───────────────────────────────────────────────
 
 async function sendAlertEmail(messages: string[]): Promise<void> {
   const alertList = messages.map((a, i) => `<li style="margin:8px 0;color:#2A1F14;">${i + 1}. ${a}</li>`).join('');
 
   const html = `
     <div style="max-width:600px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
-      <h2 style="color:#D35400;margin:0 0 16px;">⚠️ Sillages — Critical Alert</h2>
+      <h2 style="color:#D35400;margin:0 0 16px;">Sillages — Critical Alert</h2>
       <p style="color:#2A1F14;font-size:14px;">${messages.length} new issue(s) found at ${new Date().toISOString().slice(0, 16)}:</p>
       <ol style="font-size:14px;line-height:1.6;">${alertList}</ol>
       <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
