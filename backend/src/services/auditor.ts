@@ -57,13 +57,21 @@ async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
 // ── Start auditor (runs every 6 hours) ──────────────────────────────────────
 
 export function startAuditor(): void {
+  // Full audit every 6 hours
   cron.schedule('30 */6 * * *', () => {
     runAudit().catch(err => {
       console.error(`${LOG} Unhandled error:`, err);
     });
   });
 
-  console.log(`${LOG} Started — auditing every 6 hours at :30`);
+  // Token-only check every 2 hours (offset from full audit)
+  cron.schedule('30 1-23/2 * * *', () => {
+    runTokenCheckOnly().catch(err => {
+      console.error(`${LOG} Token check error:`, err);
+    });
+  });
+
+  console.log(`${LOG} Started — full audit every 6h, token check every 2h`);
 }
 
 // ── Main audit ──────────────────────────────────────────────────────────────
@@ -136,6 +144,69 @@ export async function runAudit(): Promise<void> {
   }
 }
 
+// ── Token-only check (runs every 2 hours, lightweight) ──────────────────────
+
+async function runTokenCheckOnly(): Promise<void> {
+  console.log(`${LOG} ── Token check at ${new Date().toISOString()} ──`);
+
+  const { data: accounts } = await supabase
+    .from('accounts')
+    .select('id, email, language')
+    .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
+
+  if (!accounts || accounts.length === 0) return;
+
+  const alerts: CriticalAlert[] = [];
+  await checkTokens(accounts, alerts);
+
+  // Send URGENTE alerts immediately (bypass 24h dedup for first-time failures)
+  const urgentAlerts = alerts.filter(a =>
+    a.alert_type === 'token_invalid_new' || a.alert_type === 'token_failing_first',
+  );
+
+  if (urgentAlerts.length > 0) {
+    const messages = urgentAlerts.map(a => a.message);
+    await sendUrgentTokenAlert(messages);
+  }
+
+  // Still log all alerts normally (with dedup)
+  for (const alert of alerts) {
+    await shouldSendAlert(alert);
+  }
+
+  console.log(`${LOG} ── Token check done — ${alerts.length} alert(s) ──`);
+}
+
+async function sendUrgentTokenAlert(messages: string[]): Promise<void> {
+  const alertList = messages.map((m, i) => `<li style="margin:8px 0;color:#2A1F14;">${i + 1}. ${m}</li>`).join('');
+
+  const html = `
+    <div style="max-width:600px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
+      <h2 style="color:#C0392B;margin:0 0 16px;">URGENTE — Token Shopify en riesgo</h2>
+      <p style="color:#2A1F14;font-size:14px;">${messages.length} token(s) con problemas detectados a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}:</p>
+      <ol style="font-size:14px;line-height:1.6;">${alertList}</ol>
+      <p style="color:#C0392B;font-size:14px;font-weight:600;">Actuar AHORA para evitar interrupción del servicio.</p>
+      <p style="font-size:13px;color:#2A1F14;">
+        <a href="${env.FRONTEND_URL}/admin/status" style="color:#C9964A;font-weight:600;">Ver admin status</a>
+      </p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+      <p style="font-size:11px;color:#A89880;">Sillages Token Monitor — alerta urgente cada 2h</p>
+    </div>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: `Sillages Alerts <alerts@sillages.app>`,
+      to: ADMIN_EMAIL,
+      subject: `URGENTE: Token Shopify fallando — acción requerida`,
+      html,
+    });
+    console.log(`${LOG} URGENT token alert sent to ${ADMIN_EMAIL}`);
+  } catch (err) {
+    console.error(`${LOG} Failed to send urgent alert:`, err instanceof Error ? err.message : err);
+  }
+}
+
 // ── CHECK 1: Briefs al día (MONITOR ONLY — no email, no generation) ────────
 
 async function checkBriefs(
@@ -197,7 +268,7 @@ async function checkTokens(
 
   const { data: connections } = await supabase
     .from('shopify_connections')
-    .select('id, account_id, shop_domain, access_token, token_status, token_failing_since, token_retry_count');
+    .select('id, account_id, shop_domain, access_token, refresh_token, token_status, token_failing_since, token_retry_count');
 
   if (!connections || connections.length === 0) return;
 
@@ -261,6 +332,14 @@ async function checkTokens(
             message: `Token INVALID for ${conn.shop_domain} (${account?.email}) — all retries exhausted`,
           });
         } else {
+          // Alert on FIRST failure too — urgent for shpca_ tokens without refresh_token
+          if ((conn.token_retry_count ?? 0) === 0) {
+            alerts.push({
+              alert_type: 'token_failing_first',
+              account_id: conn.account_id,
+              message: `Token FAILING for ${conn.shop_domain} (${account?.email}) — first 401/403 detected, retrying. Token type: ${conn.access_token?.startsWith('shpca_') ? 'TEMPORARY (shpca_)' : 'permanent'}. Refresh token: ${conn.refresh_token ? 'YES' : 'NO'}`,
+            });
+          }
           console.log(`${LOG} [tokens] ⚠️  ${conn.shop_domain} — failing, will retry later`);
         }
       } else {
