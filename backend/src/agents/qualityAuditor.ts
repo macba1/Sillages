@@ -56,6 +56,8 @@ Every customer-facing copy must have:
 - At least 1 sensory detail (taste, smell, texture, sight): "se deshace", "huele a horno", "corteza crujiente", "ácido y dulce"
 - The store's specific product name + a detail only true for THIS store
 If a copy could work on a competitor's page → REWRITE it.
+- "Ingredientes frescos" → FAIL (any bakery says this). "Almendra marcona molida" → PASS.
+- "Hornada fresca" → FAIL. "La hornamos cada jueves a las 7am" → PASS.
 
 ═══ RULE 4: SCREENSHOT TEST ═══
 Would someone screenshot this and send it to a friend saying "tenemos que probar esto"? If no → REWRITE.
@@ -63,6 +65,32 @@ Max 1 exclamation mark per copy. Max 2 emojis. Soft CTA only.
 
 ═══ RULE 5: INSTAGRAM = 3 LINES ═══
 Line 1: Hook. Line 2: Sensory payoff. Line 3: Soft CTA. If longer → trim.
+
+═══ RULE 6: EMAIL STRUCTURE (cart_recovery, welcome_email, reactivation_email) ═══
+Every email MUST follow this 4-line structure:
+1. HOOK: Name + specific product + unexpected detail (curiosity gap)
+2. SENSORY: One concrete detail — taste, texture, aroma, ingredient origin
+3. RECOMMENDATION: Cross-category product with WHY (flavor contrast, complement). Must NOT be the same product already in the cart/purchase.
+4. SOFT CTA: Easy next step, never urgent
+- Total: MAX 4 lines, 50-125 words. If longer → CUT.
+- Subject line: Must create curiosity. NEVER "te espera", "está lista", "preparada para ti".
+
+═══ RULE 7: COPYWRITING FRAMEWORK VERIFICATION ═══
+Verify every copy applies at least ONE of these frameworks:
+- PAS (Problem-Agitate-Solve): desire → sensory craving → easy solution
+- CURIOSITY GAP: subject line creates an information gap the reader needs to close
+- LOSS AVERSION (soft): frame as what they'd miss, not what they must do
+- SOCIAL PROOF (subtle): "la más pedida", "la que siempre se agota" — never fabricated
+If copy uses NONE of these → REWRITE applying PAS at minimum.
+
+═══ RULE 8: AI COPY TELLS — INSTANT REWRITE ═══
+If ANY of these patterns appear, the copy is AI-generated garbage → REWRITE:
+- Generic openers: "Hola [Name], esperamos que estés bien"
+- Filler transitions: "That being said", "It's worth noting", "At its core"
+- Vague benefits: "ingredientes de calidad", "hecho con cariño", "productos artesanales"
+- Template-sounding: any sentence that would work for ANY bakery without changing a word
+- Multiple exclamation marks or emoji clusters (🎂✨🎉)
+- Rhetorical questions that nobody asks: "¿Sabías que la calidad importa?"
 
 ═══ QUALITY BENCHMARK ═══
 Compare every copy against this level. If the copy is worse, REWRITE it to match:
