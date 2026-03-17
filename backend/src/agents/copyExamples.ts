@@ -24,7 +24,7 @@ export const CART_RECOVERY_EXAMPLES: CartRecoveryExample[] = [
     customer_name: 'Tamar',
     products_in_cart: 'Volcán de Chocolate, Tarta de Queso, Velas',
     subject: 'Tamar, el Volcán o la Tarta de Queso',
-    body: 'Tamar, el Volcán de Chocolate tiene un centro caliente que fluye espeso cuando lo cortas. La Tarta de Queso es lo contrario — cremosa, densa, con un toque ácido que equilibra. No hace falta elegir, la verdad.',
+    body: 'Tamar, el Volcán de Chocolate tiene un centro caliente que fluye espeso cuando lo cortas. La Tarta de Queso es cremosa y densa — otro registro totalmente distinto. No hace falta elegir, la verdad.',
     recommended_product: '',
   },
   {
@@ -59,21 +59,21 @@ export const CART_RECOVERY_EXAMPLES: CartRecoveryExample[] = [
     customer_name: 'Sergio',
     products_in_cart: 'Volcán de Chocolate',
     subject: 'Sergio, el Volcán de Chocolate',
-    body: 'Sergio, el Volcán de Chocolate tiene un centro que fluye espeso y caliente cuando lo cortas. Chocolate puro, sin gluten, sin prisa. Si te gusta el contraste, la Tarta de Queso tiene un punto ácido que equilibra perfecto después de tanto chocolate.',
+    body: 'Sergio, el Volcán de Chocolate tiene un centro que fluye espeso y caliente cuando lo cortas. Chocolate puro, sin gluten, sin prisa. Si te gusta el contraste, la Tarta de Queso es cremosa y densa — el equilibrio perfecto después de tanto chocolate.',
     recommended_product: 'Tarta de Queso',
   },
   {
     customer_name: 'Cecilia',
     products_in_cart: 'Tarta de Queso',
     subject: 'Cecilia, la Tarta de Queso',
-    body: 'Cecilia, la Tarta de Queso tiene esa textura cremosa y densa que se queda en el paladar. Un toque ácido justo. Si no la conoces todavía, la Tarta de Limón tiene un carácter parecido — cítrica, fresca, con una base crujiente.',
+    body: 'Cecilia, la Tarta de Queso tiene esa textura cremosa y densa que se queda en el paladar. Si no la conoces todavía, la Tarta de Limón tiene un carácter distinto — cítrica, fresca, con una base crujiente.',
     recommended_product: 'Tarta de Limón',
   },
   {
     customer_name: 'Daniela',
     products_in_cart: 'Tarta de Queso',
     subject: 'Daniela, algo sobre la Tarta de Queso',
-    body: 'Daniela, la Tarta de Queso es cremosa, densa, y tiene ese punto ácido que la hace diferente. Todo sin gluten. Para acompañar, la Hogaza de Pasas y Nueces tiene una corteza crujiente con un interior suave que sorprende.',
+    body: 'Daniela, la Tarta de Queso es cremosa y densa — se queda en el paladar. Todo sin gluten. Para acompañar, la Hogaza de Pasas y Nueces tiene una corteza crujiente con un interior suave que sorprende.',
     recommended_product: 'Hogaza de Pasas y Nueces',
   },
   {
@@ -117,8 +117,10 @@ export function buildCartRecoveryExamplesBlock(): string {
 
   lines.push('\nRULES FROM THESE EXAMPLES:');
   lines.push('- Subject: "[Name], [about/sobre] [product]" — simple, direct, curious');
-  lines.push('- Body: describe the product with a real sensory detail (texture, flavor, aroma)');
-  lines.push('- Recommendation: always from a different category, with its own sensory hook');
+  lines.push('- Body: describe the product with sensory details ONLY from the Shopify product description or brand profile. NEVER invent flavors/textures.');
+  lines.push('- If no product description exists → just name the product, no adjectives');
+  lines.push('- Recommendation: always from a different category, with its own confirmed sensory hook');
+  lines.push('- Tone: like a WhatsApp from a friend, NOT a marketing email');
   lines.push('- No emojis, no exclamation marks, no marketing phrases');
   lines.push('- No "te espera", "completa tu pedido", "no te lo pierdas"');
   lines.push('- Closing: natural, no CTA button language, no "haz tu pedido"');
@@ -207,7 +209,16 @@ export const SENSORY_RULES = `
 ═══════════════════════════════════════════════════════════════════
 SENSORY RULES — MAKE PEOPLE FEEL IT
 ═══════════════════════════════════════════════════════════════════
-Every piece of copy for food/bakery/artisanal stores MUST include at least 2 of these 5 senses:
+
+⚠️ CRITICAL RULE — NEVER INVENT SENSORY DETAILS:
+Only describe flavors, textures, aromas, or ingredients that are:
+1. Explicitly stated in the product's Shopify description
+2. Stated in the brand profile
+3. Obviously implied by the product name (e.g. "chocolate" in "Volcán de Chocolate")
+If there is NO product description → mention ONLY the product name, without adjectives or flavor descriptions.
+NEVER guess or invent sensory attributes. Saying "toque ácido" about a cheesecake when it doesn't have one tells the customer the product is bad. This destroys merchant trust.
+
+Every piece of copy for food/bakery/artisanal stores MUST include at least 2 of these 5 senses (ONLY if the details are confirmed from the product data):
 
 👁️ SIGHT: Describe what it LOOKS like.
 - Color: "dorado", "chocolate oscuro", "rojo fresa"

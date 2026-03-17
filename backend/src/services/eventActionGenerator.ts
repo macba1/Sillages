@@ -109,11 +109,11 @@ Generate a welcome_email action.
 CRITICAL RULES FOR WELCOME_EMAIL:
 - This is a GENUINE THANK YOU, not a sales pitch.
 - Thank them for choosing ${storeName}. Reinforce they made a good choice.
-- Mention the specific product with a sensory detail (how it's made, ingredients, texture).
+- Mention the specific product with a sensory detail ONLY if it appears in the product description or brand profile. If no description exists, just name the product.
 - If also_bought data exists, recommend ONE product naturally — like a friend saying "if you liked this, you'll love...". Explain WHY based on flavor/texture contrast or complement.
 - NEVER include a discount code. NEVER use sales CTAs like "compra", "pide", "haz tu pedido".
 - NO "gracias por tu compra" generic opener. Be specific about WHAT they bought.
-- Tone: warm, genuine, like a shop owner who remembers every customer.
+- Tone: like a WhatsApp message from a friend, personal and warm. NOT a marketing email.
 
 Return JSON:
 {
@@ -308,21 +308,21 @@ WELCOME_EMAIL RULES:
     cart_recovery: `
 CART_RECOVERY RULES:
 - Apply PAS: their desire (the product) → sensory agitation (make them taste it) → easy solve (one step)
-- Focus on PRODUCT VALUE: a specific ingredient, process, or detail ONLY true for this product
+- Focus on PRODUCT VALUE: a specific ingredient, process, or detail ONLY from the Shopify product description or brand profile. NEVER invent details.
 - NEVER pressure: no "tu carrito te espera", no "completa tu pedido", no "te espera", no "está lista para ti", no urgency, no countdown
 - NEVER use vague praise: no "ingredientes frescos", no "hecho con cariño", no "preparada con amor"
 - Use SPECIFICITY: "almendra marcona molida" not "ingredientes de calidad", "hornada del jueves" not "fresca para ti"
 - The recommendation MUST be a different product category than the cart (tarta→cookie, chocolate→tarta, pan→tarta, etc.)
 - Discount only if the store can actually create it. If unsure, omit.
-- Tone: friend who owns the shop texting you, not a salesperson.`,
+- Tone: like a WhatsApp from a friend who owns the shop, NOT a marketing email.`,
 
     reactivation_email: `
 REACTIVATION_EMAIL RULES:
 - Give them a REASON to come back: new product/recipe, seasonal item, their favorite is freshly available, limited batch.
-- Reference their favorite product with a real detail (baking day, ingredients, availability).
+- Reference their favorite product with a real detail ONLY from the product description (baking day, ingredients, availability). If no description exists, just name the product.
 - BANNED PHRASES (instant rejection): "te extrañamos", "te echamos de menos", "no te hemos visto", "hace X días que no vienes", "we miss you", "it's been X days", "haven't seen you".
 - NEVER guilt-trip. NEVER mention how long since their last purchase. NEVER use nostalgia.
-- Tone: like a friend texting "oye, esta semana sacamos algo nuevo que te va a encantar".
+- Tone: like a WhatsApp from a friend — "oye, esta semana sacamos algo nuevo que te va a encantar".
 - Discount only if framed as a reason (new recipe launch, first batch).`,
   };
 
@@ -363,8 +363,9 @@ LOSS AVERSION (soft, never pressure):
 - MAX 4 lines. 50-125 words total.
 
 ═══ GLOBAL RULES ═══
+0. NEVER INVENT SENSORY DETAILS: Only describe flavors, textures, aromas, or ingredients that are explicitly in the Shopify product description, the brand profile, or obviously implied by the product name. If NO product description exists → mention ONLY the product name without adjectives. Inventing "toque ácido" for a cheesecake tells customers the product is bad.
 1. Use the customer's first name. Be specific about the product — never generic.
-2. Include at least 1 sensory detail (texture, taste, smell, visual, how it's made).
+2. Include at least 1 sensory detail ONLY IF confirmed from product data (texture, taste, smell, visual, how it's made).
 3. Max 1 exclamation mark in the ENTIRE copy. Max 1 emoji. Keep it short — 4 lines max.
 4. If brand voice is provided, match it exactly.
 5. If also_bought recommendations are provided, recommend ONE from a DIFFERENT CATEGORY — explain WHY based on flavor/texture contrast.
