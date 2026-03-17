@@ -16,78 +16,71 @@ export const CART_RECOVERY_EXAMPLES: CartRecoveryExample[] = [
   {
     customer_name: 'Laura',
     products_in_cart: 'Tarta de Cumpleaños, Caja Merienda',
-    subject: 'Laura, sobre la Tarta de Cumpleaños',
-    body: 'Laura, la Tarta de Cumpleaños lleva un bizcocho esponjoso con cobertura de crema suave. Todo sin gluten. Si además te gusta picar algo dulce, la Granola con avena dorada y almendras tostadas es perfecta al día siguiente con un yogur.',
-    recommended_product: 'Granola',
+    subject: 'Laura, la Tarta de Cumpleaños',
+    body: 'Laura, la Tarta de Cumpleaños no es una tarta cualquiera. Sin gluten, artesanal, y si la pruebas con la Caja Merienda tienes el combo perfecto. Pero ojo, la Caja Merienda crea adicción.',
+    recommended_product: 'Caja Merienda',
   },
   {
     customer_name: 'Tamar',
     products_in_cart: 'Volcán de Chocolate, Tarta de Queso, Velas',
-    subject: 'Tamar, el Volcán o la Tarta de Queso',
-    body: 'Tamar, el Volcán de Chocolate tiene un centro caliente que fluye espeso cuando lo cortas. La Tarta de Queso es cremosa y densa — otro registro totalmente distinto. No hace falta elegir, la verdad.',
+    subject: 'Tamar, que no se te escape',
+    body: 'Tamar, el Volcán de Chocolate y la Tarta de Queso juntos es la combinación que más nos piden. Y todo sin gluten, que eso aquí no se negocia. Avísanos antes de que te arrepientas de no haberlo hecho.',
     recommended_product: '',
   },
   {
     customer_name: 'Leticia',
     products_in_cart: 'Porciones Tartas x2',
-    subject: 'Leticia, algo sobre las porciones',
-    body: 'Leticia, las porciones son perfectas para probar sin compromiso. Si te gusta lo cítrico, la de limón tiene ese punto ácido-dulce que se queda en el paladar. Y si vas más de chocolate, el Volcán no decepciona.',
-    recommended_product: 'Volcán de Chocolate',
+    subject: 'Leticia, dos porciones y una advertencia',
+    body: 'Leticia, las porciones son ideales para probar sin compromiso. Eso sí, aviso: la mayoría acaba volviendo a por la tarta entera. La de limón y la de zanahoria son las culpables.',
+    recommended_product: 'Tarta de Limón, Tarta de Zanahoria',
   },
   {
     customer_name: 'Anna',
     products_in_cart: 'Dona Kinder, Dona Peanut Reese, Dona Banana Croc, Dona Rafaello',
-    subject: 'Anna, sobre las donas',
-    body: 'Anna, la Dona Kinder tiene una crema de avellana que se nota en cada bocado. La Banana lleva plátano real con chocolate. Cuatro donas, cuatro sabores distintos — y todas sin gluten. Si te van los dulces más contundentes, la Cookie XXL de chocolate y avellanas es otro nivel.',
-    recommended_product: 'Cookie XXL de Chocolate y Avellanas',
+    subject: 'Anna, cuatro donas sin gluten',
+    body: 'Anna, la Dona Kinder engancha. Y si juntas la de Banana con la de Peanut en el mismo bocado... bueno, no decimos nada. Todo sin gluten, todo artesanal, todo peligrosamente bueno.',
+    recommended_product: '',
   },
   {
     customer_name: 'Lorena',
     products_in_cart: 'Tarta Bebé',
-    subject: 'Lorena, la Tarta Bebé',
-    body: 'Lorena, la Tarta Bebé tiene un bizcocho tierno con un toque de vainilla que se deshace. Todo sin gluten y con ingredientes naturales. Si buscas algo para acompañar, las Pastas de Té tienen esa textura fina que va muy bien después.',
-    recommended_product: 'Pastas de Té',
+    subject: 'Lorena, sobre la Tarta Bebé',
+    body: 'Lorena, la Tarta Bebé es de lo más especial que sale de nuestro horno. Sin gluten, ingredientes naturales, y hecha con mucho mimo. Si la necesitas para una fecha, avísanos con tiempo porque se hace por encargo.',
+    recommended_product: '',
   },
   {
     customer_name: 'Paola',
     products_in_cart: 'Caja Merienda, Dona Kinder',
-    subject: 'Paola, lo de la Caja Merienda',
-    body: 'Paola, la Caja Merienda tiene un poco de todo — dulce, esponjoso, crujiente. La Dona Kinder con su crema de avellana es la favorita. Si te gusta el chocolate intenso, prueba el Volcán de Chocolate. Cuando lo cortas, el centro fluye.',
+    subject: 'Paola, cuidado con la Caja Merienda',
+    body: 'Paola, la Caja Merienda tiene un poco de todo y eso es lo peligroso — no puedes parar. La Dona Kinder con su crema de avellana tampoco ayuda. Si encima pruebas el Volcán de Chocolate, ya no hay vuelta atrás.',
     recommended_product: 'Volcán de Chocolate',
   },
   {
     customer_name: 'Sergio',
     products_in_cart: 'Volcán de Chocolate',
-    subject: 'Sergio, el Volcán de Chocolate',
-    body: 'Sergio, el Volcán de Chocolate tiene un centro que fluye espeso y caliente cuando lo cortas. Chocolate puro, sin gluten, sin prisa. Si te gusta el contraste, la Tarta de Queso es cremosa y densa — el equilibrio perfecto después de tanto chocolate.',
-    recommended_product: 'Tarta de Queso',
-  },
-  {
-    customer_name: 'Cecilia',
-    products_in_cart: 'Tarta de Queso',
-    subject: 'Cecilia, la Tarta de Queso',
-    body: 'Cecilia, la Tarta de Queso tiene esa textura cremosa y densa que se queda en el paladar. Si no la conoces todavía, la Tarta de Limón tiene un carácter distinto — cítrica, fresca, con una base crujiente.',
-    recommended_product: 'Tarta de Limón',
+    subject: 'Sergio, una advertencia sobre el Volcán',
+    body: 'Sergio, el Volcán de Chocolate es de los más pedidos por algo. Chocolate puro, sin gluten, y cuando lo cortas... bueno, ya lo verás. Si te va el chocolate, la Cookie XXL de chocolate y avellanas también es de las que no duran.',
+    recommended_product: 'Cookie XXL de Chocolate y Avellanas',
   },
   {
     customer_name: 'Daniela',
     products_in_cart: 'Tarta de Queso',
-    subject: 'Daniela, algo sobre la Tarta de Queso',
-    body: 'Daniela, la Tarta de Queso es cremosa y densa — se queda en el paladar. Todo sin gluten. Para acompañar, la Hogaza de Pasas y Nueces tiene una corteza crujiente con un interior suave que sorprende.',
+    subject: 'Daniela, la Tarta de Queso',
+    body: 'Daniela, la Tarta de Queso es de las que más nos repiten. Sin gluten y artesanal, como todo lo nuestro. Si quieres probar algo diferente, la Hogaza de Pasas y Nueces sorprende — no parece sin gluten.',
     recommended_product: 'Hogaza de Pasas y Nueces',
   },
   {
     customer_name: 'Ana',
     products_in_cart: 'Pan de Molde Semillas, Crackers Natural, Bizcocho de la Casa, Cookie XXL',
-    subject: 'Ana, tu selección',
-    body: 'Ana, el Pan de Molde Semillas tiene una textura esponjosa llena de semillas que crujen. La Cookie XXL de chocolate y avellanas es crujiente por fuera y tierna por dentro. Si te va lo dulce, la Tarta de Zanahoria con su toque de canela es otro mundo.',
+    subject: 'Ana, buena selección',
+    body: 'Ana, tienes buen ojo — pan, crackers, bizcocho y la Cookie XXL. La Cookie es de las que desaparecen rápido en casa, aviso. Y si un día te apetece algo dulce de verdad, la Tarta de Zanahoria es de las que no te esperas.',
     recommended_product: 'Tarta de Zanahoria',
   },
   {
     customer_name: 'Miriam',
     products_in_cart: 'Granola, Tortitas, Cookies Chocolate x3, Cookie Pepitas x3, Palmeritas, Bizcocho Marmolado',
-    subject: 'Miriam, lo de la Granola',
-    body: 'Miriam, la Granola lleva avena dorada con almendras tostadas y un toque de canela. Con yogur por la mañana es otro desayuno. El Bizcocho Marmolado mezcla cacao y vainilla — si te gustan los dos, no tienes que elegir. Y si quieres probar algo nuevo, la Tarta de Limón tiene un ácido-dulce que engancha.',
+    subject: 'Miriam, tienes el desayuno resuelto',
+    body: 'Miriam, con la Granola y las Tortitas tienes desayunos para toda la semana. Las Cookies son las típicas que compras para compartir pero acabas comiéndotelas tú. Si un día quieres cambiar a algo más contundente, la Tarta de Limón no falla.',
     recommended_product: 'Tarta de Limón',
   },
 ];
@@ -98,7 +91,7 @@ export const CART_RECOVERY_EXAMPLES: CartRecoveryExample[] = [
  */
 export function buildCartRecoveryExamplesBlock(): string {
   // Pick 4 diverse examples: different cart sizes, categories, tones
-  const picks = [0, 3, 6, 10]; // Laura (tarta+snack), Anna (donas), Sergio (chocolate), Miriam (big cart)
+  const picks = [0, 3, 6, 9]; // Laura (tarta+snack), Anna (donas), Sergio (chocolate), Miriam (big cart)
   const examples = picks.map(i => CART_RECOVERY_EXAMPLES[i]);
 
   const lines = [
@@ -121,6 +114,7 @@ export function buildCartRecoveryExamplesBlock(): string {
   lines.push('- If no product description exists → just name the product, no adjectives');
   lines.push('- Recommendation: always from a different category, with its own confirmed sensory hook');
   lines.push('- Tone: like a WhatsApp from a friend, NOT a marketing email');
+  lines.push('- ALWAYS speak as the store team: "nosotros", "nuestro", "nos piden", "nuestro horno". NEVER as an outsider: "en NICOLINA", "los clientes de NICOLINA".');
   lines.push('- No emojis, no exclamation marks, no marketing phrases');
   lines.push('- No "te espera", "completa tu pedido", "no te lo pierdas"');
   lines.push('- Closing: natural, no CTA button language, no "haz tu pedido"');
