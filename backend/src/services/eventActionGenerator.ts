@@ -2,6 +2,7 @@ import { openai } from '../lib/openai.js';
 import { supabase } from '../lib/supabase.js';
 import { shopifyClient } from '../lib/shopify.js';
 import { loadBrandProfile } from './brandAnalyzer.js';
+import { buildCartRecoveryExamplesBlock } from '../agents/copyExamples.js';
 import type { DetectedEvent, NewFirstBuyerData, AbandonedCartData, OverdueCustomerData } from './eventDetector.js';
 
 const LOG = '[eventAction]';
@@ -381,6 +382,8 @@ any phrase with ¡...! that sounds like a TV commercial.
 ═══ AI COPY TELLS — also banned ═══
 "ingredientes de calidad", "hecho con cariño", "productos artesanales" (vague),
 "That being said", "It's worth noting", any sentence that would work for ANY bakery unchanged.
+
+${buildCartRecoveryExamplesBlock()}
 
 ═══ EXAMPLES ═══
 GOOD: "Alicia, la Tarta de Cumpleaños que pediste lleva mantequilla francesa y un bizcocho que se deshace. Si te gusta lo cremoso, la Tarta de Queso con compota de frutos rojos es la que más repiten nuestros clientes."

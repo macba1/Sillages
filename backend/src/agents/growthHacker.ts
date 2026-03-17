@@ -3,6 +3,7 @@ import type { UserIntelligenceConfig } from '../types.js';
 import type { AnalystOutput, GrowthHackerOutput, GrowthAction } from './types.js';
 import type { BrandProfile } from '../services/brandAnalyzer.js';
 import type { CustomerIntelligence } from '../services/customerIntelligence.js';
+import { buildCartRecoveryExamplesBlock } from './copyExamples.js';
 
 // ── Input ───────────────────────────────────────────────────────────────────
 
@@ -304,6 +305,8 @@ EMAIL COPY STRUCTURE (for cart_recovery, welcome_email, reactivation_email)
 4. SOFT CTA: Make next step easy, not urgent — "solo tienes que pedirla", "¿te reservo una?"
 - MAX 4 lines total. 50-125 words.
 - Subject line: 40-60 characters, curiosity-driven, clear > clever
+
+${buildCartRecoveryExamplesBlock()}
 
 ═══════════════════════════════════════════════════════════════════
 COPY QUALITY — 3 NON-NEGOTIABLE RULES
