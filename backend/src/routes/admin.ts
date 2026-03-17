@@ -443,16 +443,24 @@ router.get('/email-tracking', requireAuth, requireAdmin, async (_req: Request, r
       bounced: logs.filter(l => l.bounced_at).length,
     };
 
-    // Recovery stats from abandoned_carts
+    // Recovery stats from abandoned_carts — honest attribution
     const { data: recoveryCarts } = await supabase
       .from('abandoned_carts')
-      .select('recovered, recovery_revenue')
+      .select('recovered, recovery_revenue, recovery_attribution')
       .in('account_id', accountIds);
+
+    const recoveredCarts = recoveryCarts?.filter(c => c.recovered) ?? [];
+    const bySillages = recoveredCarts.filter(c => (c as Record<string, unknown>).recovery_attribution === 'by_sillages');
+    const organic = recoveredCarts.filter(c => (c as Record<string, unknown>).recovery_attribution !== 'by_sillages');
 
     const recovery = {
       total_carts: recoveryCarts?.length ?? 0,
-      recovered: recoveryCarts?.filter(c => c.recovered).length ?? 0,
-      revenue: recoveryCarts?.filter(c => c.recovered).reduce((sum, c) => sum + (c.recovery_revenue ?? 0), 0) ?? 0,
+      recovered: recoveredCarts.length,
+      revenue: recoveredCarts.reduce((sum, c) => sum + (c.recovery_revenue ?? 0), 0),
+      by_sillages: bySillages.length,
+      by_sillages_revenue: bySillages.reduce((sum, c) => sum + (c.recovery_revenue ?? 0), 0),
+      organic: organic.length,
+      organic_revenue: organic.reduce((sum, c) => sum + (c.recovery_revenue ?? 0), 0),
     };
 
     res.json({ logs: enriched, funnel, recovery });

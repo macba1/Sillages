@@ -11,6 +11,7 @@ export async function logCommunication(input: {
   status: 'sent' | 'failed';
   error_message?: string | null;
   message_id?: string | null;
+  recipient_email?: string | null;
 }): Promise<void> {
   try {
     await supabase.from('email_log').insert({
@@ -21,6 +22,7 @@ export async function logCommunication(input: {
       status: input.status,
       error_message: input.error_message ?? null,
       message_id: input.message_id ?? null,
+      recipient_email: input.recipient_email?.toLowerCase() ?? null,
       sent_at: new Date().toISOString(),
     });
   } catch (err) {

@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
-    "premerge": "tsc --noEmit && echo 'Build OK'"
+    "premerge": "tsc --noEmit && echo 'Build OK'",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.4",
@@ -42,6 +44,7 @@
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",
     "tsx": "^4.15.7",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^3.2.4"
   }
 }

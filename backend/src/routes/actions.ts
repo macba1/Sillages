@@ -10,6 +10,37 @@ import { sendPushNotification } from '../services/pushNotifier.js';
 import { logCommunication } from '../services/commLog.js';
 import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail, buildCustomCopyEmail } from '../services/emailTemplates.js';
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Send a confirmation push to the merchant ONLY if comms_approval is 'auto'.
+ * If 'manual', the admin sees results in the dashboard — no push spam.
+ */
+async function sendConfirmationPush(accountId: string, payload: { title: string; body: string; url: string }): Promise<void> {
+  try {
+    const { data } = await supabase.from('accounts').select('comms_approval').eq('id', accountId).single();
+    if (data?.comms_approval !== 'auto') return; // manual → no confirmation push
+    await sendPushNotification(accountId, payload);
+  } catch { /* non-fatal */ }
+}
+
+/**
+ * Check if we already sent an email to this customer in the last 7 days.
+ * Prevents spam: max 1 email per customer per week.
+ */
+async function hasRecentEmailToCustomer(accountId: string, customerEmail: string): Promise<boolean> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+  const { count } = await supabase
+    .from('email_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('recipient_email', customerEmail.toLowerCase())
+    .eq('status', 'sent')
+    .gte('sent_at', sevenDaysAgo);
+
+  return (count ?? 0) > 0;
+}
+
 const router = Router();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -119,15 +150,27 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
     const accountId = req.accountId!;
     const actionId = req.params.id;
 
+    // Atomic: UPDATE ... WHERE status='pending' RETURNING * — prevents race conditions
     const { data: action, error: fetchError } = await supabase
       .from('pending_actions')
-      .select('*')
+      .update({ status: 'approved', approved_at: new Date().toISOString() })
       .eq('id', actionId)
       .eq('account_id', accountId)
+      .eq('status', 'pending')
+      .select('*')
       .single();
 
-    if (fetchError || !action) throw new AppError(404, 'Action not found');
-    if (action.status !== 'pending') throw new AppError(400, `Action is already ${action.status}`);
+    if (fetchError || !action) {
+      // Either not found or already processed — check which
+      const { data: existing } = await supabase
+        .from('pending_actions')
+        .select('status')
+        .eq('id', actionId)
+        .eq('account_id', accountId)
+        .single();
+      if (!existing) throw new AppError(404, 'Action not found');
+      throw new AppError(400, `Action is already ${existing.status}`);
+    }
 
     const actionType = action.type as string;
     const content = action.content ?? {};
@@ -618,6 +661,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
   const discountCode = content.discount_code as string | undefined;
   const discountPercent = content.discount_percent as number | undefined;
   const checkoutId = content.shopify_checkout_id as string | undefined;
+  const cartAbandonedAt = content.abandoned_at as string | undefined;
 
   if (!customerEmail) {
     await markFailed(actionId, 'Missing customer_email');
@@ -625,6 +669,31 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
   }
 
   try {
+    // ── AGE CHECK: Skip carts older than 7 days ──
+    if (cartAbandonedAt) {
+      const cartAge = Date.now() - new Date(cartAbandonedAt).getTime();
+      if (cartAge > 7 * 86400 * 1000) {
+        await markCompleted(actionId, {
+          skipped: true,
+          reason: `Carrito de hace más de 7 días. Ya no es relevante.`,
+          customer_email: customerEmail,
+        });
+        console.log(`[actions] Cart recovery SKIPPED — cart too old (${Math.floor(cartAge / 86400000)}d) for ${customerEmail}`);
+        return;
+      }
+    }
+
+    // ── ANTI-SPAM: Max 1 email per customer per week ──
+    if (await hasRecentEmailToCustomer(accountId, customerEmail)) {
+      await markCompleted(actionId, {
+        skipped: true,
+        reason: `Ya contactamos a ${customerName} en los últimos 7 días. No enviar otro email.`,
+        customer_email: customerEmail,
+      });
+      console.log(`[actions] Cart recovery SKIPPED — ${customerEmail} already contacted this week`);
+      return;
+    }
+
     // Load account language and shop info
     const [{ data: acc }, { data: conn }] = await Promise.all([
       supabase.from('accounts').select('language').eq('id', accountId).single(),
@@ -636,13 +705,12 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     const currency = (conn as Record<string, unknown>)?.shop_currency as string ?? 'USD';
 
     // ── REAL-TIME CHECK: Has the customer already purchased? ──
-    // This runs just before sending, because time may pass between action creation and approval.
+    // FAIL-CLOSED: if Shopify doesn't respond, do NOT send the email.
     if (conn?.shop_domain) {
       const alreadyBought = await hasCustomerPurchasedRecently(conn.shop_domain, (conn as Record<string, unknown>).access_token as string, customerEmail);
       if (alreadyBought) {
         console.log(`[actions] Cart recovery SKIPPED — ${customerName} (${customerEmail}) already purchased`);
 
-        // Mark any matching abandoned cart as recovered
         await supabase
           .from('abandoned_carts')
           .update({ recovered: true, recovered_at: new Date().toISOString() })
@@ -656,17 +724,18 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
           customer_email: customerEmail,
         });
 
-        // Notify merchant that email was not needed
-        try {
-          await sendPushNotification(accountId, {
-            title: `${customerName} ya compró`,
-            body: `No se envió el email de recuperación porque ya completó su pedido.`,
-            url: '/actions',
-          });
-        } catch { /* non-fatal */ }
+        await sendConfirmationPush(accountId, {
+          title: `${customerName} ya compró`,
+          body: `No se envió el email de recuperación porque ya completó su pedido.`,
+          url: '/actions',
+        });
 
         return;
       }
+    } else {
+      // No Shopify connection → cannot verify → fail-closed
+      await markFailed(actionId, 'No Shopify connection — cannot verify if customer already purchased');
+      return;
     }
 
     // Use hand-written copy if available, otherwise fall back to generic template
@@ -709,16 +778,14 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     }
 
     await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
-    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId });
+    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId, recipient_email: customerEmail });
 
-    // Confirmation push to merchant
-    try {
-      await sendPushNotification(accountId, {
-        title: `Email enviado a ${customerName || customerEmail}`,
-        body: `El email de recuperación se envió correctamente.`,
-        url: '/actions',
-      });
-    } catch { /* non-fatal */ }
+    // Confirmation push to merchant (respects comms_approval)
+    await sendConfirmationPush(accountId, {
+      title: `Email enviado a ${customerName || customerEmail}`,
+      body: `El email de recuperación se envió correctamente.`,
+      url: '/actions',
+    });
 
     console.log(`[actions] Cart recovery email sent to ${customerEmail} for action ${actionId}`);
   } catch (err) {
@@ -735,6 +802,17 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
 
   if (!customerEmail) {
     await markFailed(actionId, 'Missing customer_email');
+    return;
+  }
+
+  // ── ANTI-SPAM: Max 1 email per customer per week ──
+  if (await hasRecentEmailToCustomer(accountId, customerEmail)) {
+    await markCompleted(actionId, {
+      skipped: true,
+      reason: `Ya contactamos a ${customerName} en los últimos 7 días.`,
+      customer_email: customerEmail,
+    });
+    console.log(`[actions] Welcome email SKIPPED — ${customerEmail} already contacted this week`);
     return;
   }
 
@@ -775,15 +853,13 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     });
 
     await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
-    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId });
+    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId, recipient_email: customerEmail });
 
-    try {
-      await sendPushNotification(accountId, {
-        title: `Email enviado a ${customerName || customerEmail}`,
-        body: `El email de bienvenida se envió correctamente.`,
-        url: '/actions',
-      });
-    } catch { /* non-fatal */ }
+    await sendConfirmationPush(accountId, {
+      title: `Email enviado a ${customerName || customerEmail}`,
+      body: `El email de bienvenida se envió correctamente.`,
+      url: '/actions',
+    });
 
     console.log(`[actions] Welcome email sent to ${customerEmail} for action ${actionId}`);
   } catch (err) {
@@ -826,6 +902,13 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
     const failed: string[] = [];
 
     for (const recipient of recipients) {
+      // ── ANTI-SPAM: Skip if already contacted this week ──
+      if (await hasRecentEmailToCustomer(accountId, recipient.email)) {
+        console.log(`[actions] Reactivation SKIPPED for ${recipient.email} — already contacted this week`);
+        failed.push(recipient.email);
+        continue;
+      }
+
       try {
         const { subject, html } = customCopy
           ? buildCustomCopyEmail({
@@ -871,17 +954,16 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
       failed: failed.length > 0 ? failed : undefined,
     });
 
-    for (const mid of messageIds) {
-      await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: mid });
+    for (let i = 0; i < messageIds.length; i++) {
+      const recipientEmail = recipients.filter(r => !failed.includes(r.email))[i]?.email;
+      await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageIds[i], recipient_email: recipientEmail });
     }
 
-    try {
-      await sendPushNotification(accountId, {
-        title: `Emails enviados`,
-        body: `Se enviaron ${messageIds.length} email(s) de reactivación.`,
-        url: '/actions',
-      });
-    } catch { /* non-fatal */ }
+    await sendConfirmationPush(accountId, {
+      title: `Emails enviados`,
+      body: `Se enviaron ${messageIds.length} email(s) de reactivación.`,
+      url: '/actions',
+    });
 
     console.log(`[actions] Reactivation emails sent to ${messageIds.length}/${recipients.length} recipients for action ${actionId}`);
   } catch (err) {
@@ -911,8 +993,8 @@ async function hasCustomerPurchasedRecently(
         !o.cancel_reason,
     );
   } catch (err) {
-    console.warn(`[actions] Failed to check Shopify orders for ${customerEmail}: ${(err as Error).message}`);
-    return false; // fail open — better to send than to silently skip on error
+    console.error(`[actions] FAIL-CLOSED: Cannot verify Shopify orders for ${customerEmail}: ${(err as Error).message}`);
+    return true; // fail-closed — if we can't verify, assume they bought (don't risk spam)
   }
 }
 

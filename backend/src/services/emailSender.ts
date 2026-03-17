@@ -72,7 +72,14 @@ type Lang = keyof typeof labels;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/**
+ * @deprecated Daily brief emails are NOT sent to merchants.
+ * Merchants only receive: (1) weekly email on Monday, (2) push notifications.
+ * This function is kept only for dev/debug scripts — NEVER call from production code.
+ */
 export async function sendBriefEmail(briefId: string): Promise<void> {
+  console.warn('[emailSender] WARNING: sendBriefEmail called — this should NOT happen in production');
+
   const { data: brief, error: briefErr } = await supabase
     .from('intelligence_briefs')
     .select('*')

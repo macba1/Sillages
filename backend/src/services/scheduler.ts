@@ -17,6 +17,48 @@ import { ensureTokenFresh } from '../lib/shopify.js';
 // 3 loops: event detection (hourly), daily summary (at send_hour), weekly (Monday)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Acquire a scheduler lock to prevent double execution (e.g. multiple Railway instances).
+ * Returns true if lock acquired, false if another process holds it.
+ */
+async function acquireSchedulerLock(lockName: string, ttlMs: number = 300000): Promise<boolean> {
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+
+  try {
+    // Delete expired locks first
+    await supabase.from('scheduler_locks').delete().lt('expires_at', now);
+
+    // Try to insert — unique constraint on lock_name prevents duplicates
+    const { error } = await supabase.from('scheduler_locks').insert({
+      lock_name: lockName,
+      acquired_at: now,
+      expires_at: expiresAt,
+    });
+
+    if (error) {
+      if (error.code === '23505') {
+        console.log(`[scheduler] Lock "${lockName}" already held — skipping`);
+        return false;
+      }
+      // Table might not exist yet — proceed without lock
+      console.warn(`[scheduler] Lock table error (proceeding): ${error.message}`);
+      return true;
+    }
+
+    return true;
+  } catch {
+    // Table might not exist — proceed without lock
+    return true;
+  }
+}
+
+async function releaseSchedulerLock(lockName: string): Promise<void> {
+  try {
+    await supabase.from('scheduler_locks').delete().eq('lock_name', lockName);
+  } catch { /* non-fatal */ }
+}
+
 export function startScheduler(): void {
   // Event detection: every hour at :10
   cron.schedule('10 * * * *', () => {
@@ -46,18 +88,24 @@ export async function runSchedulerForced(): Promise<string[]> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function runEventLoop(): Promise<void> {
-  const now = new Date();
-  console.log(`[scheduler] Event loop at ${now.toISOString()}`);
+  if (!await acquireSchedulerLock('event_loop')) return;
 
-  const accounts = await getEligibleAccounts();
-  if (accounts.length === 0) return;
+  try {
+    const now = new Date();
+    console.log(`[scheduler] Event loop at ${now.toISOString()}`);
 
-  for (const accountId of accounts) {
-    try {
-      await processEventsForAccount(accountId);
-    } catch (err) {
-      console.error(`[scheduler] [${accountId}] Event processing failed: ${(err as Error).message}`);
+    const accounts = await getEligibleAccounts();
+    if (accounts.length === 0) return;
+
+    for (const accountId of accounts) {
+      try {
+        await processEventsForAccount(accountId);
+      } catch (err) {
+        console.error(`[scheduler] [${accountId}] Event processing failed: ${(err as Error).message}`);
+      }
     }
+  } finally {
+    await releaseSchedulerLock('event_loop');
   }
 }
 
@@ -207,6 +255,16 @@ function buildEventPush(
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function runDailyAndWeeklyCheck(force = false): Promise<string[]> {
+  if (!force && !await acquireSchedulerLock('daily_weekly')) return [];
+
+  try {
+    return await _runDailyAndWeeklyCheckInner(force);
+  } finally {
+    if (!force) await releaseSchedulerLock('daily_weekly');
+  }
+}
+
+async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
   const now = new Date();
   console.log(`[scheduler] ${force ? 'FORCED' : 'Hourly'} daily/weekly check at ${now.toISOString()}`);
 

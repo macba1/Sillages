@@ -1,8 +1,11 @@
 import { supabase } from '../lib/supabase.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
-import { sendPushNotification } from './pushNotifier.js';
 import type { ShopifyDailySnapshot } from '../types.js';
+
+// RULE: Alerts NEVER go to merchants. They go to admin (Tony) ONLY.
+// If something is urgent for the merchant, create a pending_action instead.
+const ADMIN_EMAIL = 'tony@richmondpartner.com';
 
 export type AlertType = 'TRAFFIC_NOT_CONVERTING' | 'STAR_PRODUCT_OPPORTUNITY';
 export type AlertSeverity = 'warning' | 'positive';
@@ -95,46 +98,29 @@ async function checkStarProductOpportunity(
   };
 }
 
-// ── Email ────────────────────────────────────────────────────────────────────
+// ── Alert email to ADMIN ONLY (never to merchant) ────────────────────────────
 
-async function sendAlertEmail(
-  toEmail: string,
+async function sendAlertEmailToAdmin(
+  accountEmail: string,
   alert: AlertCandidate,
-  language: 'en' | 'es' = 'en',
 ): Promise<void> {
-  const borderColor = alert.severity === 'warning' ? '#C9964A' : '#2D6A4F';
-  const labelColor = alert.severity === 'warning' ? '#C9964A' : '#2D6A4F';
-  const label = alert.severity === 'warning'
-    ? (language === 'es' ? 'ALERTA' : 'ALERT')
-    : (language === 'es' ? 'OPORTUNIDAD' : 'OPPORTUNITY');
-
-  await resend.emails.send({
-    from: env.RESEND_FROM_EMAIL,
-    to: toEmail,
-    subject: alert.title,
-    html: `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F7F1EC;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F1EC;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#FDFAF6;border-radius:12px;overflow:hidden;border-left:4px solid ${borderColor};">
-        <tr>
-          <td style="padding:40px 40px 32px;">
-            <p style="margin:0 0 16px;font-size:10px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:${labelColor};">${label}</p>
-            <h2 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#2A1F14;line-height:1.3;">${alert.title}</h2>
-            <p style="margin:0 0 28px;font-size:15px;color:#7A6A58;line-height:1.7;">${alert.message}</p>
-            <p style="margin:0 0 28px;font-size:14px;color:#A89880;line-height:1.65;">${language === 'es' ? 'Lo he añadido a tu dashboard. — Sillages' : "I've added this to your dashboard. — Sillages"}</p>
-            <a href="${env.FRONTEND_URL}/dashboard" style="display:inline-block;background:#2A1F14;color:#F5EFE8;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:600;">${language === 'es' ? 'Ir al dashboard →' : 'Go to dashboard →'}</a>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-  });
+  try {
+    await resend.emails.send({
+      from: `Sillages Alerts <alerts@sillages.app>`,
+      to: ADMIN_EMAIL,
+      subject: `[Alert] ${accountEmail}: ${alert.title}`,
+      html: `
+<div style="max-width:600px;margin:0 auto;padding:32px 24px;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <h2 style="color:${alert.severity === 'warning' ? '#D35400' : '#2D6A4F'};margin:0 0 16px;">${alert.severity === 'warning' ? 'ALERT' : 'OPPORTUNITY'} — ${accountEmail}</h2>
+  <h3 style="color:#2A1F14;margin:0 0 12px;">${alert.title}</h3>
+  <p style="color:#2A1F14;font-size:14px;line-height:1.6;">${alert.message}</p>
+  <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+  <p style="font-size:11px;color:#A89880;">Sillages Alert Engine — admin only, merchants never see this</p>
+</div>`,
+    });
+  } catch (err) {
+    console.error(`[alertEngine] Failed to send alert email to admin: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
@@ -183,24 +169,8 @@ export async function checkAlerts(
       continue;
     }
 
-    // Send email (non-fatal)
-    try {
-      await sendAlertEmail(toEmail, candidate, language);
-    } catch (err) {
-      console.error(`[alertEngine] Failed to send alert email: ${err instanceof Error ? err.message : err}`);
-    }
-
-    // Send push notification (non-fatal)
-    try {
-      const emoji = candidate.severity === 'warning' ? '⚠️' : '🌟';
-      await sendPushNotification(accountId, {
-        title: `${emoji} ${candidate.title}`,
-        body: candidate.message.slice(0, 120) + (candidate.message.length > 120 ? '…' : ''),
-        url: '/dashboard',
-      });
-    } catch (err) {
-      console.error(`[alertEngine] Failed to send push: ${err instanceof Error ? err.message : err}`);
-    }
+    // Send alert to ADMIN only (never to merchant)
+    await sendAlertEmailToAdmin(toEmail, candidate);
 
     console.log(`[alertEngine] Alert fired — ${candidate.type} for account ${accountId}`);
   }

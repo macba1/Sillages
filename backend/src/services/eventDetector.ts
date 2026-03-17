@@ -95,29 +95,30 @@ async function detectCartRecoveries(accountId: string): Promise<void> {
         .map(o => o.customer!.email!.toLowerCase()),
     );
 
-    // Find the cart_recovery action that generated the email (if any)
+    // Find cart_recovery actions that generated emails (completed with sent_to)
     const { data: recoveryActions } = await supabase
       .from('pending_actions')
-      .select('id, content')
+      .select('id, content, executed_at, result')
       .eq('account_id', accountId)
       .eq('type', 'cart_recovery')
-      .in('status', ['completed', 'pending']);
+      .eq('status', 'completed');
 
-    const actionByEmail = new Map<string, string>();
+    const actionByEmail = new Map<string, { id: string; executed_at: string | null; sent_to: string | null }>();
     if (recoveryActions) {
       for (const a of recoveryActions) {
         const email = String((a.content as Record<string, unknown>).customer_email ?? '').toLowerCase();
-        if (email) actionByEmail.set(email, a.id);
+        const result = a.result as Record<string, unknown> | null;
+        const sentTo = result?.sent_to as string | null;
+        if (email) actionByEmail.set(email, { id: a.id, executed_at: a.executed_at, sent_to: sentTo });
       }
     }
 
-    // Mark matching carts as recovered
+    // Mark matching carts as recovered — with honest attribution
     for (const cart of openCarts) {
       if (!cart.customer_email) continue;
       const email = cart.customer_email.toLowerCase();
 
       if (orderEmails.has(email)) {
-        // Find the actual order for revenue calculation
         const matchingOrder = orders.find(
           o => o.customer?.email?.toLowerCase() === email &&
                o.financial_status !== 'voided' && !o.cancel_reason,
@@ -125,7 +126,18 @@ async function detectCartRecoveries(accountId: string): Promise<void> {
 
         const revenue = matchingOrder ? parseFloat(matchingOrder.total_price) : cart.total_price;
         const orderId = matchingOrder ? String(matchingOrder.id) : null;
-        const actionId = actionByEmail.get(email) ?? null;
+        const action = actionByEmail.get(email);
+        const actionId = action?.id ?? null;
+
+        // Attribution: only "by_sillages" if we sent an email BEFORE the purchase
+        let attribution: 'by_sillages' | 'organic' = 'organic';
+        if (action?.sent_to && action.executed_at && matchingOrder) {
+          const emailSentAt = new Date(action.executed_at).getTime();
+          const orderCreatedAt = new Date(matchingOrder.created_at).getTime();
+          if (emailSentAt < orderCreatedAt) {
+            attribution = 'by_sillages';
+          }
+        }
 
         await supabase
           .from('abandoned_carts')
@@ -135,10 +147,11 @@ async function detectCartRecoveries(accountId: string): Promise<void> {
             recovery_order_id: orderId,
             recovery_revenue: revenue,
             recovery_action_id: actionId,
+            recovery_attribution: attribution,
           })
           .eq('id', cart.id);
 
-        console.log(`${LOG} Cart recovered: ${email} → order ${orderId} (€${revenue})`);
+        console.log(`${LOG} Cart recovered: ${email} → order ${orderId} (€${revenue}) [${attribution}]`);
       }
     }
   } catch (err) {
@@ -215,13 +228,13 @@ async function detectNewFirstBuyers(accountId: string): Promise<DetectedEvent[]>
 
 async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent[]> {
   // Read from abandoned_carts table (populated by abandonedCartsSync)
-  const threeDaysAgo = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
   const { data: carts } = await supabase
     .from('abandoned_carts')
     .select('*')
     .eq('account_id', accountId)
     .or('recovered.is.null,recovered.eq.false')
-    .gte('abandoned_at', threeDaysAgo)
+    .gte('abandoned_at', sevenDaysAgo)
     .order('abandoned_at', { ascending: false })
     .limit(10);
 
