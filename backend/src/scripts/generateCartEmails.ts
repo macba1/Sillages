@@ -297,20 +297,22 @@ Genera el email de cart_recovery. Recuerda: 4 líneas máximo, asunto curioso, r
         content: Record<string, unknown>;
       };
 
-      // Insert into pending_comms
+      // Insert into pending_actions (merchant approves via push, NOT pending_comms)
       const { error: insertErr } = await supabase
-        .from('pending_comms')
+        .from('pending_actions')
         .insert({
           account_id: ANDREA_ID,
           type: 'cart_recovery',
-          channel: 'email',
+          title: action.title,
+          description: action.description,
           status: 'pending',
           content: {
             ...action.content,
             title: action.title,
-            description: action.description,
             priority: cart.priority,
             abandoned_at: cart.abandoned_at,
+            plan_required: 'growth',
+            time_estimate: '5 min',
           },
         });
 

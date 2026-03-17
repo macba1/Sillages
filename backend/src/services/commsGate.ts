@@ -6,6 +6,15 @@ import type { PushPayload } from './pushNotifier.js';
 
 const LOG = '[commsGate]';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RULE: The ONLY types allowed in pending_comms are:
+//   - 'push' (via gatePush)
+//   - 'weekly_email' (via gateWeeklyEmail)
+//
+// Email types (cart_recovery, welcome_email, reactivation_email) go directly
+// to pending_actions. Merchants ONLY receive push notifications + weekly email.
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * Check if an account has send_enabled = true in user_intelligence_config.
  * Returns false if the account is disabled or has no config.
