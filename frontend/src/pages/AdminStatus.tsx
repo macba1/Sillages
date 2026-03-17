@@ -85,8 +85,26 @@ interface EmailLog {
   sent_at: string;
   error_message: string | null;
   message_id: string | null;
+  delivered_at: string | null;
+  opened_at: string | null;
+  clicked_at: string | null;
+  bounced_at: string | null;
   account_email: string | null;
   shop_name: string | null;
+}
+
+interface EmailFunnel {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+}
+
+interface RecoveryStats {
+  total_carts: number;
+  recovered: number;
+  revenue: number;
 }
 
 interface PendingComm {
@@ -171,6 +189,8 @@ export default function AdminStatus() {
   const [actions, setActions] = useState<AdminAction[]>([]);
   const [pendingComms, setPendingComms] = useState<PendingComm[]>([]);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
+  const [emailFunnel, setEmailFunnel] = useState<EmailFunnel>({ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 });
+  const [recoveryStats, setRecoveryStats] = useState<RecoveryStats>({ total_carts: 0, recovered: 0, revenue: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -182,12 +202,14 @@ export default function AdminStatus() {
         api.get('/api/admin/status'),
         api.get('/api/admin/actions'),
         api.get('/api/admin/pending-comms').catch(() => ({ data: { comms: [] } })),
-        api.get('/api/admin/email-log').catch(() => ({ data: { logs: [] } })),
+        api.get('/api/admin/email-tracking').catch(() => ({ data: { logs: [], funnel: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 }, recovery: { total_carts: 0, recovered: 0, revenue: 0 } } })),
       ]);
       setData(statusRes.data);
       setActions(actionsRes.data.actions ?? []);
       setPendingComms(commsRes.data.comms ?? []);
       setEmailLogs(emailRes.data.logs ?? []);
+      setEmailFunnel(emailRes.data.funnel ?? { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 });
+      setRecoveryStats(emailRes.data.recovery ?? { total_carts: 0, recovered: 0, revenue: 0 });
       setError(null);
       setLastRefresh(new Date());
     } catch (err) {
@@ -586,39 +608,122 @@ export default function AdminStatus() {
 
       {/* ── TAB: Email Tracking ───────────────────────────────────────────────── */}
       {tab === 'emails' && (
-        <div style={S.card}>
-          <div style={S.cardHeader}><h2 style={S.h2}>Email Log ({emailLogs.length})</h2></div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #2a2a40' }}>
-                  {['Time', 'Store', 'Channel', 'Status', 'Message ID', 'Error'].map(h => (
-                    <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {emailLogs.map((log, i) => (
-                  <tr key={`${log.id ?? i}`} style={{ borderBottom: '1px solid #1f1f35' }}>
-                    <td style={{ padding: '8px 12px', fontSize: 11, color: '#888' }}>{shortTime(log.sent_at)}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <div style={{ fontSize: 12, color: '#ccc' }}>{log.shop_name ?? '—'}</div>
-                      <div style={{ fontSize: 10, color: '#555' }}>{log.account_email}</div>
-                    </td>
-                    <td style={{ padding: '8px 12px' }}><span style={channelBadge(log.channel)}>{log.channel}</span></td>
-                    <td style={{ padding: '8px 12px' }}><span style={statusBadge(log.status)}>{log.status}</span></td>
-                    <td style={{ padding: '8px 12px', fontSize: 10, color: '#555', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {log.message_id ?? '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px', fontSize: 11, color: '#dc3545', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {log.error_message ?? ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Funnel + Recovery stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            {/* Email Funnel */}
+            <div style={S.card}>
+              <div style={S.cardHeader}><h2 style={S.h2}>Email Funnel</h2></div>
+              <div style={{ padding: '16px 18px' }}>
+                {(() => {
+                  const steps = [
+                    { label: 'Sent', value: emailFunnel.sent, color: '#4a90d9' },
+                    { label: 'Delivered', value: emailFunnel.delivered, color: '#2D6A4F' },
+                    { label: 'Opened', value: emailFunnel.opened, color: '#C9964A' },
+                    { label: 'Clicked', value: emailFunnel.clicked, color: '#8B5CF6' },
+                  ];
+                  const max = Math.max(emailFunnel.sent, 1);
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {steps.map(s => (
+                        <div key={s.label}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                            <span style={{ fontSize: 11, color: '#ccc' }}>{s.label}</span>
+                            <span style={{ fontSize: 11, color: '#888' }}>
+                              {s.value} {emailFunnel.sent > 0 ? `(${Math.round(s.value / emailFunnel.sent * 100)}%)` : ''}
+                            </span>
+                          </div>
+                          <div style={{ background: '#12122a', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                            <div style={{ background: s.color, height: '100%', width: `${(s.value / max) * 100}%`, borderRadius: 4, transition: 'width 0.3s' }} />
+                          </div>
+                        </div>
+                      ))}
+                      {emailFunnel.bounced > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                          <span style={{ fontSize: 11, color: '#dc3545' }}>Bounced</span>
+                          <span style={{ fontSize: 11, color: '#dc3545' }}>{emailFunnel.bounced}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Recovery Stats */}
+            <div style={S.card}>
+              <div style={S.cardHeader}><h2 style={S.h2}>Cart Recovery</h2></div>
+              <div style={{ padding: '16px 18px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, textAlign: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: '#C9964A' }}>{recoveryStats.total_carts}</div>
+                    <div style={{ ...S.label, marginTop: 4 }}>Abandoned</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: '#2D6A4F' }}>{recoveryStats.recovered}</div>
+                    <div style={{ ...S.label, marginTop: 4 }}>Recovered</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: '#8B5CF6' }}>
+                      {'\u20AC'}{recoveryStats.revenue.toFixed(0)}
+                    </div>
+                    <div style={{ ...S.label, marginTop: 4 }}>Revenue</div>
+                  </div>
+                </div>
+                {recoveryStats.total_carts > 0 && (
+                  <div style={{ marginTop: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: '#888' }}>
+                      Recovery rate: {Math.round(recoveryStats.recovered / recoveryStats.total_carts * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* Email Log Table */}
+          <div style={S.card}>
+            <div style={S.cardHeader}><h2 style={S.h2}>Email Log ({emailLogs.length})</h2></div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #2a2a40' }}>
+                    {['Time', 'Store', 'Channel', 'Status', 'Delivered', 'Opened', 'Clicked', 'Error'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {emailLogs.map((log, i) => (
+                    <tr key={`${log.id ?? i}`} style={{ borderBottom: '1px solid #1f1f35' }}>
+                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#888' }}>{shortTime(log.sent_at)}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <div style={{ fontSize: 12, color: '#ccc' }}>{log.shop_name ?? '—'}</div>
+                        <div style={{ fontSize: 10, color: '#555' }}>{log.account_email}</div>
+                      </td>
+                      <td style={{ padding: '8px 12px' }}><span style={channelBadge(log.channel)}>{log.channel}</span></td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={statusBadge(log.bounced_at ? 'failed' : log.status)}>{log.bounced_at ? 'bounced' : log.status}</span>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 11 }}>
+                        {log.delivered_at ? <span style={{ color: '#2D6A4F' }}>{shortTime(log.delivered_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 11 }}>
+                        {log.opened_at ? <span style={{ color: '#C9964A' }}>{shortTime(log.opened_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 11 }}>
+                        {log.clicked_at ? <span style={{ color: '#8B5CF6' }}>{shortTime(log.clicked_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#dc3545', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {log.error_message ?? ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

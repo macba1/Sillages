@@ -399,6 +399,63 @@ router.get('/email-log', requireAuth, requireAdmin, async (_req: Request, res: R
   }
 });
 
+// GET /api/admin/email-tracking — Enriched email log with delivery funnel + recovery stats
+router.get('/email-tracking', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data: logs } = await supabase
+      .from('email_log')
+      .select('*')
+      .order('sent_at', { ascending: false })
+      .limit(100);
+
+    if (!logs || logs.length === 0) {
+      res.json({ logs: [], funnel: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 }, recovery: { total_carts: 0, recovered: 0, revenue: 0 } });
+      return;
+    }
+
+    // Enrich with account info
+    const accountIds = [...new Set(logs.map(l => l.account_id))];
+    const [{ data: accounts }, { data: connections }] = await Promise.all([
+      supabase.from('accounts').select('id, email, full_name').in('id', accountIds),
+      supabase.from('shopify_connections').select('account_id, shop_name').in('account_id', accountIds),
+    ]);
+
+    const accountMap = new Map((accounts ?? []).map(a => [a.id, a]));
+    const connMap = new Map((connections ?? []).map(c => [c.account_id, c]));
+
+    const enriched = logs.map(log => ({
+      ...log,
+      account_email: accountMap.get(log.account_id)?.email ?? null,
+      shop_name: connMap.get(log.account_id)?.shop_name ?? null,
+    }));
+
+    // Compute funnel stats
+    const funnel = {
+      sent: logs.length,
+      delivered: logs.filter(l => l.delivered_at).length,
+      opened: logs.filter(l => l.opened_at).length,
+      clicked: logs.filter(l => l.clicked_at).length,
+      bounced: logs.filter(l => l.bounced_at).length,
+    };
+
+    // Recovery stats from abandoned_carts
+    const { data: recoveryCarts } = await supabase
+      .from('abandoned_carts')
+      .select('recovered, recovery_revenue')
+      .in('account_id', accountIds);
+
+    const recovery = {
+      total_carts: recoveryCarts?.length ?? 0,
+      recovered: recoveryCarts?.filter(c => c.recovered).length ?? 0,
+      revenue: recoveryCarts?.filter(c => c.recovered).reduce((sum, c) => sum + (c.recovery_revenue ?? 0), 0) ?? 0,
+    };
+
+    res.json({ logs: enriched, funnel, recovery });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PENDING COMMS — Admin approval gate for merchant communications
 // ═══════════════════════════════════════════════════════════════════════════

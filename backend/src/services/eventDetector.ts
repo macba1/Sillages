@@ -50,7 +50,100 @@ export async function detectEvents(accountId: string): Promise<DetectedEvent[]> 
   ]);
 
   events.push(...firstBuyers, ...carts, ...overdue);
+
+  // Check if any new orders match abandoned cart customers → mark as recovered
+  await detectCartRecoveries(accountId);
+
   return events;
+}
+
+// ── Cart recovery detection ─────────────────────────────────────────────────
+// When a customer who had an abandoned cart places an order, mark the cart as recovered.
+
+async function detectCartRecoveries(accountId: string): Promise<void> {
+  try {
+    // Get unrecovered abandoned carts from the last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000).toISOString();
+    const { data: openCarts } = await supabase
+      .from('abandoned_carts')
+      .select('id, customer_email, total_price')
+      .eq('account_id', accountId)
+      .or('recovered.is.null,recovered.eq.false')
+      .gte('abandoned_at', thirtyDaysAgo);
+
+    if (!openCarts || openCarts.length === 0) return;
+
+    // Get recent orders (last 48h) to cross-reference
+    const { data: conn } = await supabase
+      .from('shopify_connections')
+      .select('shop_domain, access_token')
+      .eq('account_id', accountId)
+      .single();
+
+    if (!conn) return;
+
+    const client = shopifyClient(conn.shop_domain, conn.access_token);
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const { orders } = await client.getOrders({
+      created_at_min: since,
+      created_at_max: new Date().toISOString(),
+    });
+
+    const orderEmails = new Set(
+      orders
+        .filter(o => o.customer?.email && o.financial_status !== 'voided' && !o.cancel_reason)
+        .map(o => o.customer!.email!.toLowerCase()),
+    );
+
+    // Find the cart_recovery action that generated the email (if any)
+    const { data: recoveryActions } = await supabase
+      .from('pending_actions')
+      .select('id, content')
+      .eq('account_id', accountId)
+      .eq('type', 'cart_recovery')
+      .in('status', ['completed', 'pending']);
+
+    const actionByEmail = new Map<string, string>();
+    if (recoveryActions) {
+      for (const a of recoveryActions) {
+        const email = String((a.content as Record<string, unknown>).customer_email ?? '').toLowerCase();
+        if (email) actionByEmail.set(email, a.id);
+      }
+    }
+
+    // Mark matching carts as recovered
+    for (const cart of openCarts) {
+      if (!cart.customer_email) continue;
+      const email = cart.customer_email.toLowerCase();
+
+      if (orderEmails.has(email)) {
+        // Find the actual order for revenue calculation
+        const matchingOrder = orders.find(
+          o => o.customer?.email?.toLowerCase() === email &&
+               o.financial_status !== 'voided' && !o.cancel_reason,
+        );
+
+        const revenue = matchingOrder ? parseFloat(matchingOrder.total_price) : cart.total_price;
+        const orderId = matchingOrder ? String(matchingOrder.id) : null;
+        const actionId = actionByEmail.get(email) ?? null;
+
+        await supabase
+          .from('abandoned_carts')
+          .update({
+            recovered: true,
+            recovered_at: new Date().toISOString(),
+            recovery_order_id: orderId,
+            recovery_revenue: revenue,
+            recovery_action_id: actionId,
+          })
+          .eq('id', cart.id);
+
+        console.log(`${LOG} Cart recovered: ${email} → order ${orderId} (€${revenue})`);
+      }
+    }
+  } catch (err) {
+    console.warn(`${LOG} Cart recovery detection failed: ${(err as Error).message}`);
+  }
 }
 
 // ── 1. New first-time buyers ────────────────────────────────────────────────

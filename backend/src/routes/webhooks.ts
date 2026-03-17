@@ -270,6 +270,118 @@ router.post(
   },
 );
 
+// ── POST /api/webhooks/resend ──────────────────────────────────────────────────
+// Resend sends delivery events: email.delivered, email.opened, email.clicked,
+// email.bounced, email.complained. We update email_log with timestamps.
+// Docs: https://resend.com/docs/dashboard/webhooks/introduction
+
+interface ResendWebhookPayload {
+  type: string;
+  created_at: string;
+  data: {
+    email_id: string;       // Resend message ID — matches email_log.message_id
+    from: string;
+    to: string[];
+    subject: string;
+    created_at: string;
+    click?: { link: string };
+  };
+}
+
+router.post(
+  '/resend',
+  async (req: Request, res: Response) => {
+    // Verify webhook signature if secret is configured
+    if (env.RESEND_WEBHOOK_SECRET) {
+      const svixId = req.headers['svix-id'] as string | undefined;
+      const svixTimestamp = req.headers['svix-timestamp'] as string | undefined;
+      const svixSignature = req.headers['svix-signature'] as string | undefined;
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        console.warn('[webhooks/resend] Missing Svix headers');
+        res.status(401).json({ error: 'Missing signature headers' });
+        return;
+      }
+
+      // Verify HMAC using Svix protocol
+      const crypto = await import('crypto');
+      const rawBody = (req.body instanceof Buffer ? req.body : Buffer.from(JSON.stringify(req.body))).toString('utf8');
+      const secretBytes = Buffer.from(env.RESEND_WEBHOOK_SECRET.replace('whsec_', ''), 'base64');
+      const toSign = `${svixId}.${svixTimestamp}.${rawBody}`;
+      const expectedSignature = crypto.createHmac('sha256', secretBytes).update(toSign).digest('base64');
+
+      // svix-signature can have multiple signatures: "v1,<sig1> v1,<sig2>"
+      const signatures = svixSignature.split(' ').map(s => s.replace('v1,', ''));
+      if (!signatures.includes(expectedSignature)) {
+        console.warn('[webhooks/resend] Signature verification failed');
+        res.status(401).json({ error: 'Invalid signature' });
+        return;
+      }
+    }
+
+    let payload: ResendWebhookPayload;
+    try {
+      const raw = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
+      payload = JSON.parse(raw) as ResendWebhookPayload;
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    const messageId = payload.data?.email_id;
+    if (!messageId) {
+      console.warn('[webhooks/resend] No email_id in payload');
+      res.json({ received: true });
+      return;
+    }
+
+    const eventType = payload.type;
+    const eventTime = payload.created_at || new Date().toISOString();
+
+    console.log(`[webhooks/resend] ${eventType} for message_id=${messageId}`);
+
+    // Map Resend event types to email_log columns
+    const columnMap: Record<string, string> = {
+      'email.delivered': 'delivered_at',
+      'email.opened': 'opened_at',
+      'email.clicked': 'clicked_at',
+      'email.bounced': 'bounced_at',
+      'email.complained': 'bounced_at', // treat complaints like bounces
+    };
+
+    const column = columnMap[eventType];
+    if (!column) {
+      console.log(`[webhooks/resend] Ignoring event type: ${eventType}`);
+      res.json({ received: true });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('email_log')
+        .update({ [column]: eventTime })
+        .eq('message_id', messageId)
+        .is(column, null); // only set if not already set (first event wins)
+
+      if (error) {
+        console.error(`[webhooks/resend] Failed to update email_log: ${error.message}`);
+      }
+
+      // If bounced, also update status
+      if (eventType === 'email.bounced' || eventType === 'email.complained') {
+        await supabase
+          .from('email_log')
+          .update({ status: 'bounced' })
+          .eq('message_id', messageId);
+      }
+    } catch (err) {
+      console.error(`[webhooks/resend] Error processing webhook: ${(err as Error).message}`);
+    }
+
+    res.json({ received: true });
+  },
+);
+
 // ── Welcome email ─────────────────────────────────────────────────────────────
 
 async function sendWelcomeEmail(to: string, firstName: string): Promise<void> {

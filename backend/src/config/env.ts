@@ -38,6 +38,9 @@ const envSchema = z.object({
   SHOPIFY_BETA_API_KEY: z.string().min(1).optional(),
   SHOPIFY_BETA_API_SECRET: z.string().min(1).optional(),
 
+  // Resend webhook
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+
   // Web Push (VAPID)
   VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   VAPID_PRIVATE_KEY: z.string().min(1).optional(),
