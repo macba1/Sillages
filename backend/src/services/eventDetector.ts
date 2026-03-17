@@ -220,11 +220,38 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
     .from('abandoned_carts')
     .select('*')
     .eq('account_id', accountId)
+    .or('recovered.is.null,recovered.eq.false')
     .gte('abandoned_at', threeDaysAgo)
     .order('abandoned_at', { ascending: false })
     .limit(10);
 
   if (!carts || carts.length === 0) return [];
+
+  // Get recent orders to filter out customers who already bought
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain, access_token')
+    .eq('account_id', accountId)
+    .single();
+
+  let recentOrderEmails = new Set<string>();
+  if (conn) {
+    try {
+      const client = shopifyClient(conn.shop_domain, conn.access_token);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+      const { orders } = await client.getOrders({
+        created_at_min: sevenDaysAgo,
+        created_at_max: new Date().toISOString(),
+      });
+      recentOrderEmails = new Set(
+        orders
+          .filter(o => o.customer?.email && o.financial_status !== 'voided' && !o.cancel_reason)
+          .map(o => o.customer!.email!.toLowerCase()),
+      );
+    } catch (err) {
+      console.warn(`${LOG} Failed to fetch orders for cart filter: ${(err as Error).message}`);
+    }
+  }
 
   const events: DetectedEvent[] = [];
 
@@ -236,6 +263,17 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
 
     const email = (cart.customer_email as string) ?? '';
     if (!email) continue; // skip anonymous carts
+
+    // Skip if customer already placed an order (they recovered on their own)
+    if (recentOrderEmails.has(email.toLowerCase())) {
+      console.log(`${LOG} Skipping cart for ${email} — customer already purchased`);
+      // Mark cart as recovered
+      await supabase
+        .from('abandoned_carts')
+        .update({ recovered: true, recovered_at: new Date().toISOString() })
+        .eq('id', cart.id);
+      continue;
+    }
 
     events.push({
       type: 'abandoned_cart',

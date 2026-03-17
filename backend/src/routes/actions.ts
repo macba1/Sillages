@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
-import { shopifyGraphQL } from '../lib/shopify.js';
+import { shopifyGraphQL, shopifyClient } from '../lib/shopify.js';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { sendMerchantEmail } from '../services/merchantEmail.js';
@@ -635,6 +635,40 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const currency = (conn as Record<string, unknown>)?.shop_currency as string ?? 'USD';
 
+    // ── REAL-TIME CHECK: Has the customer already purchased? ──
+    // This runs just before sending, because time may pass between action creation and approval.
+    if (conn?.shop_domain) {
+      const alreadyBought = await hasCustomerPurchasedRecently(conn.shop_domain, (conn as Record<string, unknown>).access_token as string, customerEmail);
+      if (alreadyBought) {
+        console.log(`[actions] Cart recovery SKIPPED — ${customerName} (${customerEmail}) already purchased`);
+
+        // Mark any matching abandoned cart as recovered
+        await supabase
+          .from('abandoned_carts')
+          .update({ recovered: true, recovered_at: new Date().toISOString() })
+          .eq('account_id', accountId)
+          .eq('customer_email', customerEmail)
+          .or('recovered.is.null,recovered.eq.false');
+
+        await markCompleted(actionId, {
+          skipped: true,
+          reason: `${customerName} ya completó su compra. Email no enviado.`,
+          customer_email: customerEmail,
+        });
+
+        // Notify merchant that email was not needed
+        try {
+          await sendPushNotification(accountId, {
+            title: `${customerName} ya compró`,
+            body: `No se envió el email de recuperación porque ya completó su pedido.`,
+            url: '/actions',
+          });
+        } catch { /* non-fatal */ }
+
+        return;
+      }
+    }
+
     // Use hand-written copy if available, otherwise fall back to generic template
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
@@ -852,6 +886,33 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
     console.log(`[actions] Reactivation emails sent to ${messageIds.length}/${recipients.length} recipients for action ${actionId}`);
   } catch (err) {
     await markFailed(actionId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// ── Helper: check if customer already purchased (real-time Shopify check) ────
+
+async function hasCustomerPurchasedRecently(
+  shopDomain: string,
+  accessToken: string,
+  customerEmail: string,
+): Promise<boolean> {
+  try {
+    const client = shopifyClient(shopDomain, accessToken);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const { orders } = await client.getOrders({
+      created_at_min: sevenDaysAgo,
+      created_at_max: new Date().toISOString(),
+    });
+
+    return orders.some(
+      o =>
+        o.customer?.email?.toLowerCase() === customerEmail.toLowerCase() &&
+        o.financial_status !== 'voided' &&
+        !o.cancel_reason,
+    );
+  } catch (err) {
+    console.warn(`[actions] Failed to check Shopify orders for ${customerEmail}: ${(err as Error).message}`);
+    return false; // fail open — better to send than to silently skip on error
   }
 }
 
