@@ -6,7 +6,9 @@ import { shopifyGraphQL } from '../lib/shopify.js';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { sendMerchantEmail } from '../services/merchantEmail.js';
-import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail } from '../services/emailTemplates.js';
+import { sendPushNotification } from '../services/pushNotifier.js';
+import { logCommunication } from '../services/commLog.js';
+import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail, buildCustomCopyEmail } from '../services/emailTemplates.js';
 
 const router = Router();
 
@@ -633,17 +635,29 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const currency = (conn as Record<string, unknown>)?.shop_currency as string ?? 'USD';
 
-    const { subject, html } = buildCartRecoveryEmail({
-      customerName,
-      storeName,
-      products,
-      totalPrice,
-      currency,
-      checkoutUrl,
-      discountCode,
-      discountPercent,
-      language,
-    });
+    // Use hand-written copy if available, otherwise fall back to generic template
+    const customCopy = content.copy as string | undefined;
+    const customTitle = content.title as string | undefined;
+
+    const { subject, html } = customCopy
+      ? buildCustomCopyEmail({
+          storeName,
+          subject: customTitle ?? `${customerName}, tienes algo pendiente`,
+          body: customCopy,
+          ctaText: language === 'es' ? 'Completar mi pedido' : 'Complete my order',
+          ctaUrl: checkoutUrl,
+        })
+      : buildCartRecoveryEmail({
+          customerName,
+          storeName,
+          products,
+          totalPrice,
+          currency,
+          checkoutUrl,
+          discountCode,
+          discountPercent,
+          language,
+        });
 
     const { messageId } = await sendMerchantEmail({
       accountId,
@@ -661,6 +675,17 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     }
 
     await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
+    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId });
+
+    // Confirmation push to merchant
+    try {
+      await sendPushNotification(accountId, {
+        title: `Email enviado a ${customerName || customerEmail}`,
+        body: `El email de recuperación se envió correctamente.`,
+        url: '/actions',
+      });
+    } catch { /* non-fatal */ }
+
     console.log(`[actions] Cart recovery email sent to ${customerEmail} for action ${actionId}`);
   } catch (err) {
     await markFailed(actionId, err instanceof Error ? err.message : String(err));
@@ -689,13 +714,24 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
 
-    const { subject, html } = buildWelcomeEmail({
-      customerName,
-      storeName,
-      productPurchased,
-      language,
-      storeUrl,
-    });
+    const customCopy = content.copy as string | undefined;
+    const customTitle = content.title as string | undefined;
+
+    const { subject, html } = customCopy
+      ? buildCustomCopyEmail({
+          storeName,
+          subject: customTitle ?? `¡Gracias por tu pedido, ${customerName}!`,
+          body: customCopy,
+          ctaText: language === 'es' ? 'Descubre más productos' : 'Discover more products',
+          ctaUrl: storeUrl,
+        })
+      : buildWelcomeEmail({
+          customerName,
+          storeName,
+          productPurchased,
+          language,
+          storeUrl,
+        });
 
     const { messageId } = await sendMerchantEmail({
       accountId,
@@ -705,6 +741,16 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     });
 
     await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
+    await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: messageId });
+
+    try {
+      await sendPushNotification(accountId, {
+        title: `Email enviado a ${customerName || customerEmail}`,
+        body: `El email de bienvenida se envió correctamente.`,
+        url: '/actions',
+      });
+    } catch { /* non-fatal */ }
+
     console.log(`[actions] Welcome email sent to ${customerEmail} for action ${actionId}`);
   } catch (err) {
     await markFailed(actionId, err instanceof Error ? err.message : String(err));
@@ -739,21 +785,32 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
 
+    const customCopy = content.copy as string | undefined;
+    const customTitle = content.title as string | undefined;
+
     const messageIds: string[] = [];
     const failed: string[] = [];
 
     for (const recipient of recipients) {
       try {
-        const { subject, html } = buildReactivationEmail({
-          customerName: recipient.name,
-          storeName,
-          lastProduct: recipient.last_product,
-          daysSinceLastPurchase: recipient.days_since,
-          discountCode,
-          discountPercent,
-          language,
-          storeUrl,
-        });
+        const { subject, html } = customCopy
+          ? buildCustomCopyEmail({
+              storeName,
+              subject: customTitle ?? `${recipient.name}, te echamos de menos`,
+              body: customCopy,
+              ctaText: language === 'es' ? 'Volver a la tienda' : 'Back to the store',
+              ctaUrl: storeUrl,
+            })
+          : buildReactivationEmail({
+              customerName: recipient.name,
+              storeName,
+              lastProduct: recipient.last_product,
+              daysSinceLastPurchase: recipient.days_since,
+              discountCode,
+              discountPercent,
+              language,
+              storeUrl,
+            });
 
         const { messageId } = await sendMerchantEmail({
           accountId,
@@ -779,6 +836,18 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
       message_ids: messageIds,
       failed: failed.length > 0 ? failed : undefined,
     });
+
+    for (const mid of messageIds) {
+      await logCommunication({ account_id: accountId, channel: 'email', status: 'sent', message_id: mid });
+    }
+
+    try {
+      await sendPushNotification(accountId, {
+        title: `Emails enviados`,
+        body: `Se enviaron ${messageIds.length} email(s) de reactivación.`,
+        url: '/actions',
+      });
+    } catch { /* non-fatal */ }
 
     console.log(`[actions] Reactivation emails sent to ${messageIds.length}/${recipients.length} recipients for action ${actionId}`);
   } catch (err) {

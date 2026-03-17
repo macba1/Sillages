@@ -256,6 +256,47 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
   return { subject, html };
 }
 
+// ── Custom Copy Email ───────────────────────────────────────────────────────
+// Wraps hand-written copy (plain text) in the design system HTML.
+// Used when content.copy exists in the action — bypasses generic templates.
+
+export function buildCustomCopyEmail(input: {
+  storeName: string;
+  subject: string;
+  body: string;
+  ctaText?: string;
+  ctaUrl?: string;
+}): { subject: string; html: string } {
+  const { storeName, subject, body, ctaText, ctaUrl } = input;
+
+  // Convert plain text line breaks to <br> for HTML
+  const htmlBody = body.replace(/\n/g, '<br>');
+
+  const ctaBlock = ctaText && ctaUrl ? `
+    <tr>
+      <td style="padding:24px 24px 0;" align="center">
+        ${ctaButton(ctaText, ctaUrl)}
+      </td>
+    </tr>` : '';
+
+  const html = wrapTemplate(storeName, `
+    <tr>
+      <td style="padding:0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:20px 24px;">
+          <tr>
+            <td>
+              <p style="margin:0;font-size:14px;color:#3A2332;line-height:1.7;">${htmlBody}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    ${ctaBlock}
+  `);
+
+  return { subject, html };
+}
+
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
 function ctaButton(text: string, url: string): string {

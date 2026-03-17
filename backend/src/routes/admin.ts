@@ -496,7 +496,12 @@ router.get('/pending-comms', requireAuth, requireAdmin, async (_req: Request, re
   }
 });
 
-// PUT /api/admin/pending-comms/:id/approve — Approve and execute the communication
+// PUT /api/admin/pending-comms/:id/approve — Approve a pending communication
+// For email types (cart_recovery, welcome_email, reactivation_email):
+//   → Creates a pending_action for the merchant to approve
+//   → Sends push to merchant: "Hemos preparado un email para [cliente]"
+//   → Merchant sees the action in their app and decides to send, edit, or reject
+// For push/weekly_email: sends directly (merchant doesn't need to approve their own brief)
 router.put('/pending-comms/:id/approve', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const commId = req.params.id;
@@ -510,16 +515,90 @@ router.put('/pending-comms/:id/approve', requireAuth, requireAdmin, async (req: 
     if (fetchError || !comm) throw new AppError(404, 'Pending comm not found');
     if (comm.status !== 'pending') throw new AppError(400, `Comm is already ${comm.status}`);
 
-    // Actually send the communication
-    if (comm.type === 'push') {
-      await sendPushNotification(comm.account_id, comm.content as { title: string; body: string; url?: string });
+    const content = comm.content as Record<string, unknown>;
+    const EMAIL_TYPES = ['cart_recovery', 'welcome_email', 'reactivation_email'];
+
+    if (EMAIL_TYPES.includes(comm.type)) {
+      // ── Email types: create pending_action for merchant + push notification ──
+      const customerName = String(content.customer_name ?? '');
+      const customerEmail = String(content.customer_email ?? '');
+      const title = String(content.title ?? `Email para ${customerName}`);
+      const copy = String(content.copy ?? '');
+      const products = content.products as string | undefined;
+      const recommendedProduct = String(content.recommended_product ?? '');
+      const priority = String(content.priority ?? 'medium');
+
+      // Build action content — preserving all email fields the executor needs
+      const actionContent: Record<string, unknown> = {
+        customer_name: customerName,
+        customer_email: customerEmail,
+        copy,
+        recommended_product: recommendedProduct,
+        priority,
+        plan_required: 'growth',
+        time_estimate: '5 min',
+        pending_comm_id: commId,
+      };
+
+      // Preserve products array for cart_recovery (executor needs it)
+      if (products) actionContent.products = products;
+
+      // Preserve recipients for reactivation_email
+      if (content.recipients) actionContent.recipients = content.recipients;
+
+      // Create pending_action for the merchant
+      const { data: action, error: insertErr } = await supabase
+        .from('pending_actions')
+        .insert({
+          account_id: comm.account_id,
+          type: comm.type,
+          title,
+          description: String(content.description ?? `Email preparado para ${customerName} <${customerEmail}>`),
+          content: actionContent,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (insertErr || !action) {
+        throw new AppError(500, `Failed to create action: ${insertErr?.message}`);
+      }
+
+      // Build push message based on type
+      let pushBody: string;
+      if (comm.type === 'cart_recovery') {
+        const productNames = typeof products === 'string' ? products : '';
+        pushBody = `${customerName} dejó ${productNames || 'productos'} en su carrito. Hemos preparado un email. ¿Lo enviamos?`;
+      } else if (comm.type === 'welcome_email') {
+        pushBody = `${customerName} hizo su primera compra. Hemos preparado un email de bienvenida. ¿Lo enviamos?`;
+      } else {
+        pushBody = `Hemos preparado un email para ${customerName}. ¿Lo enviamos?`;
+      }
+
+      // Send push to merchant
+      try {
+        await sendPushNotification(comm.account_id, {
+          title: `Email preparado para ${customerName}`,
+          body: pushBody,
+          url: '/actions',
+        });
+      } catch (pushErr) {
+        console.warn(`[admin] Push failed for ${comm.account_id}: ${pushErr instanceof Error ? pushErr.message : pushErr}`);
+        // Non-fatal — action was still created
+      }
+
+      console.log(`[admin] Created action ${action.id} for merchant from comm ${commId} (${comm.type})`);
+    } else if (comm.type === 'push') {
+      // ── Push: send directly ──
+      await sendPushNotification(comm.account_id, content as { title: string; body: string; url?: string });
       await logCommunication({
         account_id: comm.account_id,
         channel: comm.channel,
         status: 'sent',
       });
     } else if (comm.type === 'weekly_email') {
-      const weeklyBriefId = (comm.content as { weekly_brief_id: string }).weekly_brief_id;
+      // ── Weekly email: send directly ──
+      const weeklyBriefId = (content as { weekly_brief_id: string }).weekly_brief_id;
       await sendWeeklyBriefEmail(weeklyBriefId);
       await logCommunication({
         account_id: comm.account_id,
@@ -529,6 +608,7 @@ router.put('/pending-comms/:id/approve', requireAuth, requireAdmin, async (req: 
       });
     }
 
+    // Mark comm as approved
     await supabase
       .from('pending_comms')
       .update({
@@ -538,8 +618,9 @@ router.put('/pending-comms/:id/approve', requireAuth, requireAdmin, async (req: 
       })
       .eq('id', commId);
 
-    console.log(`[admin] Approved and sent pending comm ${commId} (${comm.type}/${comm.channel})`);
-    res.json({ ok: true, sent: true });
+    const isEmailType = EMAIL_TYPES.includes(comm.type);
+    console.log(`[admin] Approved comm ${commId} (${comm.type}) — ${isEmailType ? 'action created for merchant' : 'sent directly'}`);
+    res.json({ ok: true, sent: !isEmailType, action_created: isEmailType });
   } catch (err) {
     next(err);
   }
