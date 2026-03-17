@@ -269,12 +269,17 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
   }
 });
 
-// GET /api/admin/actions — All actions across all accounts with full details
+// GET /api/admin/actions — Admin-only actions (excludes merchant-facing email types)
+// Merchant email actions (cart_recovery, welcome_email, reactivation_email) are for
+// the merchant to approve in their app — admin only works with Pending Comms.
+const MERCHANT_ACTION_TYPES = ['cart_recovery', 'welcome_email', 'reactivation_email'];
+
 router.get('/actions', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const { data: actions } = await supabase
       .from('pending_actions')
       .select('*')
+      .not('type', 'in', `(${MERCHANT_ACTION_TYPES.join(',')})`)
       .order('created_at', { ascending: false })
       .limit(100);
 
