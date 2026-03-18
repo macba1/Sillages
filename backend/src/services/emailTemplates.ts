@@ -419,7 +419,7 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
   const bigLogoUrl = logoUrl?.replace(/_\d+x\./, '_400x.');
   const headerContent = bigLogoUrl
     ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
-        <img src="${bigLogoUrl}" alt="${storeName}" width="160" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
+        <img src="${bigLogoUrl}" alt="${storeName}" width="180" style="display:block;width:180px;height:auto;border:0;outline:none;" />
       </a>`
     : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:${TEXT_DARK};letter-spacing:0.5px;">${storeName}</a>`;
 

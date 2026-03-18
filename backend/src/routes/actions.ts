@@ -789,7 +789,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     if (needsImages && conn?.shop_domain) {
       try {
         const imgClient = shopifyClient(conn.shop_domain, (conn as Record<string, unknown>).access_token as string);
-        const catalog = await imgClient.getProducts({ limit: 50, fields: 'id,title,images,variants' });
+        const catalog = await imgClient.getProducts({ limit: 250, fields: 'id,title,images,variants' });
         const imageMap = new Map<string, { src: string; price: number }>();
         for (const cp of catalog) {
           const t = (cp.title as string).toLowerCase();
