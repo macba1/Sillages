@@ -683,7 +683,13 @@ async function executeWhatsAppMessage(_accountId: string, actionId: string, cont
 async function executeCartRecovery(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
   const customerEmail = content.customer_email as string | undefined;
   const customerName = content.customer_name as string ?? '';
-  const products = (content.products as Array<{ title: string; quantity: number; price: number; image_url?: string }>) ?? [];
+  // Products may be an array or a comma-separated string from the AI
+  const rawProducts = content.products;
+  const products: Array<{ title: string; quantity: number; price: number; image_url?: string }> = Array.isArray(rawProducts)
+    ? rawProducts
+    : typeof rawProducts === 'string'
+      ? rawProducts.split(',').map(s => ({ title: s.trim(), quantity: 1, price: 0 }))
+      : [];
   const totalPrice = (content.total_price as number) ?? 0;
   const checkoutUrl = content.checkout_url as string | undefined;
   const discountCode = content.discount_code as string | undefined;
@@ -770,10 +776,42 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     const brand = await loadBrandConfig(accountId, storeName);
     if (!brand.shopUrl && conn?.shop_domain) brand.shopUrl = `https://${conn.shop_domain}`;
 
+    // Enrich products with images from Shopify if missing
+    let typedProducts: ProductItem[] = products;
+    const needsImages = products.length > 0 && products.every(p => !p.image_url);
+    if (needsImages && conn?.shop_domain) {
+      try {
+        const imgClient = shopifyClient(conn.shop_domain, (conn as Record<string, unknown>).access_token as string);
+        const catalog = await imgClient.getProducts({ limit: 50, fields: 'id,title,images,variants' });
+        const imageMap = new Map<string, { src: string; price: number }>();
+        for (const cp of catalog) {
+          const t = (cp.title as string).toLowerCase();
+          const imgs = cp.images as Array<{ src: string }> | undefined;
+          const vars = cp.variants as Array<{ price: string }> | undefined;
+          if (imgs?.[0]?.src) imageMap.set(t, { src: imgs[0].src, price: vars?.[0]?.price ? parseFloat(vars[0].price) : 0 });
+        }
+        typedProducts = products.map(p => {
+          if (p.image_url) return p;
+          const lower = p.title.toLowerCase().trim();
+          // Exact → contains → word overlap
+          let match = imageMap.get(lower);
+          if (!match) {
+            for (const [k, v] of imageMap) { if (lower.includes(k) || k.includes(lower)) { match = v; break; } }
+          }
+          if (!match) {
+            const words = lower.split(/\s+/);
+            for (const [k, v] of imageMap) {
+              if (words.filter(w => k.split(/\s+/).includes(w)).length >= 2) { match = v; break; }
+            }
+          }
+          return { ...p, image_url: match?.src, price: p.price || match?.price || 0 };
+        });
+      } catch { /* image enrichment is optional */ }
+    }
+
     // Use hand-written copy if available, otherwise fall back to generic template
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
-    const typedProducts: ProductItem[] = products;
 
     const { subject, html } = customCopy
       ? buildCustomCopyEmail({
