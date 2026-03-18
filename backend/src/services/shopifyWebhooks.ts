@@ -72,7 +72,7 @@ export async function registerShopifyWebhooks(
 export async function verifyAllWebhooks(): Promise<void> {
   const { data: connections } = await supabase
     .from('shopify_connections')
-    .select('shop_domain, access_token, account_id, token_status, send_enabled')
+    .select('shop_domain, access_token, account_id, token_status')
     .eq('token_status', 'active');
 
   if (!connections || connections.length === 0) {
@@ -81,7 +81,6 @@ export async function verifyAllWebhooks(): Promise<void> {
   }
 
   for (const conn of connections) {
-    if (conn.send_enabled === false) continue;
 
     try {
       const client = shopifyClient(conn.shop_domain, conn.access_token);
@@ -385,15 +384,20 @@ async function handleAppUninstalled(shopDomain: string): Promise<void> {
     .update({
       token_status: 'invalid',
       sync_status: 'disabled',
-      send_enabled: false,
     })
     .eq('shop_domain', shopDomain);
 
   if (error) {
     console.error(`${LOG} Failed to disable ${shopDomain}: ${error.message}`);
   } else {
-    console.log(`${LOG} Disabled ${shopDomain} — token_status=invalid, send_enabled=false`);
+    console.log(`${LOG} Disabled ${shopDomain} — token_status=invalid, sync_status=disabled`);
   }
+
+  // Also disable sending in user_intelligence_config
+  await supabase
+    .from('user_intelligence_config')
+    .update({ send_enabled: false })
+    .eq('account_id', conn.account_id);
 
   // Alert admin
   try {
