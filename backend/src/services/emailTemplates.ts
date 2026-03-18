@@ -415,9 +415,11 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
   const shopUrl = brand?.shopUrl ?? '#';
 
   // Header: logo only — clean, white background, dark logo
-  const headerContent = logoUrl
+  // Shopify CDN: request larger image by replacing _NNNx with _400x
+  const bigLogoUrl = logoUrl?.replace(/_\d+x\./, '_400x.');
+  const headerContent = bigLogoUrl
     ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
-        <img src="${logoUrl}" alt="${storeName}" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
+        <img src="${bigLogoUrl}" alt="${storeName}" width="160" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
       </a>`
     : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:${TEXT_DARK};letter-spacing:0.5px;">${storeName}</a>`;
 
