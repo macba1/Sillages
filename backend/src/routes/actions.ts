@@ -51,7 +51,7 @@ async function loadBrandConfig(accountId: string, storeName: string): Promise<Br
   try {
     const { data: bp } = await supabase
       .from('brand_profiles')
-      .select('logo_url, primary_color, shop_url')
+      .select('logo_url, primary_color, shop_url, contact_email, contact_phone, contact_address, social_links')
       .eq('account_id', accountId)
       .maybeSingle();
 
@@ -59,6 +59,10 @@ async function loadBrandConfig(accountId: string, storeName: string): Promise<Br
       if (bp.logo_url) config.logoUrl = bp.logo_url;
       if (bp.primary_color) config.primaryColor = bp.primary_color;
       if (bp.shop_url) config.shopUrl = bp.shop_url;
+      if (bp.contact_email) config.contactEmail = bp.contact_email;
+      if (bp.contact_phone) config.contactPhone = bp.contact_phone;
+      if (bp.contact_address) config.contactAddress = bp.contact_address;
+      if (bp.social_links) config.socialLinks = bp.social_links as BrandConfig['socialLinks'];
     }
   } catch { /* brand config is optional */ }
 

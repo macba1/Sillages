@@ -1,6 +1,6 @@
 // ── Email Templates ─────────────────────────────────────────────────────────
 // Professional, branded HTML email templates with product images.
-// Inspired by Klaviyo/Mailchimp quality. Table-based for max email client compat.
+// Table-based for max email client compatibility. Unified visual family.
 
 type Lang = 'en' | 'es';
 
@@ -11,7 +11,10 @@ export interface BrandConfig {
   primaryColor?: string;  // hex, e.g. '#c0dcb0'
   shopUrl?: string;
   storeName: string;
-  unsubscribeUrl?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  contactAddress?: string;
+  socialLinks?: { instagram?: string; facebook?: string; tiktok?: string };
 }
 
 const DEFAULT_PRIMARY = '#C9964A';
@@ -27,6 +30,7 @@ export interface ProductItem {
   quantity: number;
   price: number;
   image_url?: string;
+  product_url?: string;
 }
 
 // ── Cart Recovery ───────────────────────────────────────────────────────────
@@ -67,27 +71,9 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
   const locale = isEs ? 'es-ES' : 'en-US';
   const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
 
-  const productRows = products.map(p => productCard(p, fmt, accent)).join('');
+  const productRows = products.map(p => productCard(p, fmt)).join('');
 
-  const totalLabel = 'Total';
-
-  const discountBlock = discountCode && discountPercent ? `
-    <tr>
-      <td style="padding:16px 32px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed ${accent};padding:14px 18px;text-align:center;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${accent};">
-                ${isEs ? 'Oferta especial' : 'Special offer'}
-              </p>
-              <p style="margin:0;font-size:15px;font-weight:600;color:${TEXT_DARK};">
-                ${isEs ? `Usa el código <span style="color:${accent};">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:${accent};">${discountCode}</span> for ${discountPercent}% off`}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>` : '';
+  const discountBlock = discountCode && discountPercent ? discountSection(discountCode, discountPercent, accent, isEs) : '';
 
   const html = wrapTemplate(storeName, brand, `
     <!-- Heading -->
@@ -116,7 +102,7 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
       <td style="padding:12px 32px 0;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="font-size:16px;font-weight:700;color:${TEXT_DARK};padding:12px 0;border-top:2px solid ${CARD_BORDER};">${totalLabel}</td>
+            <td style="font-size:16px;font-weight:700;color:${TEXT_DARK};padding:12px 0;border-top:2px solid ${CARD_BORDER};">Total</td>
             <td align="right" style="font-size:16px;font-weight:700;color:${TEXT_DARK};padding:12px 0;border-top:2px solid ${CARD_BORDER};">${fmt(totalPrice)}</td>
           </tr>
         </table>
@@ -146,10 +132,17 @@ export interface WelcomeInput {
   language: Lang;
   storeUrl: string;
   brand?: BrandConfig;
+  recommendation?: {
+    title: string;
+    imageUrl?: string;
+    price?: number;
+    currency?: string;
+    productUrl?: string;
+  };
 }
 
 export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html: string } {
-  const { customerName, storeName, productPurchased, productImageUrl, language, storeUrl, brand } = input;
+  const { customerName, storeName, productPurchased, productImageUrl, language, storeUrl, brand, recommendation } = input;
   const isEs = language === 'es';
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
@@ -166,33 +159,38 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html:
     : `We're thrilled that you chose <strong>${productPurchased}</strong>. At ${storeName}, we strive to give you the best experience, and your order is on its way.`;
 
   const closing = isEs
-    ? 'Si tienes alguna pregunta, no dudes en responder a este correo. Estamos aquí para ayudarte.'
-    : 'If you have any questions, feel free to reply to this email. We are here to help.';
-
-  const ctaText = isEs ? 'Descubre más productos' : 'Discover more products';
+    ? 'Si tienes alguna pregunta, no dudes en responder a este correo.'
+    : 'If you have any questions, feel free to reply to this email.';
 
   const heroImage = productImageUrl ? `
     <tr>
       <td style="padding:0 32px 20px;" align="center">
-        <img src="${productImageUrl}" alt="${productPurchased}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;object-fit:cover;" />
+        <img src="${productImageUrl}" alt="${productPurchased}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;" />
       </td>
     </tr>` : '';
 
+  // Recommendation section
+  const locale = isEs ? 'es-ES' : 'en-US';
+  const recoBlock = recommendation ? buildRecommendationBlock(recommendation, accent, locale, isEs) : '';
+
+  const ctaText = isEs ? 'Volver a la tienda' : 'Back to the store';
+
   const html = wrapTemplate(storeName, brand, `
     <tr>
-      <td style="padding:32px 32px 8px;">
+      <td style="padding:32px 32px 16px;">
         <h1 style="margin:0;font-size:22px;font-weight:700;color:${TEXT_DARK};line-height:1.3;">${heading}</h1>
       </td>
     </tr>
     ${heroImage}
     <tr>
       <td style="padding:0 32px;">
-        <p style="margin:0 0 16px;font-size:15px;color:${TEXT_DARK};line-height:1.7;">${body}</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${TEXT_DARK};line-height:1.7;">${body}</p>
         <p style="margin:0;font-size:14px;color:${TEXT_MUTED};line-height:1.7;">${closing}</p>
       </td>
     </tr>
+    ${recoBlock}
     <tr>
-      <td style="padding:28px 32px 8px;" align="center">
+      <td style="padding:24px 32px 8px;" align="center">
         ${ctaButton(ctaText, storeUrl, accent)}
       </td>
     </tr>
@@ -238,31 +236,15 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
   const heroImage = lastProductImageUrl ? `
     <tr>
       <td style="padding:0 32px 20px;" align="center">
-        <img src="${lastProductImageUrl}" alt="${lastProduct}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;object-fit:cover;" />
+        <img src="${lastProductImageUrl}" alt="${lastProduct}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;" />
       </td>
     </tr>` : '';
 
-  const discountBlock = discountCode && discountPercent ? `
-    <tr>
-      <td style="padding:20px 32px 0;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed ${accent};padding:14px 18px;text-align:center;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${accent};">
-                ${isEs ? 'Un detalle para ti' : 'A little something for you'}
-              </p>
-              <p style="margin:0;font-size:15px;font-weight:600;color:${TEXT_DARK};">
-                ${isEs ? `Usa el código <span style="color:${accent};">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:${accent};">${discountCode}</span> for ${discountPercent}% off`}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>` : '';
+  const discountBlock = discountCode && discountPercent ? discountSection(discountCode, discountPercent, accent, isEs) : '';
 
   const html = wrapTemplate(storeName, brand, `
     <tr>
-      <td style="padding:32px 32px 8px;">
+      <td style="padding:32px 32px 16px;">
         <h1 style="margin:0;font-size:22px;font-weight:700;color:${TEXT_DARK};line-height:1.3;">${heading}</h1>
       </td>
     </tr>
@@ -285,7 +267,6 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
 
 // ── Custom Copy Email ───────────────────────────────────────────────────────
 // Wraps hand-written copy (plain text) in the design system HTML.
-// Used when content.copy exists in the action — bypasses generic templates.
 
 export function buildCustomCopyEmail(input: {
   storeName: string;
@@ -301,14 +282,12 @@ export function buildCustomCopyEmail(input: {
   const locale = 'es-ES';
   const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(n);
 
-  // Convert plain text line breaks to <br> for HTML
   const htmlBody = body.replace(/\n/g, '<br>');
 
-  // Product image grid (if products with images are available)
   const productGrid = products && products.length > 0
     ? `<tr><td style="padding:0 32px 16px;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
-          ${products.map(p => productCard(p, fmt, accent)).join('')}
+          ${products.map(p => productCard(p, fmt)).join('')}
         </table>
       </td></tr>`
     : '';
@@ -335,24 +314,81 @@ export function buildCustomCopyEmail(input: {
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
-function productCard(p: ProductItem, fmt: (n: number) => string, accent: string): string {
+function productCard(p: ProductItem, fmt: (n: number) => string): string {
   const imageCell = p.image_url
     ? `<td width="80" valign="top" style="padding-right:16px;">
         <img src="${p.image_url}" alt="${p.title}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:8px;object-fit:cover;border:1px solid ${CARD_BORDER};" />
       </td>`
     : `<td width="80" valign="top" style="padding-right:16px;">
-        <div style="width:80px;height:80px;border-radius:8px;background:${BG_OUTER};border:1px solid ${CARD_BORDER};text-align:center;line-height:80px;font-size:28px;color:${accent};">&#9670;</div>
+        <div style="width:80px;height:80px;border-radius:8px;background:${BG_OUTER};border:1px solid ${CARD_BORDER};"></div>
       </td>`;
 
   return `
     <tr>
-      <td style="padding:8px 0;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid ${CARD_BORDER};padding:12px;">
+      <td style="padding:6px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
             ${imageCell}
             <td valign="middle">
               <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:${TEXT_DARK};line-height:1.4;">${p.title}</p>
               <p style="margin:0;font-size:13px;color:${TEXT_MUTED};">${p.quantity > 1 ? `${p.quantity} x ` : ''}${fmt(p.price)}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+}
+
+function buildRecommendationBlock(
+  reco: { title: string; imageUrl?: string; price?: number; currency?: string; productUrl?: string },
+  accent: string,
+  locale: string,
+  isEs: boolean,
+): string {
+  const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: reco.currency ?? 'EUR', maximumFractionDigits: 2 }).format(n);
+  const recoUrl = reco.productUrl ?? '#';
+  const btnText = isEs ? 'Ver producto' : 'View product';
+
+  const recoImage = reco.imageUrl
+    ? `<td width="100" valign="top" style="padding-right:16px;">
+        <a href="${recoUrl}" target="_blank" style="text-decoration:none;">
+          <img src="${reco.imageUrl}" alt="${reco.title}" width="100" height="100" style="display:block;width:100px;height:100px;border-radius:8px;object-fit:cover;border:1px solid ${CARD_BORDER};" />
+        </a>
+      </td>`
+    : '';
+
+  return `
+    <!-- Recommendation -->
+    <tr>
+      <td style="padding:24px 32px 0;">
+        <p style="margin:0 0 12px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:${TEXT_MUTED};">${isEs ? 'También te puede gustar' : 'You might also like'}</p>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAFA;border-radius:12px;border:1px solid ${CARD_BORDER};padding:16px;">
+          <tr>
+            ${recoImage}
+            <td valign="middle">
+              <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:${TEXT_DARK};line-height:1.4;">${reco.title}</p>
+              ${reco.price ? `<p style="margin:0 0 12px;font-size:14px;color:${TEXT_MUTED};">${fmt(reco.price)}</p>` : ''}
+              <a href="${recoUrl}" target="_blank" style="display:inline-block;padding:8px 20px;font-size:13px;font-weight:600;color:${accent};text-decoration:none;border:1.5px solid ${accent};border-radius:6px;">${btnText} &rarr;</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+}
+
+function discountSection(code: string, percent: number, accent: string, isEs: boolean): string {
+  return `
+    <tr>
+      <td style="padding:20px 32px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed ${accent};padding:14px 18px;text-align:center;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${accent};">
+                ${isEs ? 'Oferta especial' : 'Special offer'}
+              </p>
+              <p style="margin:0;font-size:15px;font-weight:600;color:${TEXT_DARK};">
+                ${isEs ? `Usa el código <span style="color:${accent};">${code}</span> para un ${percent}% de descuento` : `Use code <span style="color:${accent};">${code}</span> for ${percent}% off`}
+              </p>
             </td>
           </tr>
         </table>
@@ -378,19 +414,44 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
   const logoUrl = brand?.logoUrl;
   const shopUrl = brand?.shopUrl ?? '#';
 
-  // Header: logo if available, otherwise store name text
+  // Header: logo only — clean, just the brand mark
   const headerContent = logoUrl
     ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
         <img src="${logoUrl}" alt="${storeName}" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
       </a>`
     : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:#FFFFFF;letter-spacing:0.5px;">${storeName}</a>`;
 
-  // Footer
-  const replyLine = brand?.storeName
-    ? (brand.unsubscribeUrl
-        ? `<a href="mailto:reply@sillages.app" style="color:${TEXT_MUTED};text-decoration:underline;">Responder</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="${brand.unsubscribeUrl}" style="color:${TEXT_MUTED};text-decoration:underline;">No quiero recibir más emails</a>`
-        : `¿Preguntas? Responde a este email`)
-    : `¿Preguntas? Responde a este email`;
+  // Footer: store contact info + social links
+  const contactLines: string[] = [];
+  if (brand?.contactAddress) {
+    contactLines.push(escapeHtml(brand.contactAddress));
+  }
+  if (brand?.contactPhone) {
+    contactLines.push(`Tel: <a href="tel:${brand.contactPhone.replace(/\s/g, '')}" style="color:${TEXT_MUTED};text-decoration:none;">${escapeHtml(brand.contactPhone)}</a>`);
+  }
+  if (brand?.contactEmail) {
+    contactLines.push(`<a href="mailto:${brand.contactEmail}" style="color:${TEXT_MUTED};text-decoration:underline;">${escapeHtml(brand.contactEmail)}</a>`);
+  }
+
+  // Social icons as text links
+  const socialParts: string[] = [];
+  if (brand?.socialLinks?.instagram) {
+    socialParts.push(`<a href="${brand.socialLinks.instagram}" target="_blank" style="color:${TEXT_MUTED};text-decoration:none;font-weight:500;">Instagram</a>`);
+  }
+  if (brand?.socialLinks?.facebook) {
+    socialParts.push(`<a href="${brand.socialLinks.facebook}" target="_blank" style="color:${TEXT_MUTED};text-decoration:none;font-weight:500;">Facebook</a>`);
+  }
+  if (brand?.socialLinks?.tiktok) {
+    socialParts.push(`<a href="${brand.socialLinks.tiktok}" target="_blank" style="color:${TEXT_MUTED};text-decoration:none;font-weight:500;">TikTok</a>`);
+  }
+
+  const contactBlock = contactLines.length > 0
+    ? `<p style="margin:0 0 8px;font-size:12px;color:${TEXT_MUTED};line-height:1.6;">${contactLines.join('<br>')}</p>`
+    : '';
+
+  const socialBlock = socialParts.length > 0
+    ? `<p style="margin:0 0 12px;font-size:12px;color:${TEXT_MUTED};">${socialParts.join('&nbsp;&nbsp;&middot;&nbsp;&nbsp;')}</p>`
+    : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -412,7 +473,7 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
         <![endif]-->
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
 
-          <!-- Header bar -->
+          <!-- Header: logo only -->
           <tr>
             <td style="background:${accent};border-radius:12px 12px 0 0;padding:20px 32px;" align="center">
               ${headerContent}
@@ -428,11 +489,12 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
             </td>
           </tr>
 
-          <!-- Footer -->
+          <!-- Footer: store contact + Powered by Sillages -->
           <tr>
             <td style="background:#FAFAFA;border-radius:0 0 12px 12px;border:1px solid ${CARD_BORDER};border-top:none;padding:24px 32px;" align="center">
               <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${TEXT_DARK};">${storeName}</p>
-              <p style="margin:0 0 12px;font-size:12px;color:${TEXT_MUTED};line-height:1.5;">${replyLine}</p>
+              ${contactBlock}
+              ${socialBlock}
               <p style="margin:0;font-size:11px;color:#C4B0B9;">Powered by <a href="https://sillages.app" target="_blank" style="color:#C4B0B9;text-decoration:none;">Sillages</a></p>
             </td>
           </tr>
@@ -447,4 +509,8 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
   </table>
 </body>
 </html>`;
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
