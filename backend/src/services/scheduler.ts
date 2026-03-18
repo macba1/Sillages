@@ -14,6 +14,7 @@ import { isSendEnabled, gatePush, gateWeeklyEmail } from './commsGate.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 import { runOrchestrator } from './orchestrator.js';
+import { verifyAllWebhooks } from './shopifyWebhooks.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EVENT-DRIVEN SCHEDULER
@@ -85,7 +86,19 @@ export function startScheduler(): void {
     });
   });
 
-  console.log('[scheduler] Started — events at :10, daily/weekly at :05, orchestrator at :00/:30');
+  // Webhook verification: once daily at 03:15 UTC
+  cron.schedule('15 3 * * *', () => {
+    verifyAllWebhooks().catch(err => {
+      console.error('[scheduler] Webhook verification error:', err);
+    });
+  });
+
+  // Verify webhooks on startup (fire-and-forget)
+  void verifyAllWebhooks().catch(err => {
+    console.warn('[scheduler] Startup webhook verification failed (non-fatal):', err);
+  });
+
+  console.log('[scheduler] Started — events at :10, daily/weekly at :05, orchestrator at :00/:30, webhooks at 03:15');
 }
 
 // Force run for testing

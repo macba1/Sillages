@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 import { verifyShopifyWebhook, getAllShopifyCredentials } from '../lib/shopify.js';
+import { processShopifyWebhook } from '../services/shopifyWebhooks.js';
 
 const router = Router();
 
@@ -230,6 +231,49 @@ router.post(
     }
 
     res.json({ received: true });
+  },
+);
+
+// ── POST /api/webhooks/shopify — Real-time Shopify event webhooks ─────────
+// Handles orders/create, checkouts/create, checkouts/update, app/uninstalled
+router.post(
+  '/shopify',
+  async (req: Request, res: Response) => {
+    const rawBody = req.body as Buffer;
+    const hmac = req.headers['x-shopify-hmac-sha256'] as string | undefined;
+
+    if (!hmac || !verifyShopifyWebhookMultiApp(rawBody, hmac)) {
+      console.warn('[webhooks/shopify] HMAC verification failed');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const topic = req.headers['x-shopify-topic'] as string | undefined;
+    const shopDomain = req.headers['x-shopify-shop-domain'] as string | undefined;
+    const webhookId = req.headers['x-shopify-webhook-id'] as string | undefined;
+
+    if (!topic || !shopDomain || !webhookId) {
+      console.warn('[webhooks/shopify] Missing required headers');
+      res.status(400).json({ error: 'Missing required Shopify headers' });
+      return;
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      res.status(400).json({ error: 'Invalid JSON' });
+      return;
+    }
+
+    // Respond immediately — process async to avoid Shopify timeout
+    res.json({ received: true });
+
+    try {
+      await processShopifyWebhook(topic, shopDomain, webhookId, payload);
+    } catch (err) {
+      console.error(`[webhooks/shopify] Error processing ${topic} from ${shopDomain}: ${(err as Error).message}`);
+    }
   },
 );
 

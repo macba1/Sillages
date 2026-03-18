@@ -355,6 +355,12 @@ export function shopifyClient(shop: string, accessToken: string) {
       return [...(custom.data.custom_collections ?? []), ...(smart.data.smart_collections ?? [])];
     },
 
+    // List all webhooks
+    async listWebhooks(): Promise<Array<{ id: number; topic: string; address: string }>> {
+      const { data } = await base.get('/webhooks.json');
+      return (data.webhooks ?? []) as Array<{ id: number; topic: string; address: string }>;
+    },
+
     // Register a webhook
     async registerWebhook(topic: string, address: string) {
       const { data } = await base.post('/webhooks.json', {

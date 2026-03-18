@@ -20,6 +20,7 @@ import { syncYesterdayForAccount } from '../services/shopifySync.js';
 import { syncFullHistory } from '../services/fullHistorySync.js';
 import { syncAbandonedCarts } from '../services/abandonedCartsSync.js';
 import { generateBrief } from '../services/briefGenerator.js';
+import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
 
 const router = Router();
 
@@ -232,6 +233,14 @@ router.get(
       } catch {
         // GDPR webhooks failing shouldn't block the install
         console.warn(`[shopify] GDPR webhook registration warning for ${shop}`);
+      }
+
+      // Register real-time event webhooks (orders, checkouts, uninstall)
+      try {
+        const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
+        console.log(`[shopify/callback] Event webhooks: ${registered.length} registered, ${failed.length} failed`);
+      } catch (err) {
+        console.warn(`[shopify/callback] Event webhook registration warning: ${(err as Error).message}`);
       }
 
       // Check if this is a reconnection (existing account with subscription)
