@@ -256,8 +256,58 @@ router.get('/status', requireAuth, requireAdmin, async (_req: Request, res: Resp
       // table may not exist
     }
 
+    // 6. System Health from orchestrator
+    let systemHealth: {
+      overall_status: string;
+      ok: number;
+      auto_fixed: number;
+      needs_attention: number;
+      last_run: string | null;
+      auto_fixed_details: Array<Record<string, unknown>>;
+      needs_attention_details: Array<Record<string, unknown>>;
+    } = {
+      overall_status: 'unknown',
+      ok: 0, auto_fixed: 0, needs_attention: 0,
+      last_run: null,
+      auto_fixed_details: [],
+      needs_attention_details: [],
+    };
+    try {
+      const { data: orchChecks } = await supabase
+        .from('orchestrator_checks')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (orchChecks && orchChecks.length > 0) {
+        const byName = new Map<string, Record<string, unknown>>();
+        for (const c of orchChecks as Array<Record<string, unknown>>) {
+          const name = c.check_name as string;
+          if (!byName.has(name)) byName.set(name, c);
+        }
+        const all = [...byName.values()];
+        const ok = all.filter(c => c.status === 'ok' || c.status === 'info');
+        const autoFixed = all.filter(c => c.auto_fixed === true);
+        const needsAtt = all.filter(c => (c.status === 'critical' || c.status === 'warning') && !c.auto_fixed);
+
+        const hasCrit = needsAtt.some(c => c.status === 'critical');
+        systemHealth = {
+          overall_status: hasCrit ? 'critical' : needsAtt.length > 0 ? 'warning' : autoFixed.length > 0 ? 'auto_fixed' : 'ok',
+          ok: ok.length,
+          auto_fixed: autoFixed.length,
+          needs_attention: needsAtt.length,
+          last_run: (orchChecks[0] as Record<string, unknown>).created_at as string,
+          auto_fixed_details: autoFixed.map(c => ({ check_name: c.check_name, details: c.details })),
+          needs_attention_details: needsAtt.map(c => ({ check_name: c.check_name, status: c.status, details: c.details })),
+        };
+      }
+    } catch {
+      // orchestrator_checks table may not exist yet
+    }
+
     res.json({
       stores,
+      system_health: systemHealth,
       recent_alerts: recentAlerts,
       last_audit: lastAudit,
       recent_deliveries: recentDeliveries,
@@ -616,7 +666,10 @@ router.put('/accounts/:id/comms-approval', requireAuth, requireAdmin, async (req
 });
 
 // ── GET /api/admin/orchestrator ────────────────────────────────────────────
-// System health dashboard: latest checks, history, active alerts
+// System health dashboard with 3-tier status:
+//   ok        → All checks passed
+//   auto_fixed → Issues detected and repaired automatically
+//   needs_attention → Issues that require manual intervention
 router.get('/orchestrator', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
   try {
     // Latest check per check_name (most recent run)
@@ -624,7 +677,7 @@ router.get('/orchestrator', requireAuth, requireAdmin, async (_req: Request, res
       .from('orchestrator_checks')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     // Deduplicate: keep only the latest per check_name
     const latestByName = new Map<string, Record<string, unknown>>();
@@ -635,26 +688,48 @@ router.get('/orchestrator', requireAuth, requireAdmin, async (_req: Request, res
       }
     }
 
+    const allChecks = [...latestByName.values()];
+
+    // 3-tier classification
+    const checksOk = allChecks.filter(c => c.status === 'ok' || c.status === 'info');
+    const checksAutoFixed = allChecks.filter(c => c.auto_fixed === true);
+    const checksNeedsAttention = allChecks.filter(c =>
+      (c.status === 'critical' || c.status === 'warning') && !c.auto_fixed
+    );
+
     // History: last 24h
     const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: history } = await supabase
       .from('orchestrator_checks')
-      .select('check_type, check_name, status, auto_fixed, created_at')
+      .select('check_type, check_name, status, auto_fixed, details, created_at')
       .gte('created_at', oneDayAgo)
       .order('created_at', { ascending: false });
 
-    // Active alerts: critical/warning from last run
-    const activeAlerts = [...latestByName.values()].filter(
-      c => c.status === 'critical' || c.status === 'warning'
-    );
+    // Count auto-fixes in last 24h
+    const autoFixCount24h = (history ?? []).filter(h => h.auto_fixed).length;
 
-    const hasIssues = activeAlerts.length > 0;
-    const hasCritical = activeAlerts.some(a => a.status === 'critical');
+    // Determine overall status
+    const hasCriticalUnfixed = checksNeedsAttention.some(c => c.status === 'critical');
+    const hasWarningUnfixed = checksNeedsAttention.length > 0;
+    const hasAutoFixed = checksAutoFixed.length > 0;
+
+    let overall_status: string;
+    if (hasCriticalUnfixed) overall_status = 'critical';
+    else if (hasWarningUnfixed) overall_status = 'warning';
+    else if (hasAutoFixed) overall_status = 'auto_fixed';
+    else overall_status = 'ok';
 
     res.json({
-      overall_status: hasCritical ? 'critical' : hasIssues ? 'warning' : 'ok',
-      latest_checks: [...latestByName.values()],
-      active_alerts: activeAlerts,
+      overall_status,
+      summary: {
+        ok: checksOk.length,
+        auto_fixed: checksAutoFixed.length,
+        needs_attention: checksNeedsAttention.length,
+        auto_fixes_24h: autoFixCount24h,
+      },
+      checks_ok: checksOk,
+      checks_auto_fixed: checksAutoFixed,
+      checks_needs_attention: checksNeedsAttention,
       history_24h: history ?? [],
       last_run: latest?.[0]?.created_at ?? null,
     });
