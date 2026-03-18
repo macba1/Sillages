@@ -6,11 +6,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const srcDir = path.resolve(__dirname, '..');
-const readSrc = (relPath: string) => import('fs').then(fs => fs.promises.readFile(path.join(srcDir, relPath), 'utf-8'));
+// Works in both ESM and CJS: resolve from project root
+// Vitest always runs from the backend/ directory (where package.json lives)
+const srcDir = path.resolve(process.cwd(), 'src');
+const readSrc = (relPath: string) => fs.promises.readFile(path.join(srcDir, relPath), 'utf-8');
 
 // ── Mock modules before importing anything ──────────────────────────────────
 
