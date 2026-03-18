@@ -76,7 +76,14 @@ export function startScheduler(): void {
     });
   });
 
-  console.log('[scheduler] Started — event detection at :10, daily/weekly at :05');
+  // Check D: cleanup stale pending cart_recovery actions every hour at :30
+  cron.schedule('30 * * * *', () => {
+    cleanupStalePendingActions().catch(err => {
+      console.error('[scheduler] Cleanup stale actions error:', err);
+    });
+  });
+
+  console.log('[scheduler] Started — event detection at :10, daily/weekly at :05, cleanup at :30');
 }
 
 // Force run for testing
@@ -490,6 +497,137 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
       status: 'failed',
       error_message: message,
     });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHECK D: CLEANUP STALE PENDING CART RECOVERY ACTIONS (every hour at :30)
+// Scans all pending cart_recovery actions, checks Shopify, auto-skips if bought.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function cleanupStalePendingActions(): Promise<void> {
+  if (!await acquireSchedulerLock('cleanup_stale', 120000)) return;
+
+  try {
+    console.log('[scheduler] Check D: scanning stale pending cart_recovery actions...');
+
+    // Get all pending cart_recovery actions
+    const { data: pendingActions } = await supabase
+      .from('pending_actions')
+      .select('id, account_id, content, created_at')
+      .eq('type', 'cart_recovery')
+      .eq('status', 'pending');
+
+    if (!pendingActions || pendingActions.length === 0) {
+      console.log('[scheduler] Check D: no pending cart_recovery actions');
+      return;
+    }
+
+    console.log(`[scheduler] Check D: ${pendingActions.length} pending cart_recovery action(s) to verify`);
+
+    // Group by account to avoid redundant Shopify calls
+    const byAccount = new Map<string, typeof pendingActions>();
+    for (const a of pendingActions) {
+      if (!byAccount.has(a.account_id)) byAccount.set(a.account_id, []);
+      byAccount.get(a.account_id)!.push(a);
+    }
+
+    let skipped = 0;
+    let aged = 0;
+
+    for (const [accountId, actions] of byAccount) {
+      const { data: conn } = await supabase
+        .from('shopify_connections')
+        .select('shop_domain, access_token')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (!conn) continue;
+
+      // Fetch recent orders once per account
+      let recentOrderEmails = new Set<string>();
+      try {
+        const client = shopifyClient(conn.shop_domain, conn.access_token);
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+        const { orders } = await client.getOrders({
+          created_at_min: sevenDaysAgo,
+          created_at_max: new Date().toISOString(),
+        });
+        recentOrderEmails = new Set(
+          orders
+            .filter(o => o.customer?.email && o.financial_status !== 'voided' && !o.cancel_reason)
+            .map(o => o.customer!.email!.toLowerCase()),
+        );
+      } catch (err) {
+        console.warn(`[scheduler] Check D: cannot fetch orders for ${accountId}: ${(err as Error).message}`);
+        continue; // fail-closed: skip this account, don't touch actions
+      }
+
+      for (const action of actions) {
+        const content = action.content as Record<string, unknown>;
+        const email = (content.customer_email as string)?.toLowerCase();
+        const customerName = content.customer_name as string ?? '';
+        const abandonedAt = content.abandoned_at as string | undefined;
+
+        if (!email) continue;
+
+        // Check 1: customer already purchased → auto-skip
+        if (recentOrderEmails.has(email)) {
+          await supabase
+            .from('pending_actions')
+            .update({
+              status: 'completed',
+              executed_at: new Date().toISOString(),
+              result: {
+                skipped: true,
+                reason: `${customerName} ya completó su compra. Acción auto-cancelada.`,
+                customer_email: email,
+                auto_cleanup: true,
+              },
+            })
+            .eq('id', action.id);
+
+          // Mark cart as recovered
+          await supabase
+            .from('abandoned_carts')
+            .update({ recovered: true, recovered_at: new Date().toISOString(), recovery_attribution: 'organic' })
+            .eq('account_id', accountId)
+            .eq('customer_email', email)
+            .or('recovered.is.null,recovered.eq.false');
+
+          console.log(`[scheduler] Check D: SKIPPED action for ${customerName} (${email}) — already purchased`);
+          skipped++;
+          continue;
+        }
+
+        // Check 2: cart older than 7 days → auto-skip as stale
+        if (abandonedAt) {
+          const cartAge = Date.now() - new Date(abandonedAt).getTime();
+          if (cartAge > 7 * 86400 * 1000) {
+            await supabase
+              .from('pending_actions')
+              .update({
+                status: 'completed',
+                executed_at: new Date().toISOString(),
+                result: {
+                  skipped: true,
+                  reason: `Carrito de hace más de 7 días. Auto-cancelado por antigüedad.`,
+                  customer_email: email,
+                  auto_cleanup: true,
+                },
+              })
+              .eq('id', action.id);
+
+            console.log(`[scheduler] Check D: AGED OUT action for ${customerName} (${email}) — cart > 7 days old`);
+            aged++;
+          }
+        }
+      }
+    }
+
+    console.log(`[scheduler] Check D complete: ${skipped} skipped (purchased), ${aged} aged out, ${pendingActions.length - skipped - aged} still pending`);
+  } finally {
+    await releaseSchedulerLock('cleanup_stale');
   }
 }
 
