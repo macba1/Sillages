@@ -412,6 +412,7 @@ export interface ShopifyOrder {
 export interface ShopifyAbandonedCheckout {
   id: number;
   created_at: string;
+  abandoned_checkout_url: string | null;
   customer: {
     id: number;
     first_name: string | null;
@@ -422,6 +423,8 @@ export interface ShopifyAbandonedCheckout {
     title: string;
     quantity: number;
     price: string;
+    product_id: number | null;
+    variant_id: number | null;
   }>;
   total_price: string;
 }

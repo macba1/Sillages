@@ -23,7 +23,7 @@ export interface NewFirstBuyerData {
 export interface AbandonedCartData {
   customer_name: string;
   customer_email: string;
-  products: Array<{ title: string; quantity: number; price: number }>;
+  products: Array<{ title: string; quantity: number; price: number; image_url?: string }>;
   total_value: number;
   checkout_url: string;
   checkout_id: string;
@@ -294,7 +294,7 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
       data: {
         customer_name: (cart.customer_name as string) ?? 'Visitante',
         customer_email: email,
-        products: (cart.products as Array<{ title: string; quantity: number; price: number }>) ?? [],
+        products: (cart.products as Array<{ title: string; quantity: number; price: number; image_url?: string }>) ?? [],
         total_value: cart.total_price as number,
         checkout_url: (cart.checkout_url as string) ?? '',
         checkout_id: checkoutId,

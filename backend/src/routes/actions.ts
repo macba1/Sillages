@@ -9,6 +9,7 @@ import { sendMerchantEmail } from '../services/merchantEmail.js';
 import { sendPushNotification } from '../services/pushNotifier.js';
 import { logCommunication } from '../services/commLog.js';
 import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail, buildCustomCopyEmail } from '../services/emailTemplates.js';
+import type { BrandConfig, ProductItem } from '../services/emailTemplates.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,29 @@ async function hasRecentEmailToCustomer(accountId: string, customerEmail: string
     .gte('sent_at', sevenDaysAgo);
 
   return (count ?? 0) > 0;
+}
+
+/**
+ * Load brand config for email templates: logo, primary color, shop URL.
+ */
+async function loadBrandConfig(accountId: string, storeName: string): Promise<BrandConfig> {
+  const config: BrandConfig = { storeName };
+
+  try {
+    const { data: bp } = await supabase
+      .from('brand_profiles')
+      .select('logo_url, primary_color, shop_url')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (bp) {
+      if (bp.logo_url) config.logoUrl = bp.logo_url;
+      if (bp.primary_color) config.primaryColor = bp.primary_color;
+      if (bp.shop_url) config.shopUrl = bp.shop_url;
+    }
+  } catch { /* brand config is optional */ }
+
+  return config;
 }
 
 const router = Router();
@@ -655,7 +679,7 @@ async function executeWhatsAppMessage(_accountId: string, actionId: string, cont
 async function executeCartRecovery(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
   const customerEmail = content.customer_email as string | undefined;
   const customerName = content.customer_name as string ?? '';
-  const products = (content.products as Array<{ title: string; quantity: number; price: number }>) ?? [];
+  const products = (content.products as Array<{ title: string; quantity: number; price: number; image_url?: string }>) ?? [];
   const totalPrice = (content.total_price as number) ?? 0;
   const checkoutUrl = content.checkout_url as string | undefined;
   const discountCode = content.discount_code as string | undefined;
@@ -738,9 +762,14 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
       return;
     }
 
+    // Load brand config for styled emails
+    const brand = await loadBrandConfig(accountId, storeName);
+    if (!brand.shopUrl && conn?.shop_domain) brand.shopUrl = `https://${conn.shop_domain}`;
+
     // Use hand-written copy if available, otherwise fall back to generic template
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
+    const typedProducts: ProductItem[] = products;
 
     const { subject, html } = customCopy
       ? buildCustomCopyEmail({
@@ -748,18 +777,21 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
           subject: customTitle ?? `${customerName}, tienes algo pendiente`,
           body: customCopy,
           ctaText: language === 'es' ? 'Completar mi pedido' : 'Complete my order',
-          ctaUrl: checkoutUrl,
+          ctaUrl: checkoutUrl ?? brand.shopUrl,
+          products: typedProducts,
+          brand,
         })
       : buildCartRecoveryEmail({
           customerName,
           storeName,
-          products,
+          products: typedProducts,
           totalPrice,
           currency,
-          checkoutUrl,
+          checkoutUrl: checkoutUrl ?? brand.shopUrl,
           discountCode,
           discountPercent,
           language,
+          brand,
         });
 
     const { messageId } = await sendMerchantEmail({
@@ -826,6 +858,13 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
 
+    // Load brand config for styled emails
+    const brand = await loadBrandConfig(accountId, storeName);
+    if (!brand.shopUrl) brand.shopUrl = storeUrl;
+
+    // Try to get product image from content
+    const productImageUrl = content.product_image_url as string | undefined;
+
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
 
@@ -836,13 +875,16 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
           body: customCopy,
           ctaText: language === 'es' ? 'Descubre más productos' : 'Discover more products',
           ctaUrl: storeUrl,
+          brand,
         })
       : buildWelcomeEmail({
           customerName,
           storeName,
           productPurchased,
+          productImageUrl,
           language,
           storeUrl,
+          brand,
         });
 
     const { messageId } = await sendMerchantEmail({
@@ -895,6 +937,10 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
     const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
     const storeUrl = conn?.shop_domain ? `https://${conn.shop_domain}` : '#';
 
+    // Load brand config for styled emails
+    const brand = await loadBrandConfig(accountId, storeName);
+    if (!brand.shopUrl) brand.shopUrl = storeUrl;
+
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
 
@@ -917,6 +963,7 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
               body: customCopy,
               ctaText: language === 'es' ? 'Volver a la tienda' : 'Back to the store',
               ctaUrl: storeUrl,
+              brand,
             })
           : buildReactivationEmail({
               customerName: recipient.name,
@@ -927,6 +974,7 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
               discountPercent,
               language,
               storeUrl,
+              brand,
             });
 
         const { messageId } = await sendMerchantEmail({

@@ -1,26 +1,53 @@
 // ── Email Templates ─────────────────────────────────────────────────────────
-// Beautiful, table-based HTML email templates for merchant communications.
-// Design system: background #F7F1EC, cards white, accent #C9964A, text #3A2332
+// Professional, branded HTML email templates with product images.
+// Inspired by Klaviyo/Mailchimp quality. Table-based for max email client compat.
 
 type Lang = 'en' | 'es';
+
+// ── Brand config for templates ─────────────────────────────────────────────
+
+export interface BrandConfig {
+  logoUrl?: string;
+  primaryColor?: string;  // hex, e.g. '#c0dcb0'
+  shopUrl?: string;
+  storeName: string;
+  unsubscribeUrl?: string;
+}
+
+const DEFAULT_PRIMARY = '#C9964A';
+const BG_OUTER = '#F7F1EC';
+const TEXT_DARK = '#3A2332';
+const TEXT_MUTED = '#6B5460';
+const CARD_BORDER = '#EDE5DC';
+
+// ── Product with image ─────────────────────────────────────────────────────
+
+export interface ProductItem {
+  title: string;
+  quantity: number;
+  price: number;
+  image_url?: string;
+}
 
 // ── Cart Recovery ───────────────────────────────────────────────────────────
 
 export interface CartRecoveryInput {
   customerName: string;
   storeName: string;
-  products: Array<{ title: string; quantity: number; price: number }>;
+  products: ProductItem[];
   totalPrice: number;
   currency: string;
   checkoutUrl?: string;
   discountCode?: string;
   discountPercent?: number;
   language: Lang;
+  brand?: BrandConfig;
 }
 
 export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: string; html: string } {
-  const { customerName, storeName, products, totalPrice, currency, checkoutUrl, discountCode, discountPercent, language } = input;
+  const { customerName, storeName, products, totalPrice, currency, checkoutUrl, discountCode, discountPercent, language, brand } = input;
   const isEs = language === 'es';
+  const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
   const subject = isEs
     ? `Hola ${customerName}, olvidaste algo en tu carrito`
@@ -35,38 +62,26 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
     : 'Your items are waiting for you. Complete your order before they sell out.';
 
   const ctaText = isEs ? 'Completar mi pedido' : 'Complete my order';
-  const ctaUrl = checkoutUrl ?? '#';
+  const ctaUrl = checkoutUrl ?? brand?.shopUrl ?? '#';
 
   const locale = isEs ? 'es-ES' : 'en-US';
   const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(n);
 
-  const productRows = products.map(p => `
-    <tr>
-      <td style="padding:12px 0;border-bottom:1px solid #F0E8E0;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr>
-            <td style="font-size:14px;font-weight:500;color:#3A2332;line-height:1.5;">${p.title}</td>
-            <td align="right" style="font-size:14px;color:#6B5460;white-space:nowrap;padding-left:16px;">
-              ${p.quantity > 1 ? `${p.quantity} x ` : ''}${fmt(p.price)}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>`).join('');
+  const productRows = products.map(p => productCard(p, fmt, accent)).join('');
 
-  const totalLabel = isEs ? 'Total' : 'Total';
+  const totalLabel = 'Total';
 
   const discountBlock = discountCode && discountPercent ? `
     <tr>
-      <td style="padding:16px 24px;">
+      <td style="padding:16px 32px;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed #C9964A;padding:14px 18px;text-align:center;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#C9964A;">
+            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed ${accent};padding:14px 18px;text-align:center;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${accent};">
                 ${isEs ? 'Oferta especial' : 'Special offer'}
               </p>
-              <p style="margin:0;font-size:15px;font-weight:600;color:#3A2332;">
-                ${isEs ? `Usa el código <span style="color:#C9964A;">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:#C9964A;">${discountCode}</span> for ${discountPercent}% off`}
+              <p style="margin:0;font-size:15px;font-weight:600;color:${TEXT_DARK};">
+                ${isEs ? `Usa el código <span style="color:${accent};">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:${accent};">${discountCode}</span> for ${discountPercent}% off`}
               </p>
             </td>
           </tr>
@@ -74,33 +89,35 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
       </td>
     </tr>` : '';
 
-  const html = wrapTemplate(storeName, `
+  const html = wrapTemplate(storeName, brand, `
     <!-- Heading -->
     <tr>
-      <td style="padding:0 24px 8px;">
-        <p style="margin:0;font-size:20px;font-weight:600;color:#3A2332;line-height:1.3;">${heading}</p>
+      <td style="padding:32px 32px 8px;">
+        <h1 style="margin:0;font-size:22px;font-weight:700;color:${TEXT_DARK};line-height:1.3;">${heading}</h1>
       </td>
     </tr>
     <tr>
-      <td style="padding:0 24px 24px;">
-        <p style="margin:0;font-size:14px;color:#6B5460;line-height:1.6;">${subheading}</p>
+      <td style="padding:0 32px 24px;">
+        <p style="margin:0;font-size:15px;color:${TEXT_MUTED};line-height:1.6;">${subheading}</p>
       </td>
     </tr>
 
-    <!-- Product list -->
+    <!-- Product cards -->
     <tr>
-      <td style="padding:0 24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:4px 20px;">
+      <td style="padding:0 32px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
           ${productRows}
+        </table>
+      </td>
+    </tr>
+
+    <!-- Total -->
+    <tr>
+      <td style="padding:12px 32px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="padding:14px 0 10px;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="font-size:15px;font-weight:700;color:#3A2332;">${totalLabel}</td>
-                  <td align="right" style="font-size:15px;font-weight:700;color:#3A2332;">${fmt(totalPrice)}</td>
-                </tr>
-              </table>
-            </td>
+            <td style="font-size:16px;font-weight:700;color:${TEXT_DARK};padding:12px 0;border-top:2px solid ${CARD_BORDER};">${totalLabel}</td>
+            <td align="right" style="font-size:16px;font-weight:700;color:${TEXT_DARK};padding:12px 0;border-top:2px solid ${CARD_BORDER};">${fmt(totalPrice)}</td>
           </tr>
         </table>
       </td>
@@ -110,8 +127,8 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
 
     <!-- CTA -->
     <tr>
-      <td style="padding:24px 24px 0;" align="center">
-        ${ctaButton(ctaText, ctaUrl)}
+      <td style="padding:28px 32px 8px;" align="center">
+        ${ctaButton(ctaText, ctaUrl, accent)}
       </td>
     </tr>
   `);
@@ -125,13 +142,16 @@ export interface WelcomeInput {
   customerName: string;
   storeName: string;
   productPurchased: string;
+  productImageUrl?: string;
   language: Lang;
   storeUrl: string;
+  brand?: BrandConfig;
 }
 
 export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html: string } {
-  const { customerName, storeName, productPurchased, language, storeUrl } = input;
+  const { customerName, storeName, productPurchased, productImageUrl, language, storeUrl, brand } = input;
   const isEs = language === 'es';
+  const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
   const subject = isEs
     ? `¡Gracias por tu pedido, ${customerName}!`
@@ -151,27 +171,29 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html:
 
   const ctaText = isEs ? 'Descubre más productos' : 'Discover more products';
 
-  const html = wrapTemplate(storeName, `
+  const heroImage = productImageUrl ? `
     <tr>
-      <td style="padding:0 24px 8px;">
-        <p style="margin:0;font-size:20px;font-weight:600;color:#3A2332;line-height:1.3;">${heading}</p>
+      <td style="padding:0 32px 20px;" align="center">
+        <img src="${productImageUrl}" alt="${productPurchased}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;object-fit:cover;" />
+      </td>
+    </tr>` : '';
+
+  const html = wrapTemplate(storeName, brand, `
+    <tr>
+      <td style="padding:32px 32px 8px;">
+        <h1 style="margin:0;font-size:22px;font-weight:700;color:${TEXT_DARK};line-height:1.3;">${heading}</h1>
+      </td>
+    </tr>
+    ${heroImage}
+    <tr>
+      <td style="padding:0 32px;">
+        <p style="margin:0 0 16px;font-size:15px;color:${TEXT_DARK};line-height:1.7;">${body}</p>
+        <p style="margin:0;font-size:14px;color:${TEXT_MUTED};line-height:1.7;">${closing}</p>
       </td>
     </tr>
     <tr>
-      <td style="padding:0 24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:20px 24px;">
-          <tr>
-            <td>
-              <p style="margin:0 0 16px;font-size:14px;color:#3A2332;line-height:1.7;">${body}</p>
-              <p style="margin:0;font-size:14px;color:#6B5460;line-height:1.7;">${closing}</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:24px 24px 0;" align="center">
-        ${ctaButton(ctaText, storeUrl)}
+      <td style="padding:28px 32px 8px;" align="center">
+        ${ctaButton(ctaText, storeUrl, accent)}
       </td>
     </tr>
   `);
@@ -185,16 +207,19 @@ export interface ReactivationInput {
   customerName: string;
   storeName: string;
   lastProduct: string;
+  lastProductImageUrl?: string;
   daysSinceLastPurchase: number;
   discountCode?: string;
   discountPercent?: number;
   language: Lang;
   storeUrl: string;
+  brand?: BrandConfig;
 }
 
 export function buildReactivationEmail(input: ReactivationInput): { subject: string; html: string } {
-  const { customerName, storeName, lastProduct, daysSinceLastPurchase, discountCode, discountPercent, language, storeUrl } = input;
+  const { customerName, storeName, lastProduct, lastProductImageUrl, daysSinceLastPurchase, discountCode, discountPercent, language, storeUrl, brand } = input;
   const isEs = language === 'es';
+  const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
   const subject = isEs
     ? `${customerName}, te echamos de menos`
@@ -210,17 +235,24 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
 
   const ctaText = isEs ? 'Volver a la tienda' : 'Back to the store';
 
+  const heroImage = lastProductImageUrl ? `
+    <tr>
+      <td style="padding:0 32px 20px;" align="center">
+        <img src="${lastProductImageUrl}" alt="${lastProduct}" width="280" style="display:block;max-width:280px;width:100%;height:auto;border-radius:12px;object-fit:cover;" />
+      </td>
+    </tr>` : '';
+
   const discountBlock = discountCode && discountPercent ? `
     <tr>
-      <td style="padding:20px 24px 0;">
+      <td style="padding:20px 32px 0;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed #C9964A;padding:14px 18px;text-align:center;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#C9964A;">
+            <td style="background:#FDF8F0;border-radius:8px;border:1px dashed ${accent};padding:14px 18px;text-align:center;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:${accent};">
                 ${isEs ? 'Un detalle para ti' : 'A little something for you'}
               </p>
-              <p style="margin:0;font-size:15px;font-weight:600;color:#3A2332;">
-                ${isEs ? `Usa el código <span style="color:#C9964A;">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:#C9964A;">${discountCode}</span> for ${discountPercent}% off`}
+              <p style="margin:0;font-size:15px;font-weight:600;color:${TEXT_DARK};">
+                ${isEs ? `Usa el código <span style="color:${accent};">${discountCode}</span> para un ${discountPercent}% de descuento` : `Use code <span style="color:${accent};">${discountCode}</span> for ${discountPercent}% off`}
               </p>
             </td>
           </tr>
@@ -228,27 +260,22 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
       </td>
     </tr>` : '';
 
-  const html = wrapTemplate(storeName, `
+  const html = wrapTemplate(storeName, brand, `
     <tr>
-      <td style="padding:0 24px 8px;">
-        <p style="margin:0;font-size:20px;font-weight:600;color:#3A2332;line-height:1.3;">${heading}</p>
+      <td style="padding:32px 32px 8px;">
+        <h1 style="margin:0;font-size:22px;font-weight:700;color:${TEXT_DARK};line-height:1.3;">${heading}</h1>
       </td>
     </tr>
+    ${heroImage}
     <tr>
-      <td style="padding:0 24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:20px 24px;">
-          <tr>
-            <td>
-              <p style="margin:0;font-size:14px;color:#3A2332;line-height:1.7;">${body}</p>
-            </td>
-          </tr>
-        </table>
+      <td style="padding:0 32px;">
+        <p style="margin:0;font-size:15px;color:${TEXT_DARK};line-height:1.7;">${body}</p>
       </td>
     </tr>
     ${discountBlock}
     <tr>
-      <td style="padding:24px 24px 0;" align="center">
-        ${ctaButton(ctaText, storeUrl)}
+      <td style="padding:28px 32px 8px;" align="center">
+        ${ctaButton(ctaText, storeUrl, accent)}
       </td>
     </tr>
   `);
@@ -266,31 +293,40 @@ export function buildCustomCopyEmail(input: {
   body: string;
   ctaText?: string;
   ctaUrl?: string;
+  products?: ProductItem[];
+  brand?: BrandConfig;
 }): { subject: string; html: string } {
-  const { storeName, subject, body, ctaText, ctaUrl } = input;
+  const { storeName, subject, body, ctaText, ctaUrl, products, brand } = input;
+  const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
+  const locale = 'es-ES';
+  const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(n);
 
   // Convert plain text line breaks to <br> for HTML
   const htmlBody = body.replace(/\n/g, '<br>');
 
+  // Product image grid (if products with images are available)
+  const productGrid = products && products.length > 0
+    ? `<tr><td style="padding:0 32px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          ${products.map(p => productCard(p, fmt, accent)).join('')}
+        </table>
+      </td></tr>`
+    : '';
+
   const ctaBlock = ctaText && ctaUrl ? `
     <tr>
-      <td style="padding:24px 24px 0;" align="center">
-        ${ctaButton(ctaText, ctaUrl)}
+      <td style="padding:24px 32px 8px;" align="center">
+        ${ctaButton(ctaText, ctaUrl, accent)}
       </td>
     </tr>` : '';
 
-  const html = wrapTemplate(storeName, `
+  const html = wrapTemplate(storeName, brand, `
     <tr>
-      <td style="padding:0 24px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid #EDE5DC;padding:20px 24px;">
-          <tr>
-            <td>
-              <p style="margin:0;font-size:14px;color:#3A2332;line-height:1.7;">${htmlBody}</p>
-            </td>
-          </tr>
-        </table>
+      <td style="padding:32px 32px 20px;">
+        <p style="margin:0;font-size:15px;color:${TEXT_DARK};line-height:1.7;">${htmlBody}</p>
       </td>
     </tr>
+    ${productGrid}
     ${ctaBlock}
   `);
 
@@ -299,50 +335,113 @@ export function buildCustomCopyEmail(input: {
 
 // ── Shared helpers ──────────────────────────────────────────────────────────
 
-function ctaButton(text: string, url: string): string {
+function productCard(p: ProductItem, fmt: (n: number) => string, accent: string): string {
+  const imageCell = p.image_url
+    ? `<td width="80" valign="top" style="padding-right:16px;">
+        <img src="${p.image_url}" alt="${p.title}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:8px;object-fit:cover;border:1px solid ${CARD_BORDER};" />
+      </td>`
+    : `<td width="80" valign="top" style="padding-right:16px;">
+        <div style="width:80px;height:80px;border-radius:8px;background:${BG_OUTER};border:1px solid ${CARD_BORDER};text-align:center;line-height:80px;font-size:28px;color:${accent};">&#9670;</div>
+      </td>`;
+
+  return `
+    <tr>
+      <td style="padding:8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:12px;border:1px solid ${CARD_BORDER};padding:12px;">
+          <tr>
+            ${imageCell}
+            <td valign="middle">
+              <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:${TEXT_DARK};line-height:1.4;">${p.title}</p>
+              <p style="margin:0;font-size:13px;color:${TEXT_MUTED};">${p.quantity > 1 ? `${p.quantity} x ` : ''}${fmt(p.price)}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`;
+}
+
+function ctaButton(text: string, url: string, accent: string): string {
   return `
     <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
       <tr>
-        <td align="center" style="background:#C9964A;border-radius:8px;">
-          <a href="${url}" target="_blank" style="display:inline-block;padding:14px 36px;font-size:15px;font-weight:600;color:#FFFFFF;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-            ${text}
+        <td align="center" style="background:${accent};border-radius:8px;">
+          <a href="${url}" target="_blank" style="display:inline-block;padding:14px 40px;font-size:15px;font-weight:600;color:#FFFFFF;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:0.02em;">
+            ${text} &rarr;
           </a>
         </td>
       </tr>
     </table>`;
 }
 
-function wrapTemplate(storeName: string, bodyContent: string): string {
+function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyContent: string): string {
+  const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
+  const logoUrl = brand?.logoUrl;
+  const shopUrl = brand?.shopUrl ?? '#';
+
+  // Header: logo if available, otherwise store name text
+  const headerContent = logoUrl
+    ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
+        <img src="${logoUrl}" alt="${storeName}" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
+      </a>`
+    : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:#FFFFFF;letter-spacing:0.5px;">${storeName}</a>`;
+
+  // Footer
+  const replyLine = brand?.storeName
+    ? (brand.unsubscribeUrl
+        ? `<a href="mailto:reply@sillages.app" style="color:${TEXT_MUTED};text-decoration:underline;">Responder</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="${brand.unsubscribeUrl}" style="color:${TEXT_MUTED};text-decoration:underline;">No quiero recibir más emails</a>`
+        : `¿Preguntas? Responde a este email`)
+    : `¿Preguntas? Responde a este email`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!--[if mso]>
+  <style>table,td{font-family:Arial,Helvetica,sans-serif!important;}</style>
+  <![endif]-->
 </head>
-<body style="margin:0;padding:0;background:#F7F1EC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F7F1EC;min-height:100vh;">
+<body style="margin:0;padding:0;background:${BG_OUTER};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BG_OUTER};">
     <tr>
       <td align="center" style="padding:32px 16px 48px;">
+
+        <!--[if (gte mso 9)|(IE)]>
+        <table width="560" cellpadding="0" cellspacing="0" border="0"><tr><td>
+        <![endif]-->
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
 
-          <!-- Header -->
+          <!-- Header bar -->
           <tr>
-            <td style="padding-bottom:28px;">
-              <p style="margin:0;font-size:18px;font-weight:700;color:#3A2332;letter-spacing:-0.3px;">${storeName}</p>
+            <td style="background:${accent};border-radius:12px 12px 0 0;padding:20px 32px;" align="center">
+              ${headerContent}
             </td>
           </tr>
 
-          ${bodyContent}
+          <!-- Body card -->
+          <tr>
+            <td style="background:#FFFFFF;border-left:1px solid ${CARD_BORDER};border-right:1px solid ${CARD_BORDER};">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${bodyContent}
+              </table>
+            </td>
+          </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding-top:32px;" align="center">
-              <p style="margin:0;font-size:11px;color:#C4B0B9;">Powered by Sillages</p>
+            <td style="background:#FAFAFA;border-radius:0 0 12px 12px;border:1px solid ${CARD_BORDER};border-top:none;padding:24px 32px;" align="center">
+              <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${TEXT_DARK};">${storeName}</p>
+              <p style="margin:0 0 12px;font-size:12px;color:${TEXT_MUTED};line-height:1.5;">${replyLine}</p>
+              <p style="margin:0;font-size:11px;color:#C4B0B9;">Powered by <a href="https://sillages.app" target="_blank" style="color:#C4B0B9;text-decoration:none;">Sillages</a></p>
             </td>
           </tr>
 
         </table>
+        <!--[if (gte mso 9)|(IE)]>
+        </td></tr></table>
+        <![endif]-->
+
       </td>
     </tr>
   </table>

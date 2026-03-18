@@ -73,6 +73,10 @@ export async function analyzeBrand(accountId: string): Promise<BrandProfile> {
   // Generate brand profile with OpenAI
   const profile = await generateBrandProfile(rawData, shopInfo.name);
 
+  // Extract logo and brand colors from storefront
+  const logoUrl = storefrontData ? extractLogoUrl(storefrontData, shopInfo.domain) : null;
+  const shopUrl = `https://${shopInfo.domain || conn.shop_domain}`;
+
   // Save to DB
   const { error } = await supabase
     .from('brand_profiles')
@@ -86,6 +90,8 @@ export async function analyzeBrand(accountId: string): Promise<BrandProfile> {
       unique_selling_points: profile.unique_selling_points,
       competitor_differentiation: profile.competitor_differentiation,
       raw_data: rawData,
+      logo_url: logoUrl,
+      shop_url: shopUrl,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'account_id' });
 
@@ -120,6 +126,7 @@ interface StorefrontData {
   body_text: string;
   social_links: { instagram?: string; facebook?: string; twitter?: string };
   instagram_bio?: string;
+  logo_urls?: string[];
 }
 
 async function scrapeStorefront(shopDomain: string): Promise<StorefrontData | null> {
@@ -192,7 +199,21 @@ function parseStorefrontHtml(html: string): StorefrontData {
   const twMatch = html.match(/href=["'](https?:\/\/(www\.)?twitter\.com\/[^"']+)["']/i);
   if (twMatch) social_links.twitter = twMatch[1];
 
-  return { title, meta_description, headlines, body_text, social_links };
+  // Find logo images (in header, or with 'logo' in src/alt/class)
+  const logoRegex = /<img[^>]+(?:class="[^"]*logo[^"]*"|alt="[^"]*logo[^"]*"|src="[^"]*logo[^"]*")[^>]*>/gi;
+  const logo_urls: string[] = [];
+  let logoMatch;
+  while ((logoMatch = logoRegex.exec(html)) !== null && logo_urls.length < 5) {
+    const srcMatch = logoMatch[0].match(/src=["']([^"']+)["']/i);
+    if (srcMatch?.[1]) {
+      let src = srcMatch[1];
+      // Convert protocol-relative URLs
+      if (src.startsWith('//')) src = 'https:' + src;
+      logo_urls.push(src);
+    }
+  }
+
+  return { title, meta_description, headlines, body_text, social_links, logo_urls };
 }
 
 // ── OpenAI brand profile generation ─────────────────────────────────────────
@@ -266,6 +287,30 @@ function stripHtml(html: string): string {
     .replace(/&#\d+;/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Extracts the most likely logo URL from the storefront HTML.
+ * Looks for images in header/nav, or images with 'logo' in src/alt/class.
+ */
+function extractLogoUrl(data: StorefrontData, domain: string): string | null {
+  // Logo URLs were captured during scraping
+  if (data.logo_urls && data.logo_urls.length > 0) {
+    // Prefer the highest resolution version
+    const best = data.logo_urls
+      .sort((a, b) => {
+        // Prefer larger sizes (e.g. 400x > 170x > 120x)
+        const sizeA = parseInt(a.match(/(\d+)x\./)?.[1] ?? '0');
+        const sizeB = parseInt(b.match(/(\d+)x\./)?.[1] ?? '0');
+        return sizeB - sizeA;
+      })[0];
+    // Remove size suffix to get full resolution if it's a Shopify CDN URL
+    if (best.includes('cdn.shopify.com') || best.includes('/cdn/shop/')) {
+      return best.replace(/_\d+x(@\dx)?\./, '.').replace(/\d+x\./, '.');
+    }
+    return best;
+  }
+  return null;
 }
 
 function getPriceRange(variants: Array<{ price: string }> | undefined): string {

@@ -7,6 +7,7 @@ const LOG = '[abandonedCartsSync]';
 /**
  * Syncs abandoned carts from Shopify into the `abandoned_carts` table.
  * Fetches open (non-completed) checkouts and upserts them keyed on shopify_checkout_id.
+ * Enriches products with image URLs from Shopify product catalog.
  */
 export async function syncAbandonedCarts(accountId: string): Promise<void> {
   // Load connection
@@ -49,6 +50,9 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
   // Filter to checkouts that have line items (skip empty carts)
   const validCheckouts = checkouts.filter(c => c.line_items && c.line_items.length > 0);
 
+  // Build a product image map from Shopify catalog
+  const imageMap = await buildProductImageMap(client);
+
   let upsertedCount = 0;
 
   for (const checkout of validCheckouts) {
@@ -62,6 +66,7 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
       title: li.title,
       quantity: li.quantity,
       price: parseFloat(li.price),
+      image_url: (li.product_id ? imageMap.get(li.product_id) : undefined) ?? undefined,
     }));
 
     const totalPrice = parseFloat(checkout.total_price);
@@ -77,6 +82,7 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
       total_price: totalPrice,
       currency,
       abandoned_at: checkout.created_at,
+      checkout_url: checkout.abandoned_checkout_url ?? null,
     };
 
     const { error: upsertError } = await supabase
@@ -96,4 +102,25 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
   }
 
   console.log(`${LOG} Synced ${upsertedCount} abandoned carts for ${conn.shop_domain} (${validCheckouts.length} valid of ${checkouts.length} total)`);
+}
+
+/**
+ * Fetches products from Shopify and builds a map of product_id → first image URL.
+ * Used to enrich abandoned cart line items with product images.
+ */
+async function buildProductImageMap(client: ReturnType<typeof shopifyClient>): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  try {
+    const products = await client.getProducts({ limit: 50, fields: 'id,images' });
+    for (const p of products) {
+      const id = p.id as number;
+      const images = p.images as Array<{ src: string }> | undefined;
+      if (images && images.length > 0 && images[0].src) {
+        map.set(id, images[0].src);
+      }
+    }
+  } catch (err) {
+    console.warn(`${LOG} Could not fetch product images: ${(err as Error).message}`);
+  }
+  return map;
 }
