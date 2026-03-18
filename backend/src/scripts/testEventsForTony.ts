@@ -105,6 +105,7 @@ async function main() {
       product_purchased: firstBuyerOrder.line_items[0]?.title ?? '',
       order_total: parseFloat(firstBuyerOrder.total_price),
       order_id: String(firstBuyerOrder.id),
+      order_created_at: firstBuyerOrder.created_at,
     };
     events.push({ type: 'new_first_buyer', key: `test:order:${firstBuyerOrder.id}`, data: d });
     console.log(`  ${name} compró ${d.product_purchased} (${cs}${d.order_total}) el ${firstBuyerOrder.created_at.slice(0, 10)}`);

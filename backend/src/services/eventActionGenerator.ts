@@ -123,6 +123,7 @@ Return JSON:
     "customer_email": "${d.customer_email}",
     "customer_name": "${d.customer_name}",
     "product_purchased": "${d.product_purchased}",
+    "order_created_at": "${d.order_created_at}",
     "recommended_product": "<from also_bought if available>",
     "copy": "<the email body text>"
   }

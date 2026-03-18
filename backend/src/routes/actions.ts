@@ -879,6 +879,21 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     return;
   }
 
+  // ── FRESHNESS CHECK: Welcome emails only make sense within 6 hours of purchase ──
+  const orderCreatedAt = content.order_created_at as string | undefined;
+  if (orderCreatedAt) {
+    const orderAge = Date.now() - new Date(orderCreatedAt).getTime();
+    if (orderAge > 6 * 3600 * 1000) {
+      await markCompleted(actionId, {
+        skipped: true,
+        reason: `Pedido de hace más de 6 horas. El agradecimiento ya no es oportuno.`,
+        customer_email: customerEmail,
+      });
+      console.log(`[actions] Welcome email SKIPPED — order too old (${Math.round(orderAge / 3600000)}h) for ${customerEmail}`);
+      return;
+    }
+  }
+
   // ── ANTI-SPAM: Max 1 email per customer per week ──
   if (await hasRecentEmailToCustomer(accountId, customerEmail)) {
     await markCompleted(actionId, {

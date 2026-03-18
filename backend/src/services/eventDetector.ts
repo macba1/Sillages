@@ -18,6 +18,7 @@ export interface NewFirstBuyerData {
   product_purchased: string;
   order_total: number;
   order_id: string;
+  order_created_at: string;
 }
 
 export interface AbandonedCartData {
@@ -171,7 +172,8 @@ async function detectNewFirstBuyers(accountId: string): Promise<DetectedEvent[]>
   if (!conn) return [];
 
   const client = shopifyClient(conn.shop_domain, conn.access_token);
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  // Only look at last 6 hours — welcome emails are only relevant when fresh
+  const since = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
 
   let orders: ShopifyOrder[];
   try {
@@ -213,6 +215,7 @@ async function detectNewFirstBuyers(accountId: string): Promise<DetectedEvent[]>
         product_purchased: topProduct,
         order_total: parseFloat(order.total_price),
         order_id: String(order.id),
+        order_created_at: order.created_at,
       } as NewFirstBuyerData,
     });
   }
