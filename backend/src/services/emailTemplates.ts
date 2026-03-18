@@ -330,8 +330,8 @@ function productCard(p: ProductItem, fmt: (n: number) => string): string {
           <tr>
             ${imageCell}
             <td valign="middle">
-              <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:${TEXT_DARK};line-height:1.4;">${p.title}</p>
-              <p style="margin:0;font-size:13px;color:${TEXT_MUTED};">${p.quantity > 1 ? `${p.quantity} x ` : ''}${fmt(p.price)}</p>
+              <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:${TEXT_DARK};line-height:1.4;">${p.title}${p.quantity > 1 ? ` x${p.quantity}` : ''}</p>
+              <p style="margin:0;font-size:13px;color:${TEXT_MUTED};">${fmt(p.price)}</p>
             </td>
           </tr>
         </table>
