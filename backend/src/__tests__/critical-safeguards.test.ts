@@ -5,6 +5,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const srcDir = path.resolve(__dirname, '..');
+const readSrc = (relPath: string) => import('fs').then(fs => fs.promises.readFile(path.join(srcDir, relPath), 'utf-8'));
 
 // ── Mock modules before importing anything ──────────────────────────────────
 
@@ -196,9 +202,7 @@ describe('Test 4: sendBriefEmail is deprecated and warns', () => {
 describe('Test 5: Alert engine only emails admin, never merchant', () => {
   it('should import alertEngine without sendPushNotification', async () => {
     // The alertEngine module should NOT import sendPushNotification
-    const alertEngineCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/services/alertEngine.ts', 'utf-8'),
-    );
+    const alertEngineCode = await readSrc('services/alertEngine.ts');
 
     // Should NOT have import of sendPushNotification
     expect(alertEngineCode).not.toContain("import { sendPushNotification }");
@@ -247,9 +251,7 @@ describe('Test 6: Cart recovery rejects carts older than 7 days', () => {
 
 describe('Test 7: Approve endpoint uses atomic update', () => {
   it('should have atomic UPDATE in actions.ts approve route', async () => {
-    const actionsCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/routes/actions.ts', 'utf-8'),
-    );
+    const actionsCode = await readSrc('routes/actions.ts');
 
     // Should use UPDATE with WHERE status=pending (atomic pattern)
     expect(actionsCode).toContain(".eq('status', 'pending')");
@@ -266,9 +268,7 @@ describe('Test 7: Approve endpoint uses atomic update', () => {
 
 describe('Test 8: Resend failure is handled correctly', () => {
   it('should have try-catch around sendMerchantEmail calls', async () => {
-    const actionsCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/routes/actions.ts', 'utf-8'),
-    );
+    const actionsCode = await readSrc('routes/actions.ts');
 
     // Every executor should have markFailed in the catch block
     expect(actionsCode).toContain('markFailed(actionId');
@@ -285,9 +285,7 @@ describe('Test 8: Resend failure is handled correctly', () => {
 
 describe('Test 9: Scheduler has lock mechanism', () => {
   it('should have acquireSchedulerLock in scheduler.ts', async () => {
-    const schedulerCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/services/scheduler.ts', 'utf-8'),
-    );
+    const schedulerCode = await readSrc('services/scheduler.ts');
 
     expect(schedulerCode).toContain('acquireSchedulerLock');
     expect(schedulerCode).toContain('releaseSchedulerLock');
@@ -295,9 +293,7 @@ describe('Test 9: Scheduler has lock mechanism', () => {
   });
 
   it('should acquire lock before event loop', async () => {
-    const schedulerCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/services/scheduler.ts', 'utf-8'),
-    );
+    const schedulerCode = await readSrc('services/scheduler.ts');
 
     // runEventLoop should call acquireSchedulerLock
     const eventLoopSection = schedulerCode.slice(
@@ -314,9 +310,7 @@ describe('Test 9: Scheduler has lock mechanism', () => {
 
 describe('Test 10: commsGate gates correctly', () => {
   it('should have only push and weekly_email in commsGate', async () => {
-    const commsGateCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/services/commsGate.ts', 'utf-8'),
-    );
+    const commsGateCode = await readSrc('services/commsGate.ts');
 
     // Should export gatePush and gateWeeklyEmail
     expect(commsGateCode).toContain('export async function gatePush');
@@ -333,9 +327,7 @@ describe('Test 10: commsGate gates correctly', () => {
   });
 
   it('should queue push for manual accounts', async () => {
-    const commsGateCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/services/commsGate.ts', 'utf-8'),
-    );
+    const commsGateCode = await readSrc('services/commsGate.ts');
 
     // Manual accounts should have pending_comms insert
     expect(commsGateCode).toContain("pending_comms");
@@ -343,9 +335,7 @@ describe('Test 10: commsGate gates correctly', () => {
   });
 
   it('should have fail-closed behavior for Shopify check', async () => {
-    const actionsCode = await import('fs').then(fs =>
-      fs.promises.readFile('/Users/antoniojimenez/sillages/backend/src/routes/actions.ts', 'utf-8'),
-    );
+    const actionsCode = await readSrc('routes/actions.ts');
 
     // hasCustomerPurchasedRecently should return true on error (fail-closed)
     expect(actionsCode).toContain('return true; // fail-closed');
