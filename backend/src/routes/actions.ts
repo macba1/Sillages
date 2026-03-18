@@ -10,6 +10,7 @@ import { sendPushNotification } from '../services/pushNotifier.js';
 import { logCommunication } from '../services/commLog.js';
 import { buildCartRecoveryEmail, buildWelcomeEmail, buildReactivationEmail, buildCustomCopyEmail } from '../services/emailTemplates.js';
 import type { BrandConfig, ProductItem } from '../services/emailTemplates.js';
+import { checkEmailBlocked, buildUnsubscribeUrl } from '../lib/unsubscribe.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -735,6 +736,20 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
       return;
     }
 
+    // ── GDPR: Check unsubscribe + blacklist ──
+    const blocked = await checkEmailBlocked(accountId, customerEmail);
+    if (blocked) {
+      await markCompleted(actionId, {
+        skipped: true,
+        reason: blocked === 'customer_unsubscribed'
+          ? `${customerName} se dio de baja. No se puede enviar email.`
+          : `Email de ${customerName} en lista negra (bounce).`,
+        customer_email: customerEmail,
+      });
+      console.log(`[actions] Cart recovery SKIPPED — ${customerEmail} ${blocked}`);
+      return;
+    }
+
     // Load account language and shop info
     const [{ data: acc }, { data: conn }] = await Promise.all([
       supabase.from('accounts').select('language').eq('id', accountId).single(),
@@ -819,6 +834,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
     // Use hand-written copy if available, otherwise fall back to generic template
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
+    const unsubscribeUrl = buildUnsubscribeUrl(accountId, customerEmail);
 
     const { subject, html } = customCopy
       ? buildCustomCopyEmail({
@@ -829,6 +845,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
           ctaUrl: checkoutUrl ?? brand.shopUrl,
           products: typedProducts,
           brand,
+          unsubscribeUrl,
         })
       : buildCartRecoveryEmail({
           customerName,
@@ -841,6 +858,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
           discountPercent,
           language,
           brand,
+          unsubscribeUrl,
         });
 
     const { messageId } = await sendMerchantEmail({
@@ -848,6 +866,7 @@ async function executeCartRecovery(accountId: string, actionId: string, content:
       to: customerEmail,
       subject,
       html,
+      unsubscribeUrl,
     });
 
     // Mark abandoned cart as recovered if we have a checkout ID
@@ -912,6 +931,20 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
     return;
   }
 
+  // ── GDPR: Check unsubscribe + blacklist ──
+  const blocked = await checkEmailBlocked(accountId, customerEmail);
+  if (blocked) {
+    await markCompleted(actionId, {
+      skipped: true,
+      reason: blocked === 'customer_unsubscribed'
+        ? `${customerName} se dio de baja. No se puede enviar email.`
+        : `Email de ${customerName} en lista negra (bounce).`,
+      customer_email: customerEmail,
+    });
+    console.log(`[actions] Welcome email SKIPPED — ${customerEmail} ${blocked}`);
+    return;
+  }
+
   try {
     const [{ data: acc }, { data: conn }] = await Promise.all([
       supabase.from('accounts').select('language').eq('id', accountId).single(),
@@ -931,6 +964,7 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
 
     const customCopy = content.copy as string | undefined;
     const customTitle = content.title as string | undefined;
+    const unsubscribeUrl = buildUnsubscribeUrl(accountId, customerEmail);
 
     const { subject, html } = customCopy
       ? buildCustomCopyEmail({
@@ -940,6 +974,7 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
           ctaText: language === 'es' ? 'Descubre más productos' : 'Discover more products',
           ctaUrl: storeUrl,
           brand,
+          unsubscribeUrl,
         })
       : buildWelcomeEmail({
           customerName,
@@ -949,6 +984,7 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
           language,
           storeUrl,
           brand,
+          unsubscribeUrl,
         });
 
     const { messageId } = await sendMerchantEmail({
@@ -956,6 +992,7 @@ async function executeWelcomeEmail(accountId: string, actionId: string, content:
       to: customerEmail,
       subject,
       html,
+      unsubscribeUrl,
     });
 
     await markCompleted(actionId, { sent_to: customerEmail, message_id: messageId });
@@ -1019,7 +1056,17 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
         continue;
       }
 
+      // ── GDPR: Check unsubscribe + blacklist ──
+      const blocked = await checkEmailBlocked(accountId, recipient.email);
+      if (blocked) {
+        console.log(`[actions] Reactivation SKIPPED for ${recipient.email} — ${blocked}`);
+        failed.push(recipient.email);
+        continue;
+      }
+
       try {
+        const unsubscribeUrl = buildUnsubscribeUrl(accountId, recipient.email);
+
         const { subject, html } = customCopy
           ? buildCustomCopyEmail({
               storeName,
@@ -1028,6 +1075,7 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
               ctaText: language === 'es' ? 'Volver a la tienda' : 'Back to the store',
               ctaUrl: storeUrl,
               brand,
+              unsubscribeUrl,
             })
           : buildReactivationEmail({
               customerName: recipient.name,
@@ -1039,6 +1087,7 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
               language,
               storeUrl,
               brand,
+              unsubscribeUrl,
             });
 
         const { messageId } = await sendMerchantEmail({
@@ -1046,6 +1095,7 @@ async function executeReactivationEmail(accountId: string, actionId: string, con
           to: recipient.email,
           subject,
           html,
+          unsubscribeUrl,
         });
 
         messageIds.push(messageId);

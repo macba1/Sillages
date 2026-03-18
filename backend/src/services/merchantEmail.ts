@@ -6,12 +6,14 @@ interface MerchantEmailInput {
   to: string | string[];
   subject: string;
   html: string;
+  unsubscribeUrl?: string;
 }
 
 /**
  * Send an email on behalf of a merchant using our shared domain.
  * From: "{Store Name}" <store-slug@sillages.app>
  * Reply-To: brand_profiles.contact_email → fallback to merchant's account email
+ * List-Unsubscribe: GDPR-compliant unsubscribe header for Gmail/Outlook native button
  */
 export async function sendMerchantEmail(input: MerchantEmailInput): Promise<{ messageId: string }> {
   const [{ data: conn }, { data: bp }, { data: acc }] = await Promise.all([
@@ -28,12 +30,20 @@ export async function sendMerchantEmail(input: MerchantEmailInput): Promise<{ me
 
   const recipients = Array.isArray(input.to) ? input.to : [input.to];
 
+  // Build headers with List-Unsubscribe for GDPR compliance
+  const headers: Record<string, string> = {};
+  if (input.unsubscribeUrl) {
+    headers['List-Unsubscribe'] = `<${input.unsubscribeUrl}>`;
+    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+  }
+
   const { data, error } = await resend.emails.send({
     from: fromField,
     to: recipients,
     reply_to: replyTo,
     subject: input.subject,
     html: input.html,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
   });
 
   if (error || !data) throw new Error(`Resend error: ${(error as Error)?.message}`);

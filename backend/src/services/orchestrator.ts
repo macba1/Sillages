@@ -1,12 +1,10 @@
 import { supabase } from '../lib/supabase.js';
-import { shopifyClient, ensureTokenFresh, refreshShopifyToken } from '../lib/shopify.js';
+import { shopifyClient, ensureTokenFresh } from '../lib/shopify.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { resend } from '../lib/resend.js';
-import { sendMerchantEmail } from './merchantEmail.js';
 import { buildCartRecoveryEmail } from './emailTemplates.js';
 import type { BrandConfig } from './emailTemplates.js';
 import { gatePush } from './commsGate.js';
-import { logCommunication } from './commLog.js';
 
 const LOG = '[orchestrator]';
 
@@ -687,6 +685,7 @@ async function runTemplateChecks(): Promise<CheckResult[]> {
       currency: 'EUR',
       language: 'es',
       brand,
+      unsubscribeUrl: 'https://example.com/api/unsubscribe?token=test',
     });
 
     const checks = {
@@ -694,6 +693,7 @@ async function runTemplateChecks(): Promise<CheckResult[]> {
       has_cta: html.includes('href='),
       has_footer: html.includes('Sillages'),
       has_white_header: html.includes('background:#FFFFFF'),
+      has_unsubscribe: html.includes('darte de baja'),
     };
 
     const allPassed = Object.values(checks).every(Boolean);
@@ -721,11 +721,13 @@ async function runTemplateChecks(): Promise<CheckResult[]> {
       customerName: 'Test', storeName: 'TestStore',
       products: [{ title: 'Test', quantity: 1, price: 10 }],
       totalPrice: 10, currency: 'EUR', language: 'es', brand,
+      unsubscribeUrl: 'https://example.com/api/unsubscribe?token=test',
     });
+    const hasUnsubscribe = html.includes('darte de baja');
     results.push({
       check_type: 'template', check_name: 'default_template',
-      status: html.includes('Sillages') ? 'ok' : 'critical',
-      details: { fallback_template_valid: html.includes('Sillages') },
+      status: html.includes('Sillages') && hasUnsubscribe ? 'ok' : 'critical',
+      details: { fallback_template_valid: html.includes('Sillages'), has_unsubscribe: hasUnsubscribe },
     });
   }
 

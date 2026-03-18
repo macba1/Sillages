@@ -46,10 +46,11 @@ export interface CartRecoveryInput {
   discountPercent?: number;
   language: Lang;
   brand?: BrandConfig;
+  unsubscribeUrl?: string;
 }
 
 export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: string; html: string } {
-  const { customerName, storeName, products, totalPrice, currency, checkoutUrl, discountCode, discountPercent, language, brand } = input;
+  const { customerName, storeName, products, totalPrice, currency, checkoutUrl, discountCode, discountPercent, language, brand, unsubscribeUrl } = input;
   const isEs = language === 'es';
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
@@ -117,7 +118,7 @@ export function buildCartRecoveryEmail(input: CartRecoveryInput): { subject: str
         ${ctaButton(ctaText, ctaUrl, accent)}
       </td>
     </tr>
-  `);
+  `, unsubscribeUrl);
 
   return { subject, html };
 }
@@ -132,6 +133,7 @@ export interface WelcomeInput {
   language: Lang;
   storeUrl: string;
   brand?: BrandConfig;
+  unsubscribeUrl?: string;
   recommendation?: {
     title: string;
     imageUrl?: string;
@@ -142,7 +144,7 @@ export interface WelcomeInput {
 }
 
 export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html: string } {
-  const { customerName, storeName, productPurchased, productImageUrl, language, storeUrl, brand, recommendation } = input;
+  const { customerName, storeName, productPurchased, productImageUrl, language, storeUrl, brand, unsubscribeUrl, recommendation } = input;
   const isEs = language === 'es';
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
@@ -194,7 +196,7 @@ export function buildWelcomeEmail(input: WelcomeInput): { subject: string; html:
         ${ctaButton(ctaText, storeUrl, accent)}
       </td>
     </tr>
-  `);
+  `, unsubscribeUrl);
 
   return { subject, html };
 }
@@ -212,10 +214,11 @@ export interface ReactivationInput {
   language: Lang;
   storeUrl: string;
   brand?: BrandConfig;
+  unsubscribeUrl?: string;
 }
 
 export function buildReactivationEmail(input: ReactivationInput): { subject: string; html: string } {
-  const { customerName, storeName, lastProduct, lastProductImageUrl, daysSinceLastPurchase, discountCode, discountPercent, language, storeUrl, brand } = input;
+  const { customerName, storeName, lastProduct, lastProductImageUrl, daysSinceLastPurchase, discountCode, discountPercent, language, storeUrl, brand, unsubscribeUrl } = input;
   const isEs = language === 'es';
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
 
@@ -260,7 +263,7 @@ export function buildReactivationEmail(input: ReactivationInput): { subject: str
         ${ctaButton(ctaText, storeUrl, accent)}
       </td>
     </tr>
-  `);
+  `, unsubscribeUrl);
 
   return { subject, html };
 }
@@ -276,8 +279,9 @@ export function buildCustomCopyEmail(input: {
   ctaUrl?: string;
   products?: ProductItem[];
   brand?: BrandConfig;
+  unsubscribeUrl?: string;
 }): { subject: string; html: string } {
-  const { storeName, subject, body, ctaText, ctaUrl, products, brand } = input;
+  const { storeName, subject, body, ctaText, ctaUrl, products, brand, unsubscribeUrl } = input;
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
   const locale = 'es-ES';
   const fmt = (n: number) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(n);
@@ -307,7 +311,7 @@ export function buildCustomCopyEmail(input: {
     </tr>
     ${productGrid}
     ${ctaBlock}
-  `);
+  `, unsubscribeUrl);
 
   return { subject, html };
 }
@@ -409,7 +413,7 @@ function ctaButton(text: string, url: string, accent: string): string {
     </table>`;
 }
 
-function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyContent: string): string {
+function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyContent: string, unsubscribeUrl?: string): string {
   const accent = brand?.primaryColor ?? DEFAULT_PRIMARY;
   const logoUrl = brand?.logoUrl;
   const shopUrl = brand?.shopUrl ?? '#';
@@ -498,6 +502,7 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
               ${contactBlock}
               ${socialBlock}
               <p style="margin:0;font-size:11px;color:#C4B0B9;">Powered by <a href="https://sillages.app" target="_blank" style="color:#C4B0B9;text-decoration:none;">Sillages</a></p>
+              ${unsubscribeUrl ? `<p style="margin:8px 0 0;font-size:11px;color:#C4B0B9;">Si no quieres recibir más emails, puedes <a href="${unsubscribeUrl}" target="_blank" style="color:#C4B0B9;text-decoration:underline;">darte de baja aquí</a>.</p>` : ''}
             </td>
           </tr>
 
