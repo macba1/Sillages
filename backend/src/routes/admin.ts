@@ -615,4 +615,67 @@ router.put('/accounts/:id/comms-approval', requireAuth, requireAdmin, async (req
   }
 });
 
+// ── GET /api/admin/orchestrator ────────────────────────────────────────────
+// System health dashboard: latest checks, history, active alerts
+router.get('/orchestrator', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Latest check per check_name (most recent run)
+    const { data: latest } = await supabase
+      .from('orchestrator_checks')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    // Deduplicate: keep only the latest per check_name
+    const latestByName = new Map<string, Record<string, unknown>>();
+    for (const check of (latest ?? []) as Array<Record<string, unknown>>) {
+      const name = check.check_name as string;
+      if (!latestByName.has(name)) {
+        latestByName.set(name, check);
+      }
+    }
+
+    // History: last 24h
+    const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const { data: history } = await supabase
+      .from('orchestrator_checks')
+      .select('check_type, check_name, status, auto_fixed, created_at')
+      .gte('created_at', oneDayAgo)
+      .order('created_at', { ascending: false });
+
+    // Active alerts: critical/warning from last run
+    const activeAlerts = [...latestByName.values()].filter(
+      c => c.status === 'critical' || c.status === 'warning'
+    );
+
+    const hasIssues = activeAlerts.length > 0;
+    const hasCritical = activeAlerts.some(a => a.status === 'critical');
+
+    res.json({
+      overall_status: hasCritical ? 'critical' : hasIssues ? 'warning' : 'ok',
+      latest_checks: [...latestByName.values()],
+      active_alerts: activeAlerts,
+      history_24h: history ?? [],
+      last_run: latest?.[0]?.created_at ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/orchestrator/run — Force run the orchestrator
+router.post('/orchestrator/run', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { runOrchestrator } = await import('../services/orchestrator.js');
+    console.log(`[admin] Force-running orchestrator — requested by account ${req.accountId}`);
+    const results = await runOrchestrator();
+    const critical = results.filter(r => r.status === 'critical').length;
+    const warnings = results.filter(r => r.status === 'warning').length;
+    const autoFixed = results.filter(r => r.auto_fixed).length;
+    res.json({ ok: true, checks: results.length, critical, warnings, auto_fixed: autoFixed, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
