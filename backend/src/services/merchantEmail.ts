@@ -11,16 +11,17 @@ interface MerchantEmailInput {
 /**
  * Send an email on behalf of a merchant using our shared domain.
  * From: "{Store Name}" <store-slug@sillages.app>
- * Reply-To: store's contact_email from brand_profiles (never the merchant's personal email)
+ * Reply-To: brand_profiles.contact_email → fallback to merchant's account email
  */
 export async function sendMerchantEmail(input: MerchantEmailInput): Promise<{ messageId: string }> {
-  const [{ data: conn }, { data: bp }] = await Promise.all([
+  const [{ data: conn }, { data: bp }, { data: acc }] = await Promise.all([
     supabase.from('shopify_connections').select('shop_name, shop_domain').eq('account_id', input.accountId).single(),
     supabase.from('brand_profiles').select('contact_email').eq('account_id', input.accountId).maybeSingle(),
+    supabase.from('accounts').select('email').eq('id', input.accountId).single(),
   ]);
 
   const storeName = conn?.shop_name ?? conn?.shop_domain ?? 'Store';
-  const replyTo = bp?.contact_email ?? undefined; // no fallback to merchant personal email
+  const replyTo = bp?.contact_email ?? acc?.email ?? undefined;
   const slug = storeName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
   const fromAddress = `${slug}@sillages.app`;
   const fromField = `${storeName} <${fromAddress}>`;

@@ -414,12 +414,12 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
   const logoUrl = brand?.logoUrl;
   const shopUrl = brand?.shopUrl ?? '#';
 
-  // Header: logo only — clean, just the brand mark
+  // Header: logo only — clean, white background, dark logo
   const headerContent = logoUrl
     ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
         <img src="${logoUrl}" alt="${storeName}" height="40" style="display:block;height:40px;width:auto;max-width:200px;" />
       </a>`
-    : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:#FFFFFF;letter-spacing:0.5px;">${storeName}</a>`;
+    : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:${TEXT_DARK};letter-spacing:0.5px;">${storeName}</a>`;
 
   // Footer: store contact info + social links
   const contactLines: string[] = [];
@@ -473,9 +473,9 @@ function wrapTemplate(storeName: string, brand: BrandConfig | undefined, bodyCon
         <![endif]-->
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
 
-          <!-- Header: logo only -->
+          <!-- Header: logo only, white background -->
           <tr>
-            <td style="background:${accent};border-radius:12px 12px 0 0;padding:20px 32px;" align="center">
+            <td style="background:#FFFFFF;border-radius:12px 12px 0 0;border:1px solid ${CARD_BORDER};border-bottom:none;padding:24px 32px;" align="center">
               ${headerContent}
             </td>
           </tr>

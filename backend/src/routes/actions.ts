@@ -224,9 +224,16 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
     }
 
     const { data: updated } = await supabase.from('pending_actions').select('*').eq('id', actionId).single();
-    const wasExecuted = updated?.status === 'completed';
+    const result = updated?.result as Record<string, unknown> | null;
+    const wasSkipped = result?.skipped === true;
+    const wasExecuted = updated?.status === 'completed' && !wasSkipped;
 
-    res.json({ action: updated, executed: wasExecuted });
+    res.json({
+      action: updated,
+      executed: wasExecuted,
+      skipped: wasSkipped,
+      skip_reason: wasSkipped ? result?.reason : undefined,
+    });
   } catch (err) {
     next(err);
   }
