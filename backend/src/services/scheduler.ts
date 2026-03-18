@@ -5,7 +5,9 @@ import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { detectEvents } from './eventDetector.js';
+import type { AbandonedCartData } from './eventDetector.js';
 import { generateEventAction } from './eventActionGenerator.js';
+import { shopifyClient } from '../lib/shopify.js';
 import { generateWeeklyBrief } from './weeklyBriefGenerator.js';
 import { logCommunication } from './commLog.js';
 import { isSendEnabled, gatePush, gateWeeklyEmail } from './commsGate.js';
@@ -168,10 +170,49 @@ async function processEventsForAccount(accountId: string): Promise<void> {
     console.log(`[scheduler] [${accountId}] Already sent ${pushesToday} event pushes today — max ${MAX_EVENT_PUSHES_PER_DAY}/day. Actions still generated, push deferred.`);
   }
 
+  // Load Shopify connection for real-time purchase checks
+  const { data: shopConn } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain, access_token')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
   // 7. Generate actions for ALL events, but only send push for top priority ones
   let pushesSent = 0;
 
   for (const event of sortedEvents) {
+    // ── PRE-CHECK: For abandoned carts, verify customer hasn't purchased since detection ──
+    if (event.type === 'abandoned_cart' && shopConn) {
+      const cartData = event.data as AbandonedCartData;
+      try {
+        const client = shopifyClient(shopConn.shop_domain, shopConn.access_token);
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+        const { orders } = await client.getOrders({
+          created_at_min: sevenDaysAgo,
+          created_at_max: new Date().toISOString(),
+        });
+        const alreadyBought = orders.some(
+          o => o.customer?.email?.toLowerCase() === cartData.customer_email.toLowerCase() &&
+               o.financial_status !== 'voided' && !o.cancel_reason,
+        );
+        if (alreadyBought) {
+          console.log(`[scheduler] [${accountId}] SKIP ${cartData.customer_name} — already purchased. No action created.`);
+          // Mark cart as recovered
+          await supabase
+            .from('abandoned_carts')
+            .update({ recovered: true, recovered_at: new Date().toISOString(), recovery_attribution: 'organic' })
+            .eq('account_id', accountId)
+            .eq('customer_email', cartData.customer_email)
+            .or('recovered.is.null,recovered.eq.false');
+          continue;
+        }
+      } catch (err) {
+        // Fail-closed: if we can't verify, skip the action (don't risk sending a bad push)
+        console.warn(`[scheduler] [${accountId}] Cannot verify purchase for ${cartData.customer_email} — skipping (fail-closed): ${(err as Error).message}`);
+        continue;
+      }
+    }
+
     const actionId = await generateEventAction(accountId, event, lang, storeName, currency);
     if (!actionId) continue;
 
