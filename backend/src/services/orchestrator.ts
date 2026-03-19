@@ -671,6 +671,107 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     auto_fixed: remindersSent > 0,
   });
 
+  // ── Orphan events: detected but no action generated (LLM failure, timeout, etc.) ──
+  const sixHoursAgo = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+  const { data: orphanEvents } = await supabase
+    .from('event_log')
+    .select('id, account_id, event_type, event_key, detected_at')
+    .is('action_id', null)
+    .in('event_type', ['abandoned_cart', 'new_first_buyer'])
+    .gte('detected_at', sevenDaysAgo)
+    .lte('detected_at', sixHoursAgo); // give at least 6h before retrying
+
+  let orphansRecovered = 0;
+  let orphansFailed = 0;
+
+  if (orphanEvents && orphanEvents.length > 0) {
+    for (const orphan of orphanEvents) {
+      // Get cart/event data to reconstruct the event
+      if (orphan.event_type === 'abandoned_cart') {
+        const checkoutId = orphan.event_key.replace('cart:', '');
+        const { data: cart } = await supabase
+          .from('abandoned_carts')
+          .select('*')
+          .eq('account_id', orphan.account_id)
+          .eq('shopify_checkout_id', checkoutId)
+          .maybeSingle();
+
+        if (!cart) {
+          // Also try by id
+          const { data: cartById } = await supabase
+            .from('abandoned_carts')
+            .select('*')
+            .eq('account_id', orphan.account_id)
+            .eq('id', checkoutId)
+            .maybeSingle();
+          if (!cartById) {
+            console.warn(`${LOG} ORPHAN: Cannot find cart for ${orphan.event_key} — skipping`);
+            orphansFailed++;
+            continue;
+          }
+          Object.assign(cart ?? {}, cartById);
+        }
+
+        const email = (cart?.customer_email as string) ?? '';
+        if (!email) { orphansFailed++; continue; }
+        const totalPrice = (cart?.total_price as number) ?? 0;
+        if (totalPrice < 15) { orphansFailed++; continue; }
+
+        const rawName = ((cart?.customer_name as string) ?? '').trim();
+        const customerName = (rawName && rawName !== 'Visitante') ? rawName : '';
+        if (!customerName) { orphansFailed++; continue; }
+
+        // Get account language + store name
+        const { data: acc } = await supabase
+          .from('accounts').select('language').eq('id', orphan.account_id).single();
+        const { data: conn } = await supabase
+          .from('shopify_connections').select('shop_name').eq('account_id', orphan.account_id).maybeSingle();
+
+        const event: DetectedEvent = {
+          type: 'abandoned_cart',
+          key: orphan.event_key,
+          data: {
+            customer_name: customerName,
+            customer_email: email,
+            products: (cart?.products as Array<{ title: string; quantity: number; price: number; image_url?: string }>) ?? [],
+            total_value: totalPrice,
+            checkout_url: (cart?.checkout_url as string) ?? '',
+            checkout_id: checkoutId,
+          } as AbandonedCartData,
+        };
+
+        try {
+          const actionId = await generateEventAction(
+            orphan.account_id, event, acc?.language ?? 'es',
+            conn?.shop_name ?? 'Sillages', 'EUR',
+          );
+          if (actionId) {
+            orphansRecovered++;
+            console.log(`${LOG} ORPHAN RECOVERED: ${orphan.event_key} → action ${actionId}`);
+          } else {
+            orphansFailed++;
+            console.warn(`${LOG} ORPHAN RETRY FAILED: ${orphan.event_key} — generateEventAction returned null`);
+          }
+        } catch (err) {
+          orphansFailed++;
+          console.error(`${LOG} ORPHAN RETRY ERROR: ${orphan.event_key} — ${(err as Error).message}`);
+        }
+      }
+      // new_first_buyer orphans could be added here in the future
+    }
+  }
+
+  results.push({
+    check_type: 'data_integrity', check_name: 'orphan_events',
+    status: (orphanEvents?.length ?? 0) > 0 ? 'warning' : 'ok',
+    details: {
+      total_orphans: orphanEvents?.length ?? 0,
+      recovered: orphansRecovered,
+      failed: orphansFailed,
+    },
+    auto_fixed: orphansRecovered > 0,
+  });
+
   // ── Duplicate emails in last 7 days (monitoring only) ──
   const { data: recentEmails } = await supabase
     .from('email_log')
