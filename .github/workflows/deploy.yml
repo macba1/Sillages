@@ -28,6 +28,8 @@ jobs:
 
       - name: Run tests
         run: npm test
+        env:
+          NODE_OPTIONS: '--experimental-vm-modules'
 
       # Railway deploys automatically on push to main.
       # If tests fail here, the deploy already happened but we get a red check
