@@ -203,24 +203,47 @@ async function runHealthChecks(): Promise<CheckResult[]> {
 
 async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
+  const CART_MIN_AMOUNT = 15;
+  const BANNED_NAMES = ['visitante', 'cliente', 'amigo', 'amiga'];
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
 
-  // ── Level 1: Pending cart_recovery — auto-skip if customer bought ──
-  const { data: pendingCarts } = await supabase
+  // ── Load ALL pending actions at once ──────────────────────────────────────
+  const { data: allPending } = await supabase
     .from('pending_actions')
-    .select('id, account_id, content, created_at')
-    .eq('type', 'cart_recovery')
-    .eq('status', 'pending');
+    .select('id, account_id, type, content, created_at')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
 
-  const cartsByAccount = new Map<string, NonNullable<typeof pendingCarts>>();
-  for (const a of pendingCarts ?? []) {
-    if (!cartsByAccount.has(a.account_id)) cartsByAccount.set(a.account_id, []);
-    cartsByAccount.get(a.account_id)!.push(a);
+  if (!allPending || allPending.length === 0) {
+    results.push({
+      check_type: 'data_integrity', check_name: 'action_guardian',
+      status: 'ok', details: { message: 'No pending actions to verify' },
+    });
+    return results;
   }
 
-  let cartsAutoSkipped = 0;
-  let cartsAutoExpired = 0;
+  // Group by account for batch Shopify queries
+  const byAccount = new Map<string, typeof allPending>();
+  for (const a of allPending) {
+    if (!byAccount.has(a.account_id)) byAccount.set(a.account_id, []);
+    byAccount.get(a.account_id)!.push(a);
+  }
 
-  for (const [accountId, actions] of cartsByAccount) {
+  // Counters
+  let cartsSkippedPurchased = 0;
+  let cartsExpired = 0;
+  let cartsRejectedAmount = 0;
+  let cartsRejectedNoEmail = 0;
+  let cartsRejectedRecentEmail = 0;
+  let welcomesRejectedFalsePositive = 0;
+  let welcomesRejectedDuplicate = 0;
+  let crossActionResolved = 0;
+  let contentFixedName = 0;
+  let contentRejectedCopy = 0;
+  let welcomesExpired = 0;
+  let duplicatesSkipped = 0;
+
+  for (const [accountId, actions] of byAccount) {
     const { data: conn } = await supabase
       .from('shopify_connections')
       .select('shop_domain, access_token')
@@ -228,11 +251,12 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
 
     if (!conn) continue;
 
+    // ── Fetch real-time orders from Shopify ──
     let recentOrderEmails = new Set<string>();
     try {
       const client = shopifyClient(conn.shop_domain, conn.access_token);
       const { orders } = await client.getOrders({
-        created_at_min: new Date(Date.now() - 7 * 86400 * 1000).toISOString(),
+        created_at_min: sevenDaysAgo,
         created_at_max: new Date().toISOString(),
       });
       recentOrderEmails = new Set(
@@ -242,80 +266,313 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       );
     } catch { continue; }
 
-    for (const action of actions) {
+    // ── Fetch recent emails sent (anti-spam) ──
+    const recentlySentTo = new Set<string>();
+    try {
+      const { data: emailLogs } = await supabase
+        .from('email_log')
+        .select('recipient_email')
+        .eq('account_id', accountId)
+        .eq('status', 'sent')
+        .gte('sent_at', sevenDaysAgo);
+      for (const e of emailLogs ?? []) {
+        if (e.recipient_email) recentlySentTo.add(e.recipient_email.toLowerCase());
+      }
+    } catch { /* non-fatal */ }
+
+    // ── Fetch existing welcome emails sent (dedup) ──
+    const welcomeSentTo = new Set<string>();
+    try {
+      const { data: welcomeLogs } = await supabase
+        .from('pending_actions')
+        .select('content')
+        .eq('account_id', accountId)
+        .eq('type', 'welcome_email')
+        .in('status', ['completed', 'approved'])
+        .not('result->>skipped', 'eq', 'true');
+      for (const w of welcomeLogs ?? []) {
+        const email = ((w.content as Record<string, unknown>)?.customer_email as string)?.toLowerCase();
+        if (email) welcomeSentTo.add(email);
+      }
+    } catch { /* non-fatal */ }
+
+    // ── Separate actions by type for cross-action check ──
+    const cartActions = actions.filter(a => a.type === 'cart_recovery');
+    const welcomeActions = actions.filter(a => a.type === 'welcome_email');
+
+    // Build email→action maps for cross-action resolution
+    const cartEmailMap = new Map<string, typeof actions[0]>();
+    for (const a of cartActions) {
+      const email = ((a.content as Record<string, unknown>)?.customer_email as string)?.toLowerCase();
+      if (email) cartEmailMap.set(email, a);
+    }
+
+    const welcomeEmailMap = new Map<string, typeof actions[0]>();
+    for (const a of welcomeActions) {
+      const email = ((a.content as Record<string, unknown>)?.customer_email as string)?.toLowerCase();
+      if (email) welcomeEmailMap.set(email, a);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHECK 1: CART RECOVERY VERIFICATION
+    // ══════════════════════════════════════════════════════════════════════════
+    for (const action of cartActions) {
       const content = action.content as Record<string, unknown>;
       const email = (content.customer_email as string)?.toLowerCase();
-      const abandonedAt = content.abandoned_at as string | undefined;
-      const customerName = content.customer_name as string ?? '';
+      const customerName = (content.customer_name as string) ?? '';
+      const totalValue = content.total_value as number ?? content.total_price as number ?? 0;
 
-      if (!email) continue;
+      // 1a. No email → auto-reject
+      if (!email) {
+        await rejectAction(action.id, 'Sin email. No contactable.');
+        cartsRejectedNoEmail++;
+        continue;
+      }
 
-      // Level 1: Auto-skip — customer already purchased
+      // 1b. Amount < €15 → auto-reject
+      // Also check products array total if total_value not set
+      let effectiveAmount = totalValue;
+      if (!effectiveAmount && content.products) {
+        effectiveAmount = (content.products as Array<{ price: number; quantity: number }>)
+          .reduce((sum, p) => sum + (p.price * p.quantity), 0);
+      }
+      if (effectiveAmount < CART_MIN_AMOUNT) {
+        await rejectAction(action.id, `Monto €${effectiveAmount.toFixed(2)} < €${CART_MIN_AMOUNT} mínimo.`);
+        cartsRejectedAmount++;
+        continue;
+      }
+
+      // 1c. Customer already purchased → auto-skip + mark cart recovered
       if (recentOrderEmails.has(email)) {
-        await supabase.from('pending_actions').update({
-          status: 'completed', executed_at: new Date().toISOString(),
-          result: { skipped: true, reason: `${customerName} ya compró. Auto-cancelado por orchestrator.`, auto_cleanup: true },
-        }).eq('id', action.id);
+        await skipAction(action.id, `${customerName || email} ya compró. Cart recovery cancelado.`);
         await supabase.from('abandoned_carts')
           .update({ recovered: true, recovered_at: new Date().toISOString(), recovery_attribution: 'organic' })
           .eq('account_id', accountId).eq('customer_email', email)
           .or('recovered.is.null,recovered.eq.false');
-        cartsAutoSkipped++;
+        cartsSkippedPurchased++;
         continue;
       }
 
-      // Level 1: Auto-expire — cart older than 7 days
-      if (abandonedAt) {
-        const age = Date.now() - new Date(abandonedAt).getTime();
-        if (age > 7 * 86400 * 1000) {
-          await supabase.from('pending_actions').update({
-            status: 'completed', executed_at: new Date().toISOString(),
-            result: { skipped: true, reason: 'Carrito > 7 días. Auto-expirado por orchestrator.', auto_cleanup: true },
-          }).eq('id', action.id);
-          cartsAutoExpired++;
+      // 1d. Cart > 7 days → auto-expire
+      const createdAt = new Date(action.created_at).getTime();
+      if (Date.now() - createdAt > 7 * 86400 * 1000) {
+        await skipAction(action.id, 'Carrito > 7 días. Auto-expirado.');
+        cartsExpired++;
+        continue;
+      }
+
+      // 1e. Already sent email to this customer in last 7 days → auto-reject
+      if (recentlySentTo.has(email)) {
+        await rejectAction(action.id, `Ya se envió email a ${email} en últimos 7 días. Anti-spam.`);
+        cartsRejectedRecentEmail++;
+        continue;
+      }
+
+      // 1f. Cross-action: if welcome_email exists for same email → cart loses
+      if (welcomeEmailMap.has(email)) {
+        await skipAction(action.id, `Welcome email existe para ${email}. Cart recovery cancelado — welcome gana.`);
+        crossActionResolved++;
+        continue;
+      }
+
+      // 1g. Content check: "Visitante" / "Cliente" in name or copy
+      const copyText = (content.copy as string) ?? '';
+      const nameIsBanned = BANNED_NAMES.includes(customerName.toLowerCase());
+      const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
+
+      if (nameIsBanned || copyStartsWithBanned) {
+        await rejectAction(action.id, `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`);
+        contentFixedName++;
+        continue;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHECK 2: WELCOME EMAIL VERIFICATION
+    // ══════════════════════════════════════════════════════════════════════════
+    for (const action of welcomeActions) {
+      const content = action.content as Record<string, unknown>;
+      const email = (content.customer_email as string)?.toLowerCase();
+
+      if (!email) {
+        await rejectAction(action.id, 'Welcome email sin email de cliente.');
+        welcomesRejectedFalsePositive++;
+        continue;
+      }
+
+      // 2a. Verify customer actually purchased (real-time Shopify check)
+      if (!recentOrderEmails.has(email)) {
+        await rejectAction(action.id, `${email} NO compró en Shopify. Falso positivo.`);
+        welcomesRejectedFalsePositive++;
+        continue;
+      }
+
+      // 2b. Already sent welcome before → auto-reject
+      if (welcomeSentTo.has(email)) {
+        await rejectAction(action.id, `Ya se envió welcome a ${email} previamente. Duplicado.`);
+        welcomesRejectedDuplicate++;
+        continue;
+      }
+
+      // 2c. Cross-action: delete any pending cart_recovery for this email
+      if (cartEmailMap.has(email)) {
+        const cartAction = cartEmailMap.get(email)!;
+        await skipAction(cartAction.id, `${email} compró. Welcome email generado — cart recovery cancelado.`);
+        crossActionResolved++;
+      }
+
+      // 2d. Already sent email to this customer in last 7 days → auto-reject
+      if (recentlySentTo.has(email)) {
+        await rejectAction(action.id, `Ya se envió email a ${email} en últimos 7 días. Anti-spam.`);
+        continue;
+      }
+
+      // 2e. Order > 6h old → auto-expire
+      const orderCreatedAt = content.order_created_at as string | undefined;
+      if (orderCreatedAt) {
+        const age = Date.now() - new Date(orderCreatedAt).getTime();
+        if (age > 6 * 3600 * 1000) {
+          await skipAction(action.id, 'Pedido > 6h. Welcome email auto-expirado.');
+          welcomesExpired++;
+          continue;
         }
       }
+
+      // 2f. Content check: placeholder name
+      const customerName = (content.customer_name as string) ?? '';
+      const copyText = (content.copy as string) ?? '';
+      const nameIsBanned = BANNED_NAMES.includes(customerName.toLowerCase());
+      const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
+
+      if (nameIsBanned || copyStartsWithBanned) {
+        await rejectAction(action.id, `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`);
+        contentFixedName++;
+        continue;
+      }
     }
-  }
 
-  results.push({
-    check_type: 'data_integrity', check_name: 'pending_cart_recovery',
-    status: cartsAutoSkipped > 0 ? 'warning' : 'ok',
-    details: { total_pending: pendingCarts?.length ?? 0, auto_skipped: cartsAutoSkipped, auto_expired: cartsAutoExpired },
-    auto_fixed: cartsAutoSkipped > 0 || cartsAutoExpired > 0,
-  });
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHECK 3: REACTIVATION EMAIL CONTENT CHECKS
+    // ══════════════════════════════════════════════════════════════════════════
+    const reactivationActions = actions.filter(a => a.type === 'reactivation_email');
+    for (const action of reactivationActions) {
+      const content = action.content as Record<string, unknown>;
+      const copyText = (content.copy as string) ?? '';
 
-  // ── Level 1: Pending welcome_email — auto-expire if order > 6h old ──
-  const { data: pendingWelcomes } = await supabase
-    .from('pending_actions')
-    .select('id, content, created_at')
-    .eq('type', 'welcome_email')
-    .eq('status', 'pending');
+      // Check for placeholder names in recipients
+      const recipients = content.recipients as Array<{ name?: string }> | undefined;
+      if (recipients) {
+        const hasBannedName = recipients.some(r =>
+          r.name && BANNED_NAMES.includes(r.name.toLowerCase()));
+        if (hasBannedName) {
+          await rejectAction(action.id, 'Reactivation usa nombre genérico prohibido.');
+          contentFixedName++;
+          continue;
+        }
+      }
 
-  let welcomesExpired = 0;
-  for (const action of pendingWelcomes ?? []) {
-    const content = action.content as Record<string, unknown>;
-    const orderCreatedAt = content.order_created_at as string | undefined;
-    if (orderCreatedAt) {
-      const age = Date.now() - new Date(orderCreatedAt).getTime();
-      if (age > 6 * 3600 * 1000) {
-        await supabase.from('pending_actions').update({
-          status: 'completed', executed_at: new Date().toISOString(),
-          result: { skipped: true, reason: 'Pedido > 6h. Auto-expirado por orchestrator.', auto_cleanup: true },
-        }).eq('id', action.id);
-        welcomesExpired++;
+      // Check copy doesn't start with banned placeholder
+      const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
+      if (copyStartsWithBanned) {
+        await rejectAction(action.id, 'Copy empieza con placeholder genérico.');
+        contentFixedName++;
+        continue;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // CHECK 4: CONTENT QUALITY — ALL ACTION TYPES
+    // ══════════════════════════════════════════════════════════════════════════
+    // Re-fetch remaining pending actions for this account (some may have been rejected above)
+    const { data: remainingActions } = await supabase
+      .from('pending_actions')
+      .select('id, type, content')
+      .eq('account_id', accountId)
+      .eq('status', 'pending')
+      .in('type', ['cart_recovery', 'welcome_email', 'reactivation_email']);
+
+    for (const action of remainingActions ?? []) {
+      const content = action.content as Record<string, unknown>;
+      const copyText = (content.copy as string) ?? '';
+
+      // Check for invented sensory details (common AI hallucinations)
+      const inventedPhrases = [
+        'abrazo cítrico', 'abrazo dulce', 'explosión de sabor', 'pura fantasía',
+        'sabores que te transportan', 'toque especial', 'nueve sorpresas',
+        'suavidad única', 'capricho perfecto', 'experiencia única',
+        'te transporta', 'un clásico reinventado',
+      ];
+      const foundInvented = inventedPhrases.filter(p => copyText.toLowerCase().includes(p));
+      if (foundInvented.length > 0) {
+        await rejectAction(action.id, `Copy inventa detalles sensoriales: "${foundInvented.join('", "')}". Solo usar datos de Shopify.`);
+        contentRejectedCopy++;
       }
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHECK 5: DUPLICATE ACTIONS — cross-account, cross-type
+  // ══════════════════════════════════════════════════════════════════════════
+  // Re-fetch all still-pending after above checks
+  const { data: stillPending } = await supabase
+    .from('pending_actions')
+    .select('id, account_id, type, content, created_at')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (stillPending && stillPending.length > 1) {
+    const seen = new Set<string>();
+    for (const action of stillPending) {
+      const content = action.content as Record<string, unknown>;
+      const email = (content.customer_email as string)?.toLowerCase() ?? '';
+      const key = `${action.account_id}:${action.type}:${email}`;
+
+      if (seen.has(key) && email) {
+        await skipAction(action.id, 'Acción duplicada. Auto-eliminada.');
+        duplicatesSkipped++;
+      } else {
+        seen.add(key);
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RESULTS SUMMARY
+  // ══════════════════════════════════════════════════════════════════════════
+  const totalFixed = cartsSkippedPurchased + cartsExpired + cartsRejectedAmount +
+    cartsRejectedNoEmail + cartsRejectedRecentEmail + crossActionResolved +
+    contentFixedName + contentRejectedCopy + welcomesRejectedFalsePositive +
+    welcomesRejectedDuplicate + welcomesExpired + duplicatesSkipped;
+
   results.push({
-    check_type: 'data_integrity', check_name: 'pending_welcome_email',
-    status: welcomesExpired > 0 ? 'info' : 'ok',
-    details: { total_pending: pendingWelcomes?.length ?? 0, auto_expired: welcomesExpired },
-    auto_fixed: welcomesExpired > 0,
+    check_type: 'data_integrity', check_name: 'action_guardian',
+    status: totalFixed > 0 ? 'warning' : 'ok',
+    details: {
+      total_checked: allPending.length,
+      total_auto_resolved: totalFixed,
+      cart_recovery: {
+        skipped_purchased: cartsSkippedPurchased,
+        expired_7d: cartsExpired,
+        rejected_low_amount: cartsRejectedAmount,
+        rejected_no_email: cartsRejectedNoEmail,
+        rejected_recent_email: cartsRejectedRecentEmail,
+      },
+      welcome_email: {
+        rejected_false_positive: welcomesRejectedFalsePositive,
+        rejected_duplicate: welcomesRejectedDuplicate,
+        expired_6h: welcomesExpired,
+      },
+      cross_action: { resolved: crossActionResolved },
+      content: {
+        rejected_placeholder_name: contentFixedName,
+        rejected_invented_copy: contentRejectedCopy,
+      },
+      duplicates_skipped: duplicatesSkipped,
+    },
+    auto_fixed: totalFixed > 0,
   });
 
-  // ── Level 2: Stale actions > 48h — send push reminder to merchant ──
+  // ── Stale actions > 48h — send push reminder ──
   const fortyEightHoursAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
   const { data: staleActions } = await supabase
     .from('pending_actions')
@@ -327,14 +584,12 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   let remindersSent = 0;
 
   if (staleActions && staleActions.length > 0) {
-    // Group by account to send one reminder per merchant
     const staleByAccount = new Map<string, number>();
     for (const a of staleActions) {
       staleByAccount.set(a.account_id, (staleByAccount.get(a.account_id) ?? 0) + 1);
     }
 
     for (const [accountId, count] of staleByAccount) {
-      // Only remind once per 24h per account — check if we already reminded
       const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       const { count: recentReminders } = await supabase
         .from('email_log')
@@ -343,23 +598,23 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
         .eq('channel', 'event_push')
         .gte('sent_at', oneDayAgo);
 
-      if ((recentReminders ?? 0) >= 2) continue; // Already reminded today
+      if ((recentReminders ?? 0) >= 2) continue;
 
       remindersAttempted++;
       const { data: acc } = await supabase
         .from('accounts').select('language').eq('id', accountId).single();
-      const { data: conn } = await supabase
+      const { data: staleConn } = await supabase
         .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
 
       const isEs = acc?.language === 'es';
-      const storeName = conn?.shop_name ?? 'Sillages';
+      const storeName = staleConn?.shop_name ?? 'Sillages';
 
       try {
         await gatePush(accountId, {
           title: storeName,
           body: isEs
-            ? `Tienes ${count} ${count === 1 ? 'acción pendiente' : 'acciones pendientes'} desde hace más de 48h. ¡Revísalas!`
-            : `You have ${count} ${count === 1 ? 'action' : 'actions'} pending for over 48h. Check them!`,
+            ? `Tienes ${count} ${count === 1 ? 'acción pendiente' : 'acciones pendientes'} desde hace más de 48h.`
+            : `You have ${count} ${count === 1 ? 'action' : 'actions'} pending for over 48h.`,
           url: '/actions',
         }, 'event_push');
         remindersSent++;
@@ -381,51 +636,7 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     auto_fixed: remindersSent > 0,
   });
 
-  // ── Level 2: Duplicate actions — auto-skip the older one ──
-  const { data: allPending } = await supabase
-    .from('pending_actions')
-    .select('id, account_id, type, content, created_at')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
-
-  let duplicatesSkipped = 0;
-  if (allPending && allPending.length > 1) {
-    const seen = new Set<string>();
-    for (const action of allPending) {
-      const content = action.content as Record<string, unknown>;
-      const email = (content.customer_email as string)?.toLowerCase() ?? '';
-      const key = `${action.account_id}:${action.type}:${email}`;
-
-      if (seen.has(key) && email) {
-        // This is a duplicate (older one since we sorted desc) — auto-skip
-        await supabase.from('pending_actions').update({
-          status: 'completed', executed_at: new Date().toISOString(),
-          result: { skipped: true, reason: 'Acción duplicada. Auto-eliminada por orchestrator.', auto_cleanup: true },
-        }).eq('id', action.id);
-        duplicatesSkipped++;
-      } else {
-        seen.add(key);
-      }
-    }
-  }
-
-  if (duplicatesSkipped > 0) {
-    results.push({
-      check_type: 'data_integrity', check_name: 'duplicate_actions',
-      status: 'warning',
-      details: { duplicates_skipped: duplicatesSkipped },
-      auto_fixed: true,
-    });
-  } else {
-    results.push({
-      check_type: 'data_integrity', check_name: 'duplicate_actions',
-      status: 'ok',
-      details: { duplicates_found: 0 },
-    });
-  }
-
   // ── Duplicate emails in last 7 days (monitoring only) ──
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
   const { data: recentEmails } = await supabase
     .from('email_log')
     .select('recipient_email, account_id')
@@ -450,6 +661,24 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   });
 
   return results;
+}
+
+// ── Helper: reject action with reason ──
+async function rejectAction(actionId: string, reason: string): Promise<void> {
+  await supabase.from('pending_actions').update({
+    status: 'rejected',
+    result: { auto_rejected: true, reason, rejected_by: 'orchestrator' },
+  }).eq('id', actionId);
+  console.log(`${LOG} AUTO-REJECT: ${actionId} — ${reason}`);
+}
+
+// ── Helper: skip action (completed but not executed) ──
+async function skipAction(actionId: string, reason: string): Promise<void> {
+  await supabase.from('pending_actions').update({
+    status: 'completed', executed_at: new Date().toISOString(),
+    result: { skipped: true, reason, auto_cleanup: true },
+  }).eq('id', actionId);
+  console.log(`${LOG} AUTO-SKIP: ${actionId} — ${reason}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

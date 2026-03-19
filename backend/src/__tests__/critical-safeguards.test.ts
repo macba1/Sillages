@@ -419,3 +419,60 @@ describe('Test 13: Sensory details sourced from product data only', () => {
     expect(auditorCode).toContain('NO GENERIC PLACEHOLDERS');
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TEST 14: Orchestrator is the absolute guardian — data + content verification
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Test 14: Orchestrator guardian verifies all actions', () => {
+  it('should have comprehensive action_guardian check', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    // Data verification
+    expect(code).toContain('action_guardian');
+    expect(code).toContain('recentOrderEmails');
+    expect(code).toContain('CART_MIN_AMOUNT');
+    expect(code).toContain('totalValue');
+  });
+
+  it('should verify cart recovery: purchase check, amount, email, age, anti-spam', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    expect(code).toContain('skipped_purchased');
+    expect(code).toContain('rejected_low_amount');
+    expect(code).toContain('rejected_no_email');
+    expect(code).toContain('rejected_recent_email');
+    expect(code).toContain('expired_7d');
+  });
+
+  it('should verify welcome email: purchase check, dedup, false positive', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    expect(code).toContain('rejected_false_positive');
+    expect(code).toContain('rejected_duplicate');
+    expect(code).toContain('NO compró en Shopify. Falso positivo');
+  });
+
+  it('should resolve cross-action conflicts: welcome wins over cart recovery', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    expect(code).toContain('cross_action');
+    expect(code).toContain('welcome gana');
+    expect(code).toContain('crossActionResolved');
+  });
+
+  it('should reject placeholder names and invented copy', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    expect(code).toContain('BANNED_NAMES');
+    expect(code).toContain('visitante');
+    expect(code).toContain('cliente');
+    expect(code).toContain('inventedPhrases');
+    expect(code).toContain('abrazo cítrico');
+    expect(code).toContain('rejected_placeholder_name');
+    expect(code).toContain('rejected_invented_copy');
+  });
+
+  it('should have rejectAction and skipAction helpers', async () => {
+    const code = await readSrc('services/orchestrator.ts');
+    expect(code).toContain('async function rejectAction');
+    expect(code).toContain('async function skipAction');
+    expect(code).toContain('auto_rejected');
+    expect(code).toContain('rejected_by');
+  });
+});
