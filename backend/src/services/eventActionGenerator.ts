@@ -7,6 +7,38 @@ import type { DetectedEvent, NewFirstBuyerData, AbandonedCartData, OverdueCustom
 
 const LOG = '[eventAction]';
 
+// ── Fetch product descriptions from brand profile for sensory accuracy ────
+
+async function getProductDescriptions(accountId: string, productTitles: string[]): Promise<string | null> {
+  try {
+    const { data: bp } = await supabase
+      .from('brand_profiles')
+      .select('raw_data')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (!bp?.raw_data) return null;
+
+    const rawData = bp.raw_data as { products?: Array<{ title: string; description?: string }> };
+    if (!rawData.products) return null;
+
+    const matches: string[] = [];
+    for (const title of productTitles) {
+      const product = rawData.products.find(p =>
+        p.title.toLowerCase().includes(title.toLowerCase()) ||
+        title.toLowerCase().includes(p.title.toLowerCase()),
+      );
+      if (product?.description && product.description.trim()) {
+        matches.push(`- ${product.title}: ${product.description}`);
+      }
+    }
+
+    return matches.length > 0 ? matches.join('\n') : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Compute "also bought" recommendations from real order data ────────────
 
 async function getAlsoBought(accountId: string, productTitle: string): Promise<string[]> {
@@ -97,12 +129,24 @@ export async function generateEventAction(
         ? `\nAlso bought by customers who buy ${d.product_purchased}: ${alsoBought.join(', ')}`
         : '';
 
+      // Fetch product descriptions for sensory accuracy
+      const productDescriptions = await getProductDescriptions(dataAccountId, [d.product_purchased]);
+      const descBlock = productDescriptions
+        ? `\nProduct descriptions from Shopify (USE ONLY THESE for sensory details):\n${productDescriptions}`
+        : '\nNo product descriptions available — do NOT invent ANY sensory details. Only use the product name.';
+
+      // Handle missing customer name
+      const hasName = d.customer_name && d.customer_name.trim() !== '';
+      const nameInstruction = hasName
+        ? `Customer: ${d.customer_name} (${d.customer_email})`
+        : `Customer: NO NAME AVAILABLE (${d.customer_email})\nIMPORTANT: Do NOT use any placeholder like "Cliente", "Amigo/a". Start the copy with a direct reference to the product.`;
+
       userPrompt = `${brandBlock}Store: ${storeName}. Currency: ${currency}.
 
 EVENT: New first-time buyer detected.
-Customer: ${d.customer_name} (${d.customer_email})
+${nameInstruction}
 Product purchased: ${d.product_purchased}
-Order total: ${currency === 'EUR' ? '€' : '$'}${d.order_total.toFixed(2)}${alsoBoughtBlock}
+Order total: ${currency === 'EUR' ? '€' : '$'}${d.order_total.toFixed(2)}${alsoBoughtBlock}${descBlock}
 
 Generate a welcome_email action.
 
@@ -121,7 +165,7 @@ Return JSON:
   "description": "<why this action + when to send>",
   "content": {
     "customer_email": "${d.customer_email}",
-    "customer_name": "${d.customer_name}",
+    "customer_name": "${hasName ? d.customer_name : ''}",
     "product_purchased": "${d.product_purchased}",
     "order_created_at": "${d.order_created_at}",
     "recommended_product": "<from also_bought if available>",
@@ -143,14 +187,26 @@ Return JSON:
         ? `\nOther products popular with ${mainProduct} buyers: ${alsoBought.join(', ')}`
         : '';
 
+      // Fetch product descriptions from brand profile for sensory accuracy
+      const productDescriptions = await getProductDescriptions(dataAccountId, d.products.map(p => p.title));
+      const descBlock = productDescriptions
+        ? `\nProduct descriptions from Shopify (USE ONLY THESE for sensory details):\n${productDescriptions}`
+        : '\nNo product descriptions available — do NOT invent ANY sensory details. Only use the product name.';
+
+      // Handle missing customer name
+      const hasName = d.customer_name && d.customer_name.trim() !== '';
+      const nameInstruction = hasName
+        ? `Customer: ${d.customer_name} (${d.customer_email})`
+        : `Customer: NO NAME AVAILABLE (${d.customer_email})\nIMPORTANT: Do NOT use any placeholder like "Visitante", "Cliente", "Amigo/a". Start the copy directly with the product or a phrase. Example: "6 productos esperándote en el carrito" instead of "Visitante, tus Cookies..."`;
+
       systemPrompt = buildEventSystemPrompt(language, 'cart_recovery');
       userPrompt = `${brandBlock}Store: ${storeName}. Currency: ${currency}.
 
 EVENT: Abandoned cart detected.
-Customer: ${d.customer_name} (${d.customer_email})
+${nameInstruction}
 Products left: ${productList}
 Total value: ${currency === 'EUR' ? '€' : '$'}${d.total_value.toFixed(2)}
-${d.checkout_url ? `Checkout URL: ${d.checkout_url}` : ''}${alsoBoughtBlock}
+${d.checkout_url ? `Checkout URL: ${d.checkout_url}` : ''}${alsoBoughtBlock}${descBlock}
 
 Generate a cart_recovery action.
 
@@ -160,7 +216,8 @@ CRITICAL RULES FOR CART_RECOVERY:
 - Tone: relaxed, helpful. Like a shop assistant, not a salesperson.
 - NEVER pressure: no "tu carrito te espera", no "completa tu pedido", no false urgency, no countdown.
 - A small discount code is OK but optional — the focus is on product value, not price.
-- Mention a sensory detail: how the product tastes, smells, looks, or feels.
+- SENSORY DETAILS: ONLY use details from the product descriptions provided above. If no description is provided for a product, mention ONLY the product name. NEVER invent flavors, textures, aromas, or ingredients.
+- BANNED INVENTED DETAILS: "abrazo cítrico", "toque especial", "pura fantasía", "sabores que te transportan" — if it's not in the product description, don't say it.
 
 Return JSON:
 {
@@ -168,7 +225,7 @@ Return JSON:
   "description": "<why + when>",
   "content": {
     "customer_email": "${d.customer_email}",
-    "customer_name": "${d.customer_name}",
+    "customer_name": "${hasName ? d.customer_name : ''}",
     "products": ${JSON.stringify(d.products)},
     ${d.checkout_url ? `"checkout_url": "${d.checkout_url}",` : ''}
     "copy": "<the email body text>",
@@ -367,8 +424,8 @@ LOSS AVERSION (soft, never pressure):
 ALWAYS speak as the store team: "nosotros", "nuestro", "nos piden", "nuestro horno". NEVER as an outsider: "en [Store]", "los clientes de [Store]". You ARE the store.
 
 ═══ GLOBAL RULES ═══
-0. NEVER INVENT SENSORY DETAILS: Only describe flavors, textures, aromas, or ingredients that are explicitly in the Shopify product description, the brand profile, or obviously implied by the product name. If NO product description exists → mention ONLY the product name without adjectives. Inventing "toque ácido" for a cheesecake tells customers the product is bad.
-1. Use the customer's first name. Be specific about the product — never generic.
+0. NEVER INVENT SENSORY DETAILS: Only describe flavors, textures, aromas, or ingredients that are explicitly provided in the "Product descriptions from Shopify" block in the user prompt, or obviously implied by the product name (e.g. "chocolate" for a chocolate cake). If NO product description is provided → mention ONLY the product name without adjectives. EXAMPLES OF BANNED INVENTED DETAILS: "abrazo cítrico", "toque especial", "pura fantasía", "sabores que te transportan", "nueve sorpresas", "suavidad única". If you cannot find the detail in the provided product description, DO NOT WRITE IT.
+1. Use the customer's first name IF provided. If no name is available, start the copy directly without any greeting — NEVER use "Visitante", "Cliente", "Amigo/a", or any generic placeholder.
 2. Include at least 1 sensory detail ONLY IF confirmed from product data (texture, taste, smell, visual, how it's made).
 3. Max 1 exclamation mark in the ENTIRE copy. Max 1 emoji. Keep it short — 4 lines max.
 4. If brand voice is provided, match it exactly.

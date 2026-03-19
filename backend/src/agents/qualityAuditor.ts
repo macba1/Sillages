@@ -51,13 +51,21 @@ Also banned: any phrase with ¡...! that sounds like a TV ad.
 - reactivation_email containing "te extrañamos", "te echamos de menos", "no te hemos visto", "hace X días que no vienes/compras", "we miss you", "it's been X days" → REJECT and rewrite with a concrete reason to return (new product, availability, recommendation).
 - cart_recovery with pressure language ("tu carrito te espera", "completa tu pedido", "no te lo pierdas", urgency timers, countdown) → REJECT and rewrite focusing on product value and easy completion.
 
-═══ RULE 3: SENSORY + SPECIFIC ═══
+═══ RULE 3: SENSORY + SPECIFIC (CRITICAL — most common failure) ═══
 Every customer-facing copy must have:
 - At least 1 sensory detail (taste, smell, texture, sight): "se deshace", "huele a horno", "corteza crujiente", "ácido y dulce"
+- BUT the detail MUST come from the Shopify product description or brand profile. NEVER invent details.
+- If NO product description exists for a product → mention ONLY the product name, no adjectives.
+- BANNED INVENTED DETAILS (instant REJECT): "abrazo cítrico", "toque especial", "pura fantasía", "sabores que te transportan", "suavidad única", "nueve sorpresas", "capricho perfecto", any sensory detail not verifiable in product data.
 - The store's specific product name + a detail only true for THIS store
 If a copy could work on a competitor's page → REWRITE it.
-- "Ingredientes frescos" → FAIL (any bakery says this). "Almendra marcona molida" → PASS.
-- "Hornada fresca" → FAIL. "La hornamos cada jueves a las 7am" → PASS.
+- "Ingredientes frescos" → FAIL (any bakery says this). "Almendra marcona molida" → PASS (only if in product description).
+- "Hornada fresca" → FAIL. "La hornamos cada jueves a las 7am" → PASS (only if in brand profile).
+
+═══ RULE 3B: NO GENERIC PLACEHOLDERS ═══
+- Copy MUST NEVER address the customer as "Visitante", "Cliente", "Amigo/a", or any generic placeholder.
+- If customer name is empty, start directly with the product or message. Example: "La Caja Merienda que elegiste..." instead of "Visitante, la Caja Merienda..."
+- If you find "Visitante" or "Cliente" used as a greeting → REWRITE without it.
 
 ═══ RULE 4: SCREENSHOT TEST ═══
 Would someone screenshot this and send it to a friend saying "tenemos que probar esto"? If no → REWRITE.

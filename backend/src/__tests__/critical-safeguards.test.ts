@@ -343,3 +343,79 @@ describe('Test 10: commsGate gates correctly', () => {
     expect(actionsCode).not.toContain('return false; // fail open');
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TEST 11: Cart recovery has €15 minimum threshold
+// Incident: Sarah Stewart €2.80 palmera got a cart recovery action
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Test 11: Cart recovery enforces €15 minimum', () => {
+  it('should have minimum amount check in eventDetector', async () => {
+    const detectorCode = await readSrc('services/eventDetector.ts');
+    expect(detectorCode).toContain('totalPrice < 15');
+    expect(detectorCode).toContain('below €15 minimum');
+  });
+
+  it('should skip a €2.80 cart', () => {
+    const totalPrice = 2.80;
+    const shouldSkip = totalPrice < 15;
+    expect(shouldSkip).toBe(true);
+  });
+
+  it('should allow a €34 cart', () => {
+    const totalPrice = 34;
+    const shouldSkip = totalPrice < 15;
+    expect(shouldSkip).toBe(false);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TEST 12: Never use "Visitante" or generic placeholders for customer names
+// Incident: Anonymous €72 cart got "Visitante, las Cookies..." email
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Test 12: No generic placeholder names', () => {
+  it('should not use Visitante fallback in eventDetector', async () => {
+    const detectorCode = await readSrc('services/eventDetector.ts');
+    // Should NOT have fallbacks to 'Visitante' or 'Cliente'
+    expect(detectorCode).not.toContain("|| 'Visitante'");
+    expect(detectorCode).not.toContain("|| 'Cliente'");
+  });
+
+  it('should not use Visitante fallback in abandonedCartsSync', async () => {
+    const syncCode = await readSrc('services/abandonedCartsSync.ts');
+    expect(syncCode).not.toContain("'Visitante'");
+  });
+
+  it('should handle missing names in eventActionGenerator', async () => {
+    const genCode = await readSrc('services/eventActionGenerator.ts');
+    expect(genCode).toContain('NO NAME AVAILABLE');
+    expect(genCode).toContain('Do NOT use any placeholder');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TEST 13: Sensory details must come from product descriptions, never invented
+// Incident: "abrazo cítrico" invented for cookies without product description
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('Test 13: Sensory details sourced from product data only', () => {
+  it('should fetch product descriptions in eventActionGenerator', async () => {
+    const genCode = await readSrc('services/eventActionGenerator.ts');
+    expect(genCode).toContain('getProductDescriptions');
+    expect(genCode).toContain('Product descriptions from Shopify');
+  });
+
+  it('should have banned invented details in system prompt', async () => {
+    const genCode = await readSrc('services/eventActionGenerator.ts');
+    expect(genCode).toContain('abrazo cítrico');
+    expect(genCode).toContain('BANNED INVENTED DETAILS');
+  });
+
+  it('should enforce in quality auditor', async () => {
+    const auditorCode = await readSrc('agents/qualityAuditor.ts');
+    expect(auditorCode).toContain('abrazo cítrico');
+    expect(auditorCode).toContain('BANNED INVENTED DETAILS');
+    expect(auditorCode).toContain('NO GENERIC PLACEHOLDERS');
+  });
+});

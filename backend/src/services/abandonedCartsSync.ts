@@ -57,8 +57,8 @@ export async function syncAbandonedCarts(accountId: string): Promise<void> {
 
   for (const checkout of validCheckouts) {
     const customerName = checkout.customer
-      ? `${checkout.customer.first_name ?? ''} ${checkout.customer.last_name ?? ''}`.trim() || 'Visitante'
-      : 'Visitante';
+      ? `${checkout.customer.first_name ?? ''} ${checkout.customer.last_name ?? ''}`.trim()
+      : '';
     const customerEmail = checkout.customer?.email ?? null;
     const customerPhone = (checkout as unknown as Record<string, unknown>).phone as string | null ?? null;
 

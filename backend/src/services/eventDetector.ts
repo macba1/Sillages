@@ -203,7 +203,7 @@ async function detectNewFirstBuyers(accountId: string): Promise<DetectedEvent[]>
     const alreadyLogged = await tryLogEvent(accountId, 'new_first_buyer', key);
     if (!alreadyLogged) continue; // already detected
 
-    const name = `${order.customer!.first_name ?? ''} ${order.customer!.last_name ?? ''}`.trim() || 'Cliente';
+    const name = `${order.customer!.first_name ?? ''} ${order.customer!.last_name ?? ''}`.trim();
     const topProduct = order.line_items[0]?.title ?? '';
 
     events.push({
@@ -280,6 +280,13 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
     const email = (cart.customer_email as string) ?? '';
     if (!email) continue; // skip anonymous carts
 
+    // Skip low-value carts (not worth bothering merchant or customer)
+    const totalPrice = cart.total_price as number;
+    if (totalPrice < 15) {
+      console.log(`${LOG} Skipping cart for ${email} — €${totalPrice} below €15 minimum`);
+      continue;
+    }
+
     // Skip if customer already placed an order (they recovered on their own)
     if (recentOrderEmails.has(email.toLowerCase())) {
       console.log(`${LOG} Skipping cart for ${email} — customer already purchased`);
@@ -291,11 +298,15 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
       continue;
     }
 
+    // Resolve customer name — never use "Visitante" or generic placeholders
+    const rawName = ((cart.customer_name as string) ?? '').trim();
+    const customerName = (rawName && rawName !== 'Visitante') ? rawName : '';
+
     events.push({
       type: 'abandoned_cart',
       key,
       data: {
-        customer_name: (cart.customer_name as string) ?? 'Visitante',
+        customer_name: customerName,
         customer_email: email,
         products: (cart.products as Array<{ title: string; quantity: number; price: number; image_url?: string }>) ?? [],
         total_value: cart.total_price as number,
@@ -366,7 +377,7 @@ async function detectOverdueCustomers(accountId: string): Promise<DetectedEvent[
       const firstName = order.customer!.first_name ?? '';
       const lastName = order.customer!.last_name ?? '';
       customerMap.set(custId, {
-        name: `${firstName} ${lastName}`.trim() || 'Cliente',
+        name: `${firstName} ${lastName}`.trim(),
         email,
         orders: [],
         product_counts: new Map(),
