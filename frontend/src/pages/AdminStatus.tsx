@@ -125,16 +125,16 @@ interface PendingComm {
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const S = {
-  page: { minHeight: '100vh', background: '#0f0f1a', color: '#e0e0e0', padding: '20px 24px', fontFamily: "'DM Sans', 'SF Mono', monospace", fontSize: 13 } as const,
-  card: { background: '#1a1a2e', borderRadius: 10, border: '1px solid #2a2a40', marginBottom: 16 } as const,
-  cardHeader: { padding: '14px 18px', borderBottom: '1px solid #2a2a40', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as const,
+  page: { minHeight: '100vh', background: '#f9fafb', color: '#1f2937', padding: '20px 24px', fontFamily: "'DM Sans', 'SF Mono', monospace", fontSize: 13 } as const,
+  card: { background: '#ffffff', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' } as const,
+  cardHeader: { padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } as const,
   cardBody: { padding: '14px 18px' } as const,
-  h2: { fontSize: 15, fontWeight: 700, color: '#fff', margin: 0 } as const,
+  h2: { fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 } as const,
   badge: (bg: string, text: string) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.05em', background: bg, color: text }),
   btn: (bg: string) => ({ background: bg, color: '#fff', border: 'none', padding: '5px 12px', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: 'pointer' }),
-  tab: (active: boolean) => ({ background: active ? '#C9964A' : '#2a2a40', color: active ? '#000' : '#888', border: 'none', padding: '8px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }),
-  muted: { color: '#666', fontSize: 12 } as const,
-  label: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: '#666', marginBottom: 4 } as const,
+  tab: (active: boolean) => ({ background: active ? '#C9964A' : '#f3f4f6', color: active ? '#fff' : '#6b7280', border: active ? 'none' : '1px solid #e5e7eb', padding: '8px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }),
+  muted: { color: '#9ca3af', fontSize: 12 } as const,
+  label: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: '#9ca3af', marginBottom: 4 } as const,
 };
 
 function statusBadge(status: string) {
@@ -148,7 +148,7 @@ function statusBadge(status: string) {
     invalid: ['#dc3545', '#fff'],
     failing: ['#C9964A', '#000'],
   };
-  const [bg, text] = map[status] ?? ['#444', '#ccc'];
+  const [bg, text] = map[status] ?? ['#e5e7eb', '#374151'];
   return S.badge(bg, text);
 }
 
@@ -160,7 +160,7 @@ function channelBadge(channel: string) {
     event_push: ['#3d0066', '#e6ccff'],
     daily_summary_push: ['#004085', '#cce5ff'],
   };
-  const [bg, text] = map[channel] ?? ['#444', '#ccc'];
+  const [bg, text] = map[channel] ?? ['#e5e7eb', '#374151'];
   return S.badge(bg, text);
 }
 
@@ -289,7 +289,7 @@ export default function AdminStatus() {
   }
 
   if (loading) return <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><p>Loading...</p></div>;
-  if (error) return <div style={S.page}><h1 style={{ color: '#ff6b6b' }}>Error: {error}</h1></div>;
+  if (error) return <div style={S.page}><h1 style={{ color: '#dc2626' }}>Error: {error}</h1></div>;
   if (!data) return null;
 
   const pendingActions = actions.filter(a => a.status === 'pending');
@@ -303,13 +303,13 @@ export default function AdminStatus() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Sillages Control Panel</h1>
-          <p style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Sillages Control Panel</h1>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
             Server: {data.server_time.slice(11, 19)} UTC | Refresh: {lastRefresh.toLocaleTimeString()} | Auto: 30s
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={fetchAll} style={S.btn('#2a2a40')}>Refresh</button>
+          <button onClick={fetchAll} style={{ ...S.btn('#f3f4f6'), color: '#374151', border: '1px solid #e5e7eb' }}>Refresh</button>
         </div>
       </div>
 
@@ -317,7 +317,7 @@ export default function AdminStatus() {
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
           { label: 'Pending Actions', value: pendingActions.length, color: '#C9964A' },
-          { label: 'Pending Comms', value: pendingCommsList.length, color: pendingCommsList.length > 0 ? '#ff6b6b' : '#2D6A4F' },
+          { label: 'Pending Comms', value: pendingCommsList.length, color: pendingCommsList.length > 0 ? '#dc2626' : '#2D6A4F' },
           { label: 'Completed', value: completedActions.length, color: '#2D6A4F' },
           { label: 'Rejected', value: rejectedActions.length, color: '#721c24' },
           { label: 'Failed', value: failedActions.length, color: '#dc3545' },
@@ -353,7 +353,7 @@ export default function AdminStatus() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #2a2a40' }}>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                     {['Store', 'Email', 'Plan', 'Comms', 'Token', 'Brief', 'Push', 'Weekly', 'Pending'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
                     ))}
@@ -361,12 +361,12 @@ export default function AdminStatus() {
                 </thead>
                 <tbody>
                   {data.stores.map(store => (
-                    <tr key={store.account_id} style={{ borderBottom: '1px solid #1f1f35' }}>
+                    <tr key={store.account_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '8px 12px' }}>
-                        <div style={{ fontWeight: 600, color: '#fff', fontSize: 13 }}>{store.shop_name ?? '—'}</div>
-                        <div style={{ fontSize: 10, color: '#555' }}>{store.shop_domain ?? 'no connection'}</div>
+                        <div style={{ fontWeight: 600, color: '#111827', fontSize: 13 }}>{store.shop_name ?? '—'}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{store.shop_domain ?? 'no connection'}</div>
                       </td>
-                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#888' }}>{store.email}</td>
+                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#6b7280' }}>{store.email}</td>
                       <td style={{ padding: '8px 12px' }}><span style={statusBadge(store.subscription)}>{store.subscription}</span></td>
                       <td style={{ padding: '8px 12px' }}>
                         <button
@@ -378,24 +378,24 @@ export default function AdminStatus() {
                       </td>
                       <td style={{ padding: '8px 12px' }}>
                         <span style={statusBadge(store.token_status)}>{store.token_status}</span>
-                        {store.token_failing_since && <div style={{ fontSize: 9, color: '#ff6b6b', marginTop: 2 }}>since {timeAgo(store.token_failing_since)}</div>}
+                        {store.token_failing_since && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>since {timeAgo(store.token_failing_since)}</div>}
                       </td>
                       <td style={{ padding: '8px 12px' }}>
                         {store.last_brief_date ? (
                           <div>
-                            <span style={{ color: '#ccc', fontSize: 12 }}>{store.last_brief_date}</span>
-                            <div style={{ fontSize: 9, color: '#555' }}>{timeAgo(store.last_brief_generated_at)}</div>
+                            <span style={{ color: '#374151', fontSize: 12 }}>{store.last_brief_date}</span>
+                            <div style={{ fontSize: 9, color: '#9ca3af' }}>{timeAgo(store.last_brief_generated_at)}</div>
                           </div>
                         ) : <span style={S.muted}>—</span>}
                       </td>
                       <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                        <span style={{ color: store.push_subscriptions > 0 ? '#4caf50' : '#555', fontWeight: 700 }}>{store.push_subscriptions}</span>
+                        <span style={{ color: store.push_subscriptions > 0 ? '#4caf50' : '#9ca3af', fontWeight: 700 }}>{store.push_subscriptions}</span>
                       </td>
                       <td style={{ padding: '8px 12px' }}>
                         {store.last_weekly_week ? (
                           <div>
                             <span style={statusBadge(store.last_weekly_status ?? 'unknown')}>{store.last_weekly_status}</span>
-                            <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>{store.last_weekly_week}</div>
+                            <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>{store.last_weekly_week}</div>
                           </div>
                         ) : <span style={S.muted}>—</span>}
                       </td>
@@ -420,12 +420,12 @@ export default function AdminStatus() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {data.recent_alerts.slice(0, 10).map(alert => (
-                    <div key={alert.id} style={{ padding: '8px 12px', borderLeft: `3px solid ${alert.alert_type.includes('critical') ? '#dc3545' : '#C9964A'}`, background: '#12122a', borderRadius: 4 }}>
+                    <div key={alert.id} style={{ padding: '8px 12px', borderLeft: `3px solid ${alert.alert_type.includes('critical') ? '#dc3545' : '#C9964A'}`, background: '#f9fafb', borderRadius: 4 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: alert.alert_type.includes('critical') ? '#dc3545' : '#C9964A', textTransform: 'uppercase' }}>{alert.alert_type}</span>
-                        <span style={{ fontSize: 10, color: '#555' }}>{timeAgo(alert.sent_at)}</span>
+                        <span style={{ fontSize: 10, color: '#9ca3af' }}>{timeAgo(alert.sent_at)}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: 12, color: '#aaa', lineHeight: 1.4 }}>{alert.message}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: '#4b5563', lineHeight: 1.4 }}>{alert.message}</p>
                     </div>
                   ))}
                 </div>
@@ -469,23 +469,23 @@ export default function AdminStatus() {
                 <div style={S.cardHeader}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                     <span style={channelBadge(comm.channel)}>{comm.channel}</span>
-                    <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>
+                    <span style={{ color: '#111827', fontWeight: 600, fontSize: 13 }}>
                       {comm.shop_name ?? comm.account_email ?? comm.account_id.slice(0, 8)}
                     </span>
-                    <span style={{ color: '#555', fontSize: 11 }}>{comm.account_email}</span>
+                    <span style={{ color: '#9ca3af', fontSize: 11 }}>{comm.account_email}</span>
                   </div>
-                  <span style={{ fontSize: 10, color: '#555' }}>{shortTime(comm.created_at)}</span>
+                  <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(comm.created_at)}</span>
                 </div>
                 <div style={S.cardBody}>
                   {/* Push content preview */}
                   {comm.type === 'push' && (
                     <div style={{ marginBottom: 12 }}>
                       <div style={S.label}>Push Notification</div>
-                      <div style={{ background: '#12122a', borderRadius: 6, padding: 12, border: '1px solid #2a2a40' }}>
-                        <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, marginBottom: 4 }}>
+                      <div style={{ background: '#f9fafb', borderRadius: 6, padding: 12, border: '1px solid #e5e7eb' }}>
+                        <div style={{ fontWeight: 600, color: '#111827', fontSize: 13, marginBottom: 4 }}>
                           {(comm.content as { title?: string }).title ?? 'Push'}
                         </div>
-                        <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.5 }}>
+                        <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
                           {(comm.content as { body?: string }).body ?? ''}
                         </div>
                       </div>
@@ -496,7 +496,7 @@ export default function AdminStatus() {
                   {comm.type === 'weekly_email' && (
                     <div style={{ marginBottom: 12 }}>
                       <div style={S.label}>Weekly Email</div>
-                      <p style={{ fontSize: 12, color: '#ccc' }}>
+                      <p style={{ fontSize: 12, color: '#374151' }}>
                         Brief ID: {(comm.content as { weekly_brief_id?: string }).weekly_brief_id ?? '—'}
                       </p>
                     </div>
@@ -505,13 +505,13 @@ export default function AdminStatus() {
                   {/* Raw JSON */}
                   <details style={{ marginBottom: 12 }}>
                     <summary style={{ ...S.label, cursor: 'pointer', userSelect: 'none' }}>Raw Content</summary>
-                    <pre style={{ background: '#12122a', borderRadius: 6, padding: 12, fontSize: 10, color: '#666', overflow: 'auto', maxHeight: 200, border: '1px solid #2a2a40', marginTop: 6 }}>
+                    <pre style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 200, border: '1px solid #e5e7eb', marginTop: 6 }}>
                       {JSON.stringify(comm.content, null, 2)}
                     </pre>
                   </details>
 
                   {/* Approve / Reject */}
-                  <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #2a2a40' }}>
+                  <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
                     <button
                       onClick={() => handleCommApprove(comm.id)}
                       disabled={actionLoading === comm.id}
@@ -539,11 +539,11 @@ export default function AdminStatus() {
               <div style={S.cardBody}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {pendingComms.filter(c => c.status !== 'pending').slice(0, 20).map(c => (
-                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1f1f35' }}>
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
                       <span style={statusBadge(c.status)}>{c.status}</span>
                       <span style={channelBadge(c.channel)}>{c.channel}</span>
-                      <span style={{ color: '#ccc', fontSize: 12, flex: 1 }}>{c.shop_name ?? c.account_email}</span>
-                      <span style={{ fontSize: 10, color: '#555' }}>{shortTime(c.approved_at ?? c.created_at)}</span>
+                      <span style={{ color: '#374151', fontSize: 12, flex: 1 }}>{c.shop_name ?? c.account_email}</span>
+                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(c.approved_at ?? c.created_at)}</span>
                     </div>
                   ))}
                 </div>
@@ -628,12 +628,12 @@ export default function AdminStatus() {
                       {steps.map(s => (
                         <div key={s.label}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                            <span style={{ fontSize: 11, color: '#ccc' }}>{s.label}</span>
-                            <span style={{ fontSize: 11, color: '#888' }}>
+                            <span style={{ fontSize: 11, color: '#374151' }}>{s.label}</span>
+                            <span style={{ fontSize: 11, color: '#6b7280' }}>
                               {s.value} {emailFunnel.sent > 0 ? `(${Math.round(s.value / emailFunnel.sent * 100)}%)` : ''}
                             </span>
                           </div>
-                          <div style={{ background: '#12122a', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                          <div style={{ background: '#f9fafb', borderRadius: 4, height: 8, overflow: 'hidden' }}>
                             <div style={{ background: s.color, height: '100%', width: `${(s.value / max) * 100}%`, borderRadius: 4, transition: 'width 0.3s' }} />
                           </div>
                         </div>
@@ -672,7 +672,7 @@ export default function AdminStatus() {
                 </div>
                 {recoveryStats.total_carts > 0 && (
                   <div style={{ marginTop: 12, textAlign: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#888' }}>
+                    <span style={{ fontSize: 12, color: '#6b7280' }}>
                       Recovery rate: {Math.round(recoveryStats.recovered / recoveryStats.total_carts * 100)}%
                     </span>
                   </div>
@@ -687,7 +687,7 @@ export default function AdminStatus() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #2a2a40' }}>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
                     {['Time', 'Store', 'Channel', 'Status', 'Delivered', 'Opened', 'Clicked', 'Error'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
                     ))}
@@ -695,24 +695,24 @@ export default function AdminStatus() {
                 </thead>
                 <tbody>
                   {emailLogs.map((log, i) => (
-                    <tr key={`${log.id ?? i}`} style={{ borderBottom: '1px solid #1f1f35' }}>
-                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#888' }}>{shortTime(log.sent_at)}</td>
+                    <tr key={`${log.id ?? i}`} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '8px 12px', fontSize: 11, color: '#6b7280' }}>{shortTime(log.sent_at)}</td>
                       <td style={{ padding: '8px 12px' }}>
-                        <div style={{ fontSize: 12, color: '#ccc' }}>{log.shop_name ?? '—'}</div>
-                        <div style={{ fontSize: 10, color: '#555' }}>{log.account_email}</div>
+                        <div style={{ fontSize: 12, color: '#374151' }}>{log.shop_name ?? '—'}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{log.account_email}</div>
                       </td>
                       <td style={{ padding: '8px 12px' }}><span style={channelBadge(log.channel)}>{log.channel}</span></td>
                       <td style={{ padding: '8px 12px' }}>
                         <span style={statusBadge(log.bounced_at ? 'failed' : log.status)}>{log.bounced_at ? 'bounced' : log.status}</span>
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11 }}>
-                        {log.delivered_at ? <span style={{ color: '#2D6A4F' }}>{shortTime(log.delivered_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                        {log.delivered_at ? <span style={{ color: '#2D6A4F' }}>{shortTime(log.delivered_at)}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11 }}>
-                        {log.opened_at ? <span style={{ color: '#C9964A' }}>{shortTime(log.opened_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                        {log.opened_at ? <span style={{ color: '#C9964A' }}>{shortTime(log.opened_at)}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11 }}>
-                        {log.clicked_at ? <span style={{ color: '#8B5CF6' }}>{shortTime(log.clicked_at)}</span> : <span style={{ color: '#444' }}>—</span>}
+                        {log.clicked_at ? <span style={{ color: '#8B5CF6' }}>{shortTime(log.clicked_at)}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11, color: '#dc3545', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {log.error_message ?? ''}
@@ -749,14 +749,14 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           <span style={statusBadge(action.type === 'cart_recovery' ? 'failing' : action.type === 'welcome_email' ? 'healthy' : 'pending')}>
             {action.type.replace(/_/g, ' ')}
           </span>
-          <span style={{ color: '#fff', fontWeight: 600, fontSize: 13 }}>{action.title}</span>
-          <span style={{ color: '#555', fontSize: 11 }}>
+          <span style={{ color: '#111827', fontWeight: 600, fontSize: 13 }}>{action.title}</span>
+          <span style={{ color: '#9ca3af', fontSize: 11 }}>
             {action.shop_name ?? action.shop_domain ?? '—'}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, color: '#555' }}>{shortTime(action.created_at)}</span>
-          <span style={{ color: '#555', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
+          <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(action.created_at)}</span>
+          <span style={{ color: '#9ca3af', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
         </div>
       </div>
 
@@ -765,7 +765,7 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           {/* Description */}
           <div style={{ marginBottom: 12 }}>
             <div style={S.label}>Description</div>
-            <p style={{ margin: 0, fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>{action.description}</p>
+            <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{action.description}</p>
           </div>
 
           {/* Recipient info */}
@@ -773,13 +773,13 @@ function ActionCard({ action, loading, onApprove, onReject }: {
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Recipient</div>
               {Boolean(content.customer_email) ? (
-                <p style={{ margin: 0, fontSize: 13, color: '#ccc' }}>
+                <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
                   {String(content.customer_name ?? '')} &lt;{String(content.customer_email)}&gt;
                 </p>
               ) : recipients ? (
                 <div>
                   {recipients.map((r, i) => (
-                    <p key={i} style={{ margin: 0, fontSize: 12, color: '#ccc' }}>{r.name} &lt;{r.email}&gt;</p>
+                    <p key={i} style={{ margin: 0, fontSize: 12, color: '#374151' }}>{r.name} &lt;{r.email}&gt;</p>
                   ))}
                 </div>
               ) : <p style={S.muted}>No recipient specified</p>}
@@ -790,7 +790,7 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           {Boolean(content.copy) && (
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Copy</div>
-              <div style={{ background: '#12122a', borderRadius: 6, padding: 12, fontSize: 12, color: '#aaa', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #2a2a40' }}>
+              <div style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 12, color: '#4b5563', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #e5e7eb' }}>
                 {String(content.copy)}
               </div>
             </div>
@@ -801,7 +801,7 @@ function ActionCard({ action, loading, onApprove, onReject }: {
             <div style={{ marginBottom: 12 }}>
               <div style={S.label}>Products</div>
               {(content.products as Array<{ title: string; quantity: number; price: number }>).map((p, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#ccc' }}>
+                <div key={i} style={{ fontSize: 12, color: '#374151' }}>
                   {p.title} x{p.quantity} — {p.price}
                 </div>
               ))}
@@ -816,13 +816,13 @@ function ActionCard({ action, loading, onApprove, onReject }: {
           {/* Full content JSON (collapsible) */}
           <details style={{ marginBottom: 12 }}>
             <summary style={{ ...S.label, cursor: 'pointer', userSelect: 'none' }}>Raw Content JSON</summary>
-            <pre style={{ background: '#12122a', borderRadius: 6, padding: 12, fontSize: 10, color: '#666', overflow: 'auto', maxHeight: 200, border: '1px solid #2a2a40', marginTop: 6 }}>
+            <pre style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 200, border: '1px solid #e5e7eb', marginTop: 6 }}>
               {JSON.stringify(content, null, 2)}
             </pre>
           </details>
 
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #2a2a40' }}>
+          <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
             <button
               onClick={onApprove}
               disabled={loading}
@@ -850,29 +850,29 @@ function ActivityRow({ action }: { action: AdminAction }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div style={{ background: '#12122a', borderRadius: 6, border: '1px solid #1f1f35' }}>
+    <div style={{ background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
       <div
         style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
         onClick={() => setExpanded(!expanded)}
       >
         <span style={statusBadge(action.status)}>{action.status}</span>
         <span style={statusBadge(action.type)}>{action.type.replace(/_/g, ' ')}</span>
-        <span style={{ color: '#ccc', fontSize: 12, flex: 1 }}>{action.title}</span>
-        <span style={{ color: '#555', fontSize: 11 }}>{action.shop_name ?? '—'}</span>
-        <span style={{ color: '#555', fontSize: 10 }}>
+        <span style={{ color: '#374151', fontSize: 12, flex: 1 }}>{action.title}</span>
+        <span style={{ color: '#9ca3af', fontSize: 11 }}>{action.shop_name ?? '—'}</span>
+        <span style={{ color: '#9ca3af', fontSize: 10 }}>
           {shortTime(action.executed_at ?? action.created_at)}
         </span>
-        <span style={{ color: '#555', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
+        <span style={{ color: '#9ca3af', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
       </div>
 
       {expanded && (
-        <div style={{ padding: '8px 12px', borderTop: '1px solid #1f1f35' }}>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>{action.description}</div>
+        <div style={{ padding: '8px 12px', borderTop: '1px solid #f3f4f6' }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>{action.description}</div>
 
           {Boolean(action.content?.copy) && (
             <div style={{ marginBottom: 8 }}>
               <div style={S.label}>Copy</div>
-              <div style={{ background: '#0f0f1a', borderRadius: 4, padding: 8, fontSize: 11, color: '#888', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              <div style={{ background: '#f3f4f6', borderRadius: 4, padding: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                 {String(action.content.copy)}
               </div>
             </div>
@@ -881,7 +881,7 @@ function ActivityRow({ action }: { action: AdminAction }) {
           {action.result && (
             <div>
               <div style={S.label}>Result</div>
-              <pre style={{ background: '#0f0f1a', borderRadius: 4, padding: 8, fontSize: 10, color: '#666', overflow: 'auto', maxHeight: 150 }}>
+              <pre style={{ background: '#f3f4f6', borderRadius: 4, padding: 8, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 150 }}>
                 {JSON.stringify(action.result, null, 2)}
               </pre>
             </div>
