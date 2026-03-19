@@ -584,6 +584,29 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     auto_fixed: totalFixed > 0,
   });
 
+  // ── Clean up stale "X acciones listas" summary pushes when actions were resolved ──
+  if (totalFixed > 0) {
+    const { data: summaryComms } = await supabase
+      .from('pending_comms')
+      .select('id, content')
+      .eq('status', 'pending')
+      .eq('type', 'push');
+
+    if (summaryComms && summaryComms.length > 0) {
+      const staleSummaryIds = summaryComms
+        .filter(c => {
+          const body = (c.content as Record<string, unknown>)?.body as string ?? '';
+          return body.includes('acciones listas');
+        })
+        .map(c => c.id);
+
+      if (staleSummaryIds.length > 0) {
+        await supabase.from('pending_comms').update({ status: 'rejected' }).in('id', staleSummaryIds);
+        console.log(`${LOG} CASCADE: Rejected ${staleSummaryIds.length} stale "acciones listas" summary push(es)`);
+      }
+    }
+  }
+
   // ── Stale actions > 48h — send push reminder ──
   const fortyEightHoursAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
   const { data: staleActions } = await supabase
@@ -681,6 +704,7 @@ async function rejectAction(actionId: string, reason: string): Promise<void> {
     status: 'rejected',
     result: { auto_rejected: true, reason, rejected_by: 'orchestrator' },
   }).eq('id', actionId);
+  await cascadeRejectComms(actionId);
   console.log(`${LOG} AUTO-REJECT: ${actionId} — ${reason}`);
 }
 
@@ -690,7 +714,29 @@ async function skipAction(actionId: string, reason: string): Promise<void> {
     status: 'completed', executed_at: new Date().toISOString(),
     result: { skipped: true, reason, auto_cleanup: true },
   }).eq('id', actionId);
+  await cascadeRejectComms(actionId);
   console.log(`${LOG} AUTO-SKIP: ${actionId} — ${reason}`);
+}
+
+// ── Helper: reject any pending_comms that reference a rejected/skipped action ──
+async function cascadeRejectComms(actionId: string): Promise<void> {
+  // pending_comms links to actions via content.url containing the action ID
+  const { data: comms } = await supabase
+    .from('pending_comms')
+    .select('id, content')
+    .eq('status', 'pending');
+
+  if (!comms || comms.length === 0) return;
+
+  const toReject = comms.filter(c => {
+    const url = (c.content as Record<string, unknown>)?.url as string;
+    return url && url.includes(actionId);
+  }).map(c => c.id);
+
+  if (toReject.length > 0) {
+    await supabase.from('pending_comms').update({ status: 'rejected' }).in('id', toReject);
+    console.log(`${LOG} CASCADE: Rejected ${toReject.length} pending_comms for action ${actionId}`);
+  }
 }
 
 // ── Helper: regenerate action copy when data is valid but content is bad ──
