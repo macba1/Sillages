@@ -462,7 +462,7 @@ describe('Test 14: Orchestrator guardian verifies all actions', () => {
     expect(code).toContain('BANNED_NAMES');
     expect(code).toContain('visitante');
     expect(code).toContain('cliente');
-    expect(code).toContain('inventedPhrases');
+    expect(code).toContain('INVENTED_PHRASES');
     expect(code).toContain('abrazo cítrico');
     expect(code).toContain('rejected_placeholder_name');
     expect(code).toContain('rejected_invented_copy');

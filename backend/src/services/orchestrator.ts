@@ -5,8 +5,11 @@ import { resend } from '../lib/resend.js';
 import { buildCartRecoveryEmail } from './emailTemplates.js';
 import type { BrandConfig } from './emailTemplates.js';
 import { gatePush } from './commsGate.js';
+import { generateEventAction } from './eventActionGenerator.js';
+import type { DetectedEvent, AbandonedCartData, NewFirstBuyerData, OverdueCustomerData } from './eventDetector.js';
 
 const LOG = '[orchestrator]';
+const MAX_REGENERATIONS = 2;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -205,6 +208,13 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const CART_MIN_AMOUNT = 15;
   const BANNED_NAMES = ['visitante', 'cliente', 'amigo', 'amiga'];
+  const INVENTED_PHRASES = [
+    'abrazo cítrico', 'abrazo dulce', 'explosión de sabor', 'pura fantasía',
+    'sabores que te transportan', 'toque especial', 'nueve sorpresas',
+    'suavidad única', 'capricho perfecto', 'experiencia única',
+    'te transporta', 'un clásico reinventado', 'contiene nueve sorpresas',
+    'pura delicia', 'te hará soñar', 'magia en cada bocado',
+  ];
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
 
   // ── Load ALL pending actions at once ──────────────────────────────────────
@@ -240,6 +250,7 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   let crossActionResolved = 0;
   let contentFixedName = 0;
   let contentRejectedCopy = 0;
+  let contentRegenerated = 0;
   let welcomesExpired = 0;
   let duplicatesSkipped = 0;
 
@@ -381,8 +392,9 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
 
       if (nameIsBanned || copyStartsWithBanned) {
-        await rejectAction(action.id, `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`);
-        contentFixedName++;
+        const reason = `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`;
+        const regen = await tryRegenerate(action, accountId, conn, reason);
+        if (regen) contentRegenerated++; else contentFixedName++;
         continue;
       }
     }
@@ -445,8 +457,9 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
 
       if (nameIsBanned || copyStartsWithBanned) {
-        await rejectAction(action.id, `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`);
-        contentFixedName++;
+        const reason = `Copy usa placeholder "${customerName || 'Visitante'}". Nombre genérico prohibido.`;
+        const regen = await tryRegenerate(action, accountId, conn, reason);
+        if (regen) contentRegenerated++; else contentFixedName++;
         continue;
       }
     }
@@ -465,8 +478,9 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
         const hasBannedName = recipients.some(r =>
           r.name && BANNED_NAMES.includes(r.name.toLowerCase()));
         if (hasBannedName) {
-          await rejectAction(action.id, 'Reactivation usa nombre genérico prohibido.');
-          contentFixedName++;
+          const reason = 'Reactivation usa nombre genérico prohibido.';
+          const regen = await tryRegenerate(action, accountId, conn, reason);
+          if (regen) contentRegenerated++; else contentFixedName++;
           continue;
         }
       }
@@ -474,8 +488,9 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       // Check copy doesn't start with banned placeholder
       const copyStartsWithBanned = BANNED_NAMES.some(b => copyText.toLowerCase().startsWith(b));
       if (copyStartsWithBanned) {
-        await rejectAction(action.id, 'Copy empieza con placeholder genérico.');
-        contentFixedName++;
+        const reason = 'Copy empieza con placeholder genérico.';
+        const regen = await tryRegenerate(action, accountId, conn, reason);
+        if (regen) contentRegenerated++; else contentFixedName++;
         continue;
       }
     }
@@ -486,7 +501,7 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     // Re-fetch remaining pending actions for this account (some may have been rejected above)
     const { data: remainingActions } = await supabase
       .from('pending_actions')
-      .select('id, type, content')
+      .select('id, type, content, created_at')
       .eq('account_id', accountId)
       .eq('status', 'pending')
       .in('type', ['cart_recovery', 'welcome_email', 'reactivation_email']);
@@ -496,16 +511,11 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       const copyText = (content.copy as string) ?? '';
 
       // Check for invented sensory details (common AI hallucinations)
-      const inventedPhrases = [
-        'abrazo cítrico', 'abrazo dulce', 'explosión de sabor', 'pura fantasía',
-        'sabores que te transportan', 'toque especial', 'nueve sorpresas',
-        'suavidad única', 'capricho perfecto', 'experiencia única',
-        'te transporta', 'un clásico reinventado',
-      ];
-      const foundInvented = inventedPhrases.filter(p => copyText.toLowerCase().includes(p));
+      const foundInvented = INVENTED_PHRASES.filter(p => copyText.toLowerCase().includes(p));
       if (foundInvented.length > 0) {
-        await rejectAction(action.id, `Copy inventa detalles sensoriales: "${foundInvented.join('", "')}". Solo usar datos de Shopify.`);
-        contentRejectedCopy++;
+        const reason = `Copy inventa detalles sensoriales: "${foundInvented.join('", "')}". Solo usar datos de Shopify.`;
+        const regen = await tryRegenerate(action, accountId, conn, reason);
+        if (regen) contentRegenerated++; else contentRejectedCopy++;
       }
     }
   }
@@ -541,8 +551,9 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
   // ══════════════════════════════════════════════════════════════════════════
   const totalFixed = cartsSkippedPurchased + cartsExpired + cartsRejectedAmount +
     cartsRejectedNoEmail + cartsRejectedRecentEmail + crossActionResolved +
-    contentFixedName + contentRejectedCopy + welcomesRejectedFalsePositive +
-    welcomesRejectedDuplicate + welcomesExpired + duplicatesSkipped;
+    contentFixedName + contentRejectedCopy + contentRegenerated +
+    welcomesRejectedFalsePositive + welcomesRejectedDuplicate + welcomesExpired +
+    duplicatesSkipped;
 
   results.push({
     check_type: 'data_integrity', check_name: 'action_guardian',
@@ -564,6 +575,7 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       },
       cross_action: { resolved: crossActionResolved },
       content: {
+        regenerated: contentRegenerated,
         rejected_placeholder_name: contentFixedName,
         rejected_invented_copy: contentRejectedCopy,
       },
@@ -679,6 +691,117 @@ async function skipAction(actionId: string, reason: string): Promise<void> {
     result: { skipped: true, reason, auto_cleanup: true },
   }).eq('id', actionId);
   console.log(`${LOG} AUTO-SKIP: ${actionId} — ${reason}`);
+}
+
+// ── Helper: regenerate action copy when data is valid but content is bad ──
+// Returns true if regeneration was triggered, false if max retries exhausted
+async function tryRegenerate(
+  action: { id: string; type: string; content: unknown; created_at: string },
+  accountId: string,
+  conn: { shop_domain: string; access_token: string },
+  failReason: string,
+): Promise<boolean> {
+  const content = action.content as Record<string, unknown>;
+  const regenCount = (content.regeneration_count as number) ?? 0;
+
+  if (regenCount >= MAX_REGENERATIONS) {
+    await rejectAction(action.id, `${failReason} (${regenCount} regeneraciones fallidas — límite alcanzado)`);
+    return false;
+  }
+
+  console.log(`${LOG} REGENERATING: ${action.id} (attempt ${regenCount + 1}/${MAX_REGENERATIONS}) — ${failReason}`);
+
+  // Reject the old action first
+  await supabase.from('pending_actions').update({
+    status: 'rejected',
+    result: { auto_rejected: true, reason: failReason, regenerating: true, rejected_by: 'orchestrator' },
+  }).eq('id', action.id);
+
+  // Get account language and store info
+  const { data: acc } = await supabase
+    .from('accounts').select('language').eq('id', accountId).single();
+  const { data: shopConn } = await supabase
+    .from('shopify_connections').select('shop_name, shop_currency').eq('account_id', accountId).maybeSingle();
+
+  const language = (acc?.language ?? 'es') as 'en' | 'es';
+  const storeName = shopConn?.shop_name ?? 'Store';
+  const currency = shopConn?.shop_currency ?? 'EUR';
+
+  // Reconstruct the event from the action content
+  let event: DetectedEvent;
+
+  try {
+    if (action.type === 'cart_recovery') {
+      const products = (content.products as AbandonedCartData['products']) ?? [];
+      event = {
+        type: 'abandoned_cart',
+        key: `regen:cart:${content.customer_email}:${Date.now()}`,
+        data: {
+          customer_name: (content.customer_name as string) ?? '',
+          customer_email: (content.customer_email as string) ?? '',
+          products,
+          total_value: (content.total_value as number) ?? products.reduce((s, p) => s + p.price * p.quantity, 0),
+          checkout_url: (content.checkout_url as string) ?? '',
+          checkout_id: (content.checkout_id as string) ?? '',
+        } as AbandonedCartData,
+      };
+    } else if (action.type === 'welcome_email') {
+      event = {
+        type: 'new_first_buyer',
+        key: `regen:welcome:${content.customer_email}:${Date.now()}`,
+        data: {
+          customer_name: (content.customer_name as string) ?? '',
+          customer_email: (content.customer_email as string) ?? '',
+          product_purchased: (content.product_purchased as string) ?? '',
+          order_total: (content.order_total as number) ?? 0,
+          order_id: (content.order_id as string) ?? '',
+          order_created_at: (content.order_created_at as string) ?? new Date().toISOString(),
+        } as NewFirstBuyerData,
+      };
+    } else if (action.type === 'reactivation_email') {
+      const recipients = (content.recipients as Array<{ email: string; name: string; last_product: string }>) ?? [];
+      const first = recipients[0];
+      event = {
+        type: 'overdue_customer',
+        key: `regen:react:${first?.email ?? ''}:${Date.now()}`,
+        data: {
+          customer_name: first?.name ?? '',
+          customer_email: first?.email ?? '',
+          last_product: first?.last_product ?? '',
+          days_since: 0,
+          usual_cycle_days: 0,
+          total_spent: 0,
+        } as OverdueCustomerData,
+      };
+    } else {
+      await rejectAction(action.id, `${failReason} (tipo desconocido para regenerar: ${action.type})`);
+      return false;
+    }
+
+    // Generate new action — this creates a new pending_actions row
+    const newActionId = await generateEventAction(accountId, event, language, storeName, currency);
+
+    if (newActionId) {
+      // Tag the new action with the regeneration count so we track retries
+      await supabase.from('pending_actions').update({
+        content: {
+          ...(await supabase.from('pending_actions').select('content').eq('id', newActionId).single()).data?.content as Record<string, unknown>,
+          regeneration_count: regenCount + 1,
+          regenerated_from: action.id,
+          regeneration_reason: failReason,
+        },
+      }).eq('id', newActionId);
+
+      console.log(`${LOG} REGENERATED: ${action.id} → ${newActionId} (attempt ${regenCount + 1})`);
+      return true;
+    } else {
+      console.error(`${LOG} REGENERATION FAILED: ${action.id} — generateEventAction returned null`);
+      return false;
+    }
+  } catch (err) {
+    console.error(`${LOG} REGENERATION ERROR: ${action.id} — ${(err as Error).message}`);
+    return false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

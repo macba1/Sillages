@@ -56,7 +56,7 @@ Every customer-facing copy must have:
 - At least 1 sensory detail (taste, smell, texture, sight): "se deshace", "huele a horno", "corteza crujiente", "ácido y dulce"
 - BUT the detail MUST come from the Shopify product description or brand profile. NEVER invent details.
 - If NO product description exists for a product → mention ONLY the product name, no adjectives.
-- BANNED INVENTED DETAILS (instant REJECT): "abrazo cítrico", "toque especial", "pura fantasía", "sabores que te transportan", "suavidad única", "nueve sorpresas", "capricho perfecto", any sensory detail not verifiable in product data.
+- BANNED INVENTED DETAILS (instant REJECT): "abrazo cítrico", "abrazo dulce", "toque especial", "pura fantasía", "pura delicia", "sabores que te transportan", "suavidad única", "nueve sorpresas", "capricho perfecto", "experiencia única", "te transporta", "un clásico reinventado", "contiene nueve sorpresas", "te hará soñar", "magia en cada bocado", "explosión de sabor" — any sensory detail not verifiable in product data.
 - The store's specific product name + a detail only true for THIS store
 If a copy could work on a competitor's page → REWRITE it.
 - "Ingredientes frescos" → FAIL (any bakery says this). "Almendra marcona molida" → PASS (only if in product description).
