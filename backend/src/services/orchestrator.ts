@@ -748,6 +748,12 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
           if (actionId) {
             orphansRecovered++;
             console.log(`${LOG} ORPHAN RECOVERED: ${orphan.event_key} → action ${actionId}`);
+
+            // Create push so merchant sees the new action
+            const newAction = await supabase.from('pending_actions').select('type, content').eq('id', actionId).single();
+            if (newAction.data) {
+              await createActionPush(orphan.account_id, actionId, newAction.data);
+            }
           } else {
             orphansFailed++;
             console.warn(`${LOG} ORPHAN RETRY FAILED: ${orphan.event_key} — generateEventAction returned null`);
@@ -837,6 +843,49 @@ async function cascadeRejectComms(actionId: string): Promise<void> {
   if (toReject.length > 0) {
     await supabase.from('pending_comms').update({ status: 'rejected' }).in('id', toReject);
     console.log(`${LOG} CASCADE: Rejected ${toReject.length} pending_comms for action ${actionId}`);
+  }
+}
+
+// ── Helper: create push notification so merchant sees the new action ──
+async function createActionPush(
+  accountId: string,
+  actionId: string,
+  action: { type: string; content: unknown },
+): Promise<void> {
+  const content = action.content as Record<string, unknown>;
+  const customerName = (content.customer_name as string) || 'Cliente';
+  const products = content.products as Array<{ title: string; price: number }> | undefined;
+  const totalValue = products?.reduce((s, p) => s + (p.price ?? 0), 0) ?? 0;
+  const productNames = products?.map(p => p.title).join(', ') ?? '';
+
+  // Get store name
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('shop_name')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  const storeName = conn?.shop_name ?? 'Sillages';
+
+  let body = '';
+  if (action.type === 'cart_recovery') {
+    body = `${customerName} dejó €${totalValue.toFixed(0)} en su carrito (${productNames}). ¿La recuperamos?`;
+  } else if (action.type === 'welcome_email') {
+    body = `${customerName} compró por primera vez. ¿Le mandamos un agradecimiento?`;
+  } else if (action.type === 'reactivation_email') {
+    body = `${customerName} no compra desde hace tiempo. ¿Le escribimos?`;
+  } else {
+    body = `Nueva acción pendiente: ${action.type}`;
+  }
+
+  try {
+    await gatePush(accountId, {
+      title: storeName,
+      body,
+      url: `/actions?highlight=${actionId}`,
+    }, 'event_push');
+    console.log(`${LOG} PUSH CREATED for action ${actionId}`);
+  } catch (err) {
+    console.warn(`${LOG} PUSH FAILED for action ${actionId}: ${(err as Error).message}`);
   }
 }
 
@@ -940,6 +989,13 @@ async function tryRegenerate(
       }).eq('id', newActionId);
 
       console.log(`${LOG} REGENERATED: ${action.id} → ${newActionId} (attempt ${regenCount + 1})`);
+
+      // Create push so merchant sees the new action
+      const newAction = await supabase.from('pending_actions').select('type, content').eq('id', newActionId).single();
+      if (newAction.data) {
+        await createActionPush(accountId, newActionId, newAction.data);
+      }
+
       return true;
     } else {
       console.error(`${LOG} REGENERATION FAILED: ${action.id} — generateEventAction returned null`);

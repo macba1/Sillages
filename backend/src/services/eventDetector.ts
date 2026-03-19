@@ -239,7 +239,7 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
     .or('recovered.is.null,recovered.eq.false')
     .gte('abandoned_at', sevenDaysAgo)
     .order('abandoned_at', { ascending: false })
-    .limit(10);
+    .limit(50);
 
   if (!carts || carts.length === 0) return [];
 
