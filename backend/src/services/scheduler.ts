@@ -133,10 +133,7 @@ async function runEventLoop(): Promise<void> {
   }
 }
 
-// Max event push notifications per day per merchant (daily_summary doesn't count)
-const MAX_EVENT_PUSHES_PER_DAY = 2;
-
-// Priority order for push notifications: higher priority events get sent first
+// Priority order for events: higher priority events get processed first
 const EVENT_PRIORITY: Record<string, number> = {
   abandoned_cart: 1,    // highest — money on the table
   new_first_buyer: 2,
@@ -175,23 +172,6 @@ async function processEventsForAccount(accountId: string): Promise<void> {
     (EVENT_PRIORITY[a.type] ?? 99) - (EVENT_PRIORITY[b.type] ?? 99),
   );
 
-  // 6. Check how many event pushes were already sent today
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const { count: pushesToday } = await supabase
-    .from('email_log')
-    .select('*', { count: 'exact', head: true })
-    .eq('account_id', accountId)
-    .eq('channel', 'event_push')
-    .eq('status', 'sent')
-    .gte('sent_at', todayStart.toISOString());
-
-  const pushesRemaining = MAX_EVENT_PUSHES_PER_DAY - (pushesToday ?? 0);
-
-  if (pushesRemaining <= 0) {
-    console.log(`[scheduler] [${accountId}] Already sent ${pushesToday} event pushes today — max ${MAX_EVENT_PUSHES_PER_DAY}/day. Actions still generated, push deferred.`);
-  }
-
   // Load Shopify connection for real-time purchase checks
   const { data: shopConn } = await supabase
     .from('shopify_connections')
@@ -199,8 +179,8 @@ async function processEventsForAccount(accountId: string): Promise<void> {
     .eq('account_id', accountId)
     .maybeSingle();
 
-  // 7. Generate actions for ALL events, but only send push for top priority ones
-  let pushesSent = 0;
+  // 6. Generate actions for ALL events (no individual pushes — one grouped push at the end)
+  let actionsGenerated = 0;
 
   for (const event of sortedEvents) {
     // ── PRE-CHECK: For abandoned carts, verify customer hasn't purchased since detection ──
@@ -219,7 +199,6 @@ async function processEventsForAccount(accountId: string): Promise<void> {
         );
         if (alreadyBought) {
           console.log(`[scheduler] [${accountId}] SKIP ${cartData.customer_name} — already purchased. No action created.`);
-          // Mark cart as recovered
           await supabase
             .from('abandoned_carts')
             .update({ recovered: true, recovered_at: new Date().toISOString(), recovery_attribution: 'organic' })
@@ -229,7 +208,6 @@ async function processEventsForAccount(accountId: string): Promise<void> {
           continue;
         }
       } catch (err) {
-        // Fail-closed: if we can't verify, skip the action (don't risk sending a bad push)
         console.warn(`[scheduler] [${accountId}] Cannot verify purchase for ${cartData.customer_email} — skipping (fail-closed): ${(err as Error).message}`);
         continue;
       }
@@ -238,75 +216,28 @@ async function processEventsForAccount(accountId: string): Promise<void> {
     const actionId = await generateEventAction(accountId, event, lang, storeName, currency);
     if (!actionId) continue;
 
-    // Send push only if we haven't hit the daily limit
-    if (pushesSent < pushesRemaining) {
-      const push = buildEventPush(event, lang, storeName, currency, actionId);
+    actionsGenerated++;
 
-      try {
-        const result = await gatePush(accountId, push, 'event_push');
-        pushesSent++;
-        console.log(`[scheduler] [${accountId}] Push ${pushesSent}/${MAX_EVENT_PUSHES_PER_DAY} ${result.sent ? 'sent' : 'queued'}: ${event.type}`);
-
-        // Mark push as sent in event_log
-        await supabase
-          .from('event_log')
-          .update({ push_sent: true })
-          .eq('account_id', accountId)
-          .eq('event_key', event.key);
-      } catch (pushErr) {
-        console.warn(`[scheduler] [${accountId}] Push failed: ${(pushErr as Error).message}`);
-      }
-    } else {
-      console.log(`[scheduler] [${accountId}] Action generated for ${event.type} — push deferred (daily limit reached)`);
-    }
+    // Mark in event_log
+    await supabase
+      .from('event_log')
+      .update({ push_sent: true })
+      .eq('account_id', accountId)
+      .eq('event_key', event.key);
   }
-}
 
-// ── Build event-specific push notification ──────────────────────────────
+  // 7. Send ONE grouped push for all new actions (commsGate enforces daily limits)
+  if (actionsGenerated > 0) {
+    const isEs = lang === 'es';
+    const body = actionsGenerated === 1
+      ? (isEs ? 'Tienes 1 acción lista para revisar.' : 'You have 1 action ready to review.')
+      : (isEs ? `Tienes ${actionsGenerated} acciones listas para revisar.` : `You have ${actionsGenerated} actions ready to review.`);
 
-function buildEventPush(
-  event: import('./eventDetector.js').DetectedEvent,
-  lang: 'en' | 'es',
-  storeName: string,
-  currency: string,
-  actionId: string,
-): { title: string; body: string; url: string } {
-  const isEs = lang === 'es';
-  const cs = currency === 'EUR' ? '€' : '$';
-
-  switch (event.type) {
-    case 'new_first_buyer': {
-      const d = event.data as import('./eventDetector.js').NewFirstBuyerData;
-      return {
-        title: storeName,
-        body: isEs
-          ? `${d.customer_name} compró ${d.product_purchased} por primera vez. ¿Le mandamos un agradecimiento?`
-          : `${d.customer_name} bought ${d.product_purchased} for the first time. Send a thank you?`,
-        url: `/actions?highlight=${actionId}`,
-      };
-    }
-
-    case 'abandoned_cart': {
-      const d = event.data as import('./eventDetector.js').AbandonedCartData;
-      const productNames = d.products.map(p => p.title).join(', ');
-      return {
-        title: storeName,
-        body: isEs
-          ? `${d.customer_name} dejó ${cs}${d.total_value.toFixed(0)} en su carrito (${productNames}). ¿La recuperamos?`
-          : `${d.customer_name} left ${cs}${d.total_value.toFixed(0)} in their cart (${productNames}). Recover it?`,
-        url: `/actions?highlight=${actionId}`,
-      };
-    }
-
-    case 'overdue_customer': {
-      const d = event.data as import('./eventDetector.js').OverdueCustomerData;
-      return {
-        title: storeName,
-        body: isEs
-          ? `${d.customer_name} no compra desde hace ${d.days_since} días. Suele comprar cada ${d.usual_cycle_days}. ¿Le escribimos?`
-          : `${d.customer_name} hasn't bought in ${d.days_since} days. Usually buys every ${d.usual_cycle_days}. Reach out?`,
-        url: `/actions?highlight=${actionId}`,
-      };
+    try {
+      const result = await gatePush(accountId, { title: storeName, body, url: '/actions' }, 'event_push');
+      console.log(`[scheduler] [${accountId}] Grouped push for ${actionsGenerated} actions: ${result.sent ? 'sent' : result.queued ? 'queued' : 'skipped (limit)'}`);
+    } catch (pushErr) {
+      console.warn(`[scheduler] [${accountId}] Grouped push failed: ${(pushErr as Error).message}`);
     }
   }
 }
@@ -361,10 +292,11 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
 
   for (const accountId of due) {
     try {
-      // Daily summary push (every day)
+      // Daily summary push — this is the ONE push merchants get per day
+      // (commsGate enforces max 1 push/day, so if event push already sent today, this is skipped)
       await sendDailySummaryPush(accountId);
 
-      // Monday → weekly email
+      // Monday → weekly email (queued separately as weekly_email type, not a push)
       const tz = configs.find(c => c.account_id === accountId)?.timezone ?? 'UTC';
       const localDay = getLocalDayOfWeek(tz, now);
       if (localDay === 1) {
@@ -372,8 +304,7 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
         await runWeeklyPipeline(accountId, now);
       }
 
-      // Pending actions reminder
-      await sendPendingActionsReminder(accountId);
+      // No reminders — actions wait silently until approved or expired after 7 days
     } catch (err) {
       console.error(`[scheduler] [${accountId}] Daily/weekly error: ${(err as Error).message}`);
     }
@@ -417,21 +348,7 @@ async function sendDailySummaryPush(accountId: string): Promise<void> {
   console.log(`[scheduler] [${accountId}] Daily summary push ${result.sent ? 'sent' : 'queued'}: ${body}`);
 }
 
-// ── Pending actions reminder (Type 5) ───────────────────────────────────
-
-async function sendPendingActionsReminder(accountId: string): Promise<void> {
-  const { count } = await supabase
-    .from('pending_actions')
-    .select('*', { count: 'exact', head: true })
-    .eq('account_id', accountId)
-    .eq('status', 'pending');
-
-  const n = count ?? 0;
-  if (n === 0) return;
-
-  // Log only — reminders don't go to pending_comms (no merchant approval needed)
-  console.log(`[scheduler] [${accountId}] Pending actions reminder (log only): ${n} actions`);
-}
+// Reminders removed — actions wait silently until approved or auto-expired after 7 days.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOOP 3: WEEKLY PIPELINE (Monday only)

@@ -607,62 +607,41 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     }
   }
 
-  // ── Stale actions > 48h — send push reminder ──
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-  const { data: staleActions } = await supabase
+  // ── Expired actions > 7 days — silently expire, no reminders ever ──
+  const sevenDaysAgoExpiry = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const { data: expiredActions } = await supabase
     .from('pending_actions')
     .select('id, type, title, account_id, created_at')
     .eq('status', 'pending')
-    .lt('created_at', fortyEightHoursAgo);
+    .lt('created_at', sevenDaysAgoExpiry);
 
-  let remindersAttempted = 0;
-  let remindersSent = 0;
+  let expiredCount = 0;
 
-  if (staleActions && staleActions.length > 0) {
-    const staleByAccount = new Map<string, number>();
-    for (const a of staleActions) {
-      staleByAccount.set(a.account_id, (staleByAccount.get(a.account_id) ?? 0) + 1);
+  if (expiredActions && expiredActions.length > 0) {
+    for (const action of expiredActions) {
+      await supabase
+        .from('pending_actions')
+        .update({
+          status: 'skipped',
+          result: { reason: 'expired_7d', expired_at: new Date().toISOString() },
+        })
+        .eq('id', action.id);
+
+      // Cascade reject any related pending_comms
+      await cascadeRejectComms(action.id);
+      expiredCount++;
     }
-
-    for (const [accountId, count] of staleByAccount) {
-      const oneDayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-      const { count: recentReminders } = await supabase
-        .from('email_log')
-        .select('*', { count: 'exact', head: true })
-        .eq('account_id', accountId)
-        .eq('channel', 'event_push')
-        .gte('sent_at', oneDayAgo);
-
-      if ((recentReminders ?? 0) >= 2) continue;
-
-      remindersAttempted++;
-      const { data: acc } = await supabase
-        .from('accounts').select('language').eq('id', accountId).single();
-      const { data: staleConn } = await supabase
-        .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
-
-      const isEs = acc?.language === 'es';
-      const storeName = staleConn?.shop_name ?? 'Sillages';
-
-      // Log stale reminder instead of sending to pending_comms (no merchant approval needed)
-      const reminderMsg = isEs
-        ? `Tienes ${count} ${count === 1 ? 'acción pendiente' : 'acciones pendientes'} desde hace más de 48h.`
-        : `You have ${count} ${count === 1 ? 'action' : 'actions'} pending for over 48h.`;
-      console.log(`${LOG} [${accountId}] Stale actions reminder (log only): ${reminderMsg}`);
-      remindersSent++;
-    }
+    console.log(`${LOG} Silently expired ${expiredCount} actions older than 7 days`);
   }
 
   results.push({
-    check_type: 'data_integrity', check_name: 'stale_actions',
-    status: (staleActions?.length ?? 0) > 0 ? 'warning' : 'ok',
+    check_type: 'data_integrity', check_name: 'expired_actions',
+    status: expiredCount > 0 ? 'info' : 'ok',
     details: {
-      stale_count: staleActions?.length ?? 0,
-      reminders_sent: remindersSent,
-      reminders_attempted: remindersAttempted,
-      actions: (staleActions ?? []).slice(0, 5).map(a => ({ id: a.id, type: a.type, title: a.title, created: a.created_at })),
+      expired_count: expiredCount,
+      actions: (expiredActions ?? []).slice(0, 5).map(a => ({ id: a.id, type: a.type, title: a.title, created: a.created_at })),
     },
-    auto_fixed: remindersSent > 0,
+    auto_fixed: expiredCount > 0,
   });
 
   // ── Orphan events: detected but no action generated (LLM failure, timeout, etc.) ──
@@ -843,16 +822,11 @@ async function cascadeRejectComms(actionId: string): Promise<void> {
 // ── Helper: create push notification so merchant sees the new action ──
 async function createActionPush(
   accountId: string,
-  actionId: string,
-  action: { type: string; content: unknown },
+  _actionId: string,
+  _action: { type: string; content: unknown },
 ): Promise<void> {
-  const content = action.content as Record<string, unknown>;
-  const customerName = (content.customer_name as string) || 'Cliente';
-  const products = content.products as Array<{ title: string; price: number }> | undefined;
-  const totalValue = products?.reduce((s, p) => s + (p.price ?? 0), 0) ?? 0;
-  const productNames = products?.map(p => p.title).join(', ') ?? '';
-
-  // Get store name
+  // No individual pushes — commsGate enforces max 1 push/day and max 3 action comms/day.
+  // Send a single grouped notification instead of per-action pushes.
   const { data: conn } = await supabase
     .from('shopify_connections')
     .select('shop_name')
@@ -860,26 +834,15 @@ async function createActionPush(
     .maybeSingle();
   const storeName = conn?.shop_name ?? 'Sillages';
 
-  let body = '';
-  if (action.type === 'cart_recovery') {
-    body = `${customerName} dejó €${totalValue.toFixed(0)} en su carrito (${productNames}). ¿La recuperamos?`;
-  } else if (action.type === 'welcome_email') {
-    body = `${customerName} compró por primera vez. ¿Le mandamos un agradecimiento?`;
-  } else if (action.type === 'reactivation_email') {
-    body = `${customerName} no compra desde hace tiempo. ¿Le escribimos?`;
-  } else {
-    body = `Nueva acción pendiente: ${action.type}`;
-  }
-
   try {
     await gatePush(accountId, {
       title: storeName,
-      body,
-      url: `/actions?highlight=${actionId}`,
+      body: 'Tienes una nueva acción lista para revisar.',
+      url: '/actions',
     }, 'event_push');
-    console.log(`${LOG} PUSH CREATED for action ${actionId}`);
+    console.log(`${LOG} Grouped push queued for ${accountId}`);
   } catch (err) {
-    console.warn(`${LOG} PUSH FAILED for action ${actionId}: ${(err as Error).message}`);
+    console.warn(`${LOG} Push failed for ${accountId}: ${(err as Error).message}`);
   }
 }
 

@@ -229,18 +229,16 @@ async function handleOrderCreated(shopDomain: string, payload: Record<string, un
 
     const actionId = await generateEventAction(conn.account_id, event, lang, storeName, currency);
     if (actionId) {
-      const isEs = lang === 'es';
+      // No individual push — commsGate enforces max 1/day. Send grouped notification.
       try {
         await gatePush(conn.account_id, {
           title: storeName,
-          body: isEs
-            ? `${customerName} compró ${productPurchased} por primera vez. ¿Le mandamos un agradecimiento?`
-            : `${customerName} bought ${productPurchased} for the first time. Send a thank you?`,
-          url: `/actions?highlight=${actionId}`,
+          body: 'Tienes una nueva acción lista para revisar.',
+          url: '/actions',
         }, 'event_push');
-        console.log(`${LOG} Push sent for first buyer: ${customerName}`);
+        console.log(`${LOG} Grouped push queued for first buyer action`);
       } catch (err) {
-        console.warn(`${LOG} Push failed for first buyer: ${(err as Error).message}`);
+        console.warn(`${LOG} Push failed: ${(err as Error).message}`);
       }
     }
   }

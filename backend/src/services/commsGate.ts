@@ -1,3 +1,4 @@
+import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { sendPushNotification } from './pushNotifier.js';
 import { sendWeeklyBriefEmail } from './weeklyEmailSender.js';
@@ -7,17 +8,20 @@ import type { PushPayload } from './pushNotifier.js';
 const LOG = '[commsGate]';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RULE: The ONLY types allowed in pending_comms are:
-//   - 'push' (via gatePush)
-//   - 'weekly_email' (via gateWeeklyEmail)
+// FREQUENCY RULES (absolute):
+//   ADMIN (pending_comms): max 1 daily_summary/day, 1 weekly/Monday, 3 actions/day/store
+//   MERCHANT (pushes):     max 1 push/day total, only 9:00-20:00 local time
+//   NO reminders, NO "not approved" notifications, EVER.
 //
-// Email types (cart_recovery, welcome_email, reactivation_email) go directly
-// to pending_actions. Merchants ONLY receive push notifications + weekly email.
+// Only types in pending_comms: 'push', 'weekly_email'
+// Email types go to pending_actions (merchants get push, never direct email).
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Max action-related items in pending_comms per store per day
+const MAX_ACTION_COMMS_PER_DAY = 3;
 
 /**
  * Check if an account has send_enabled = true in user_intelligence_config.
- * Returns false if the account is disabled or has no config.
  */
 export async function isSendEnabled(accountId: string): Promise<boolean> {
   const { data } = await supabase
@@ -31,7 +35,6 @@ export async function isSendEnabled(accountId: string): Promise<boolean> {
 
 /**
  * Check if an account requires manual approval for comms.
- * Returns 'manual' | 'auto'. Defaults to 'manual' if column missing.
  */
 async function getCommsApproval(accountId: string): Promise<'manual' | 'auto'> {
   try {
@@ -48,18 +51,93 @@ async function getCommsApproval(accountId: string): Promise<'manual' | 'auto'> {
 }
 
 /**
+ * Check if merchant is within allowed push hours (9:00-20:00 local time).
+ */
+async function isWithinPushHours(accountId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('user_intelligence_config')
+    .select('timezone')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  const tz = data?.timezone ?? 'Europe/Madrid';
+  try {
+    const localHour = toZonedTime(new Date(), tz).getHours();
+    return localHour >= 9 && localHour < 20;
+  } catch {
+    return true; // fail open
+  }
+}
+
+/**
+ * Check how many pushes (any type) were already sent/queued today for this account.
+ */
+async function getPushCountToday(accountId: string): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from('pending_comms')
+    .select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('type', 'push')
+    .gte('created_at', todayStart.toISOString());
+
+  return count ?? 0;
+}
+
+/**
+ * Check how many action-related comms were queued today for this account (for admin limit).
+ */
+async function getActionCommsToday(accountId: string): Promise<number> {
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from('pending_comms')
+    .select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('channel', 'event_push')
+    .gte('created_at', todayStart.toISOString());
+
+  return count ?? 0;
+}
+
+/**
  * Gate a push notification through the comms approval system.
- * If 'auto' → sends immediately.
- * If 'manual' → saves to pending_comms for admin approval.
+ * Enforces: max 1 push/day per merchant, 9:00-20:00 only, max 3 action comms/day for admin.
  */
 export async function gatePush(
   accountId: string,
   payload: PushPayload,
   channel: 'push' | 'event_push' | 'daily_summary_push' = 'push',
 ): Promise<{ sent: boolean; queued: boolean }> {
+
+  // ── Frequency checks (apply to both auto and manual) ──
+
+  // For event_push (action notifications): max 3 per day per store for admin
+  if (channel === 'event_push') {
+    const actionCommsToday = await getActionCommsToday(accountId);
+    if (actionCommsToday >= MAX_ACTION_COMMS_PER_DAY) {
+      console.log(`${LOG} SKIP: ${accountId} already has ${actionCommsToday} action comms today (max ${MAX_ACTION_COMMS_PER_DAY})`);
+      return { sent: false, queued: false };
+    }
+  }
+
   const approval = await getCommsApproval(accountId);
 
   if (approval === 'auto') {
+    // Merchant-facing: max 1 push/day, 9:00-20:00 only
+    if (!await isWithinPushHours(accountId)) {
+      console.log(`${LOG} SKIP: ${accountId} outside push hours (9:00-20:00)`);
+      return { sent: false, queued: false };
+    }
+    const pushesToday = await getPushCountToday(accountId);
+    if (pushesToday >= 1) {
+      console.log(`${LOG} SKIP: ${accountId} already received 1 push today (max 1/day)`);
+      return { sent: false, queued: false };
+    }
+
     await sendPushNotification(accountId, payload);
     await logCommunication({ account_id: accountId, channel, status: 'sent' });
     return { sent: true, queued: false };
@@ -80,8 +158,6 @@ export async function gatePush(
 
 /**
  * Gate a weekly email through the comms approval system.
- * If 'auto' → sends immediately.
- * If 'manual' → saves to pending_comms for admin approval.
  */
 export async function gateWeeklyEmail(
   accountId: string,
