@@ -429,23 +429,8 @@ async function sendPendingActionsReminder(accountId: string): Promise<void> {
   const n = count ?? 0;
   if (n === 0) return;
 
-  const { data: acc } = await supabase
-    .from('accounts').select('language').eq('id', accountId).single();
-  const { data: conn } = await supabase
-    .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
-
-  const isEs = acc?.language === 'es';
-  const storeName = conn?.shop_name ?? 'Sillages';
-
-  const result = await gatePush(accountId, {
-    title: storeName,
-    body: isEs
-      ? `Tienes ${n} ${n === 1 ? 'acción lista' : 'acciones listas'} para aprobar.`
-      : `You have ${n} ${n === 1 ? 'action ready' : 'actions ready'} to approve.`,
-    url: '/actions',
-  });
-
-  console.log(`[scheduler] [${accountId}] Pending actions reminder ${result.sent ? 'sent' : 'queued'}: ${n} actions`);
+  // Log only — reminders don't go to pending_comms (no merchant approval needed)
+  console.log(`[scheduler] [${accountId}] Pending actions reminder (log only): ${n} actions`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -485,20 +470,8 @@ async function runWeeklyPipeline(accountId: string, now: Date): Promise<void> {
     const emailResult = await gateWeeklyEmail(accountId, weeklyBriefId);
     console.log(`[scheduler] [${accountId}] Weekly email ${emailResult.sent ? 'sent' : 'queued for approval'}`);
 
-    // Push notification about weekly email
-    const { data: conn } = await supabase
-      .from('shopify_connections').select('shop_name').eq('account_id', accountId).maybeSingle();
-    const { data: acc } = await supabase
-      .from('accounts').select('language').eq('id', accountId).single();
-    const isEs = acc?.language === 'es';
-
-    await gatePush(accountId, {
-      title: conn?.shop_name ?? 'Sillages',
-      body: isEs
-        ? 'Tu resumen semanal está en tu email.'
-        : 'Your weekly summary is in your email.',
-      url: '/dashboard',
-    });
+    // Weekly email is already queued in pending_comms via gateWeeklyEmail — no extra push needed
+    console.log(`[scheduler] [${accountId}] Weekly email queued — no extra push notification`);
 
     const totalDuration = Date.now() - weeklyStart;
     console.log(`[scheduler] [${accountId}] Weekly pipeline complete — ${totalDuration}ms`);

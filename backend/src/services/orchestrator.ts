@@ -644,18 +644,12 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
       const isEs = acc?.language === 'es';
       const storeName = staleConn?.shop_name ?? 'Sillages';
 
-      try {
-        await gatePush(accountId, {
-          title: storeName,
-          body: isEs
-            ? `Tienes ${count} ${count === 1 ? 'acción pendiente' : 'acciones pendientes'} desde hace más de 48h.`
-            : `You have ${count} ${count === 1 ? 'action' : 'actions'} pending for over 48h.`,
-          url: '/actions',
-        }, 'event_push');
-        remindersSent++;
-      } catch (err) {
-        console.warn(`${LOG} Failed to send stale reminder to ${accountId}: ${(err as Error).message}`);
-      }
+      // Log stale reminder instead of sending to pending_comms (no merchant approval needed)
+      const reminderMsg = isEs
+        ? `Tienes ${count} ${count === 1 ? 'acción pendiente' : 'acciones pendientes'} desde hace más de 48h.`
+        : `You have ${count} ${count === 1 ? 'action' : 'actions'} pending for over 48h.`;
+      console.log(`${LOG} [${accountId}] Stale actions reminder (log only): ${reminderMsg}`);
+      remindersSent++;
     }
   }
 
