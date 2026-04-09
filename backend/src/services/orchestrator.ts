@@ -584,29 +584,6 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
     auto_fixed: totalFixed > 0,
   });
 
-  // ── Clean up stale "X acciones listas" summary pushes when actions were resolved ──
-  if (totalFixed > 0) {
-    const { data: summaryComms } = await supabase
-      .from('pending_comms')
-      .select('id, content')
-      .eq('status', 'pending')
-      .eq('type', 'push');
-
-    if (summaryComms && summaryComms.length > 0) {
-      const staleSummaryIds = summaryComms
-        .filter(c => {
-          const body = (c.content as Record<string, unknown>)?.body as string ?? '';
-          return body.includes('acciones listas');
-        })
-        .map(c => c.id);
-
-      if (staleSummaryIds.length > 0) {
-        await supabase.from('pending_comms').update({ status: 'rejected' }).in('id', staleSummaryIds);
-        console.log(`${LOG} CASCADE: Rejected ${staleSummaryIds.length} stale "acciones listas" summary push(es)`);
-      }
-    }
-  }
-
   // ── Expired actions > 7 days — silently expire, no reminders ever ──
   const sevenDaysAgoExpiry = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
   const { data: expiredActions } = await supabase
@@ -627,8 +604,6 @@ async function runDataIntegrityChecks(): Promise<CheckResult[]> {
         })
         .eq('id', action.id);
 
-      // Cascade reject any related pending_comms
-      await cascadeRejectComms(action.id);
       expiredCount++;
     }
     console.log(`${LOG} Silently expired ${expiredCount} actions older than 7 days`);
@@ -784,7 +759,6 @@ async function rejectAction(actionId: string, reason: string): Promise<void> {
     status: 'rejected',
     result: { auto_rejected: true, reason, rejected_by: 'orchestrator' },
   }).eq('id', actionId);
-  await cascadeRejectComms(actionId);
   console.log(`${LOG} AUTO-REJECT: ${actionId} — ${reason}`);
 }
 
@@ -794,29 +768,7 @@ async function skipAction(actionId: string, reason: string): Promise<void> {
     status: 'completed', executed_at: new Date().toISOString(),
     result: { skipped: true, reason, auto_cleanup: true },
   }).eq('id', actionId);
-  await cascadeRejectComms(actionId);
   console.log(`${LOG} AUTO-SKIP: ${actionId} — ${reason}`);
-}
-
-// ── Helper: reject any pending_comms that reference a rejected/skipped action ──
-async function cascadeRejectComms(actionId: string): Promise<void> {
-  // pending_comms links to actions via content.url containing the action ID
-  const { data: comms } = await supabase
-    .from('pending_comms')
-    .select('id, content')
-    .eq('status', 'pending');
-
-  if (!comms || comms.length === 0) return;
-
-  const toReject = comms.filter(c => {
-    const url = (c.content as Record<string, unknown>)?.url as string;
-    return url && url.includes(actionId);
-  }).map(c => c.id);
-
-  if (toReject.length > 0) {
-    await supabase.from('pending_comms').update({ status: 'rejected' }).in('id', toReject);
-    console.log(`${LOG} CASCADE: Rejected ${toReject.length} pending_comms for action ${actionId}`);
-  }
 }
 
 // ── Helper: create push notification so merchant sees the new action ──
@@ -1253,19 +1205,12 @@ async function runTemplateChecks(): Promise<CheckResult[]> {
 async function runCommsGateChecks(): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
 
-  const { data: autoAccounts } = await supabase
-    .from('accounts')
-    .select('id, email, comms_approval')
-    .eq('comms_approval', 'auto');
-
+  // All comms go directly to merchants — no admin approval gate
   results.push({
-    check_type: 'comms_gate', check_name: 'comms_approval_mode',
-    status: (autoAccounts?.length ?? 0) > 0 ? 'warning' : 'ok',
+    check_type: 'comms_gate', check_name: 'comms_mode',
+    status: 'ok',
     details: {
-      auto_approval_accounts: (autoAccounts ?? []).map(a => ({ id: a.id, email: a.email })),
-      message: (autoAccounts?.length ?? 0) > 0
-        ? `${autoAccounts!.length} account(s) with auto approval`
-        : 'All accounts require manual approval',
+      message: 'All comms sent directly to merchants with frequency limits (max 1 push/day, 9:00-20:00)',
     },
   });
 

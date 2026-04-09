@@ -10,7 +10,6 @@ interface Store {
   email: string;
   name: string | null;
   subscription: string;
-  comms_approval: string;
   shop_domain: string | null;
   shop_name: string | null;
   token_status: string;
@@ -22,7 +21,6 @@ interface Store {
   last_action_type: string | null;
   last_action_title: string | null;
   last_action_executed: string | null;
-  pending_actions: number;
   push_subscriptions: number;
   last_comm_channel: string | null;
   last_comm_status: string | null;
@@ -50,31 +48,31 @@ interface DeliveryLog {
   weekly_brief_id: string | null;
 }
 
+interface SystemHealth {
+  overall_status: string;
+  ok: number;
+  auto_fixed: number;
+  needs_attention: number;
+  last_run: string | null;
+  auto_fixed_details: Array<{ check_name: string; details: unknown }>;
+  needs_attention_details: Array<{ check_name: string; status: string; details: unknown }>;
+}
+
+interface GlobalMetrics {
+  emails_sent: number;
+  pushes_sent: number;
+  carts_recovered: number;
+  recovery_revenue: number;
+}
+
 interface StatusData {
   stores: Store[];
+  system_health: SystemHealth;
   recent_alerts: AdminAlert[];
   last_audit: { ran_at: string; alerts_count: number; duration_ms: number } | null;
   recent_deliveries?: DeliveryLog[];
-  pending_comms_count: number;
+  global_metrics: GlobalMetrics;
   server_time: string;
-}
-
-interface AdminAction {
-  id: string;
-  account_id: string;
-  type: string;
-  title: string;
-  description: string;
-  content: Record<string, unknown>;
-  status: string;
-  created_at: string;
-  approved_at: string | null;
-  executed_at: string | null;
-  result: Record<string, unknown> | null;
-  account_email: string | null;
-  account_name: string | null;
-  shop_name: string | null;
-  shop_domain: string | null;
 }
 
 interface EmailLog {
@@ -105,21 +103,20 @@ interface RecoveryStats {
   total_carts: number;
   recovered: number;
   revenue: number;
+  by_sillages?: number;
+  by_sillages_revenue?: number;
+  organic?: number;
+  organic_revenue?: number;
 }
 
-interface PendingComm {
-  id: string;
-  account_id: string;
-  type: string;
-  channel: string;
-  content: Record<string, unknown>;
-  status: string;
-  created_at: string;
-  approved_at: string | null;
-  approved_by: string | null;
-  account_email: string | null;
-  account_name: string | null;
-  shop_name: string | null;
+interface OrchestratorData {
+  overall_status: string;
+  summary: { ok: number; auto_fixed: number; needs_attention: number; auto_fixes_24h: number };
+  checks_ok: Array<Record<string, unknown>>;
+  checks_auto_fixed: Array<Record<string, unknown>>;
+  checks_needs_attention: Array<Record<string, unknown>>;
+  history_24h: Array<Record<string, unknown>>;
+  last_run: string | null;
 }
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -139,14 +136,17 @@ const S = {
 
 function statusBadge(status: string) {
   const map: Record<string, [string, string]> = {
-    pending: ['#C9964A', '#000'],
-    completed: ['#2D6A4F', '#fff'],
-    rejected: ['#721c24', '#fff'],
-    failed: ['#dc3545', '#fff'],
+    ok: ['#2D6A4F', '#fff'],
+    auto_fixed: ['#C9964A', '#000'],
+    warning: ['#C9964A', '#000'],
+    critical: ['#dc3545', '#fff'],
     sent: ['#2D6A4F', '#fff'],
     healthy: ['#2D6A4F', '#fff'],
     invalid: ['#dc3545', '#fff'],
     failing: ['#C9964A', '#000'],
+    completed: ['#2D6A4F', '#fff'],
+    failed: ['#dc3545', '#fff'],
+    pending: ['#C9964A', '#000'],
   };
   const [bg, text] = map[status] ?? ['#e5e7eb', '#374151'];
   return S.badge(bg, text);
@@ -159,6 +159,7 @@ function channelBadge(channel: string) {
     weekly_email: ['#155724', '#d4edda'],
     event_push: ['#3d0066', '#e6ccff'],
     daily_summary_push: ['#004085', '#cce5ff'],
+    brief: ['#856404', '#fff3cd'],
   };
   const [bg, text] = map[channel] ?? ['#e5e7eb', '#374151'];
   return S.badge(bg, text);
@@ -179,34 +180,30 @@ function shortTime(date: string | null): string {
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'actions' | 'comms' | 'activity' | 'emails';
+type Tab = 'overview' | 'orchestrator' | 'emails';
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function AdminStatus() {
   const [tab, setTab] = useState<Tab>('overview');
   const [data, setData] = useState<StatusData | null>(null);
-  const [actions, setActions] = useState<AdminAction[]>([]);
-  const [pendingComms, setPendingComms] = useState<PendingComm[]>([]);
+  const [orchData, setOrchData] = useState<OrchestratorData | null>(null);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [emailFunnel, setEmailFunnel] = useState<EmailFunnel>({ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 });
   const [recoveryStats, setRecoveryStats] = useState<RecoveryStats>({ total_carts: 0, recovered: 0, revenue: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const fetchAll = useCallback(async () => {
     try {
-      const [statusRes, actionsRes, commsRes, emailRes] = await Promise.all([
+      const [statusRes, orchRes, emailRes] = await Promise.all([
         api.get('/api/admin/status'),
-        api.get('/api/admin/actions'),
-        api.get('/api/admin/pending-comms').catch(() => ({ data: { comms: [] } })),
+        api.get('/api/admin/orchestrator').catch(() => ({ data: null })),
         api.get('/api/admin/email-tracking').catch(() => ({ data: { logs: [], funnel: { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 }, recovery: { total_carts: 0, recovered: 0, revenue: 0 } } })),
       ]);
       setData(statusRes.data);
-      setActions(actionsRes.data.actions ?? []);
-      setPendingComms(commsRes.data.comms ?? []);
+      setOrchData(orchRes.data);
       setEmailLogs(emailRes.data.logs ?? []);
       setEmailFunnel(emailRes.data.funnel ?? { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 });
       setRecoveryStats(emailRes.data.recovery ?? { total_carts: 0, recovered: 0, revenue: 0 });
@@ -225,85 +222,24 @@ export default function AdminStatus() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  async function handleApprove(actionId: string) {
-    if (!confirm('Approve and execute this action?')) return;
-    setActionLoading(actionId);
-    try {
-      await api.put(`/api/admin/actions/${actionId}/approve`);
-      await fetchAll();
-    } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleReject(actionId: string) {
-    if (!confirm('Reject this action?')) return;
-    setActionLoading(actionId);
-    try {
-      await api.put(`/api/admin/actions/${actionId}/reject`);
-      await fetchAll();
-    } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleCommApprove(commId: string) {
-    if (!confirm('Approve and SEND this communication?')) return;
-    setActionLoading(commId);
-    try {
-      await api.put(`/api/admin/pending-comms/${commId}/approve`);
-      await fetchAll();
-    } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleCommReject(commId: string) {
-    if (!confirm('Reject this communication?')) return;
-    setActionLoading(commId);
-    try {
-      await api.put(`/api/admin/pending-comms/${commId}/reject`);
-      await fetchAll();
-    } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function toggleCommsApproval(accountId: string, current: string) {
-    const next = current === 'auto' ? 'manual' : 'auto';
-    if (!confirm(`Set comms_approval to "${next}" for this account?`)) return;
-    try {
-      await api.put(`/api/admin/accounts/${accountId}/comms-approval`, { comms_approval: next });
-      await fetchAll();
-    } catch (err) {
-      alert(`Failed: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
   if (loading) return <div style={{ ...S.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><p>Loading...</p></div>;
   if (error) return <div style={S.page}><h1 style={{ color: '#dc2626' }}>Error: {error}</h1></div>;
   if (!data) return null;
 
-  const pendingActions = actions.filter(a => a.status === 'pending');
-  const completedActions = actions.filter(a => a.status === 'completed');
-  const rejectedActions = actions.filter(a => a.status === 'rejected');
-  const failedActions = actions.filter(a => a.status === 'failed');
-  const pendingCommsList = pendingComms.filter(c => c.status === 'pending');
+  const healthColor = {
+    ok: '#2D6A4F',
+    auto_fixed: '#C9964A',
+    warning: '#C9964A',
+    critical: '#dc3545',
+    unknown: '#9ca3af',
+  }[data.system_health.overall_status] ?? '#9ca3af';
 
   return (
     <div style={S.page}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Sillages Control Panel</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>Sillages Monitoring</h1>
           <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
             Server: {data.server_time.slice(11, 19)} UTC | Refresh: {lastRefresh.toLocaleTimeString()} | Auto: 30s
           </p>
@@ -316,12 +252,12 @@ export default function AdminStatus() {
       {/* Summary bar */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Pending Actions', value: pendingActions.length, color: '#C9964A' },
-          { label: 'Pending Comms', value: pendingCommsList.length, color: pendingCommsList.length > 0 ? '#dc2626' : '#2D6A4F' },
-          { label: 'Completed', value: completedActions.length, color: '#2D6A4F' },
-          { label: 'Rejected', value: rejectedActions.length, color: '#721c24' },
-          { label: 'Failed', value: failedActions.length, color: '#dc3545' },
           { label: 'Stores', value: data.stores.length, color: '#004085' },
+          { label: 'System Health', value: data.system_health.overall_status.toUpperCase(), color: healthColor },
+          { label: 'Emails Sent', value: data.global_metrics.emails_sent, color: '#2D6A4F' },
+          { label: 'Pushes Sent', value: data.global_metrics.pushes_sent, color: '#004085' },
+          { label: 'Carts Recovered', value: data.global_metrics.carts_recovered, color: '#C9964A' },
+          { label: 'Recovery Revenue', value: `\u20AC${data.global_metrics.recovery_revenue.toFixed(0)}`, color: '#8B5CF6' },
           { label: 'Alerts', value: data.recent_alerts.length, color: data.recent_alerts.length > 0 ? '#dc3545' : '#2D6A4F' },
         ].map(s => (
           <div key={s.label} style={{ ...S.card, padding: '10px 16px', minWidth: 100, textAlign: 'center', marginBottom: 0 }}>
@@ -334,10 +270,8 @@ export default function AdminStatus() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {([
-          ['overview', 'Overview'],
-          ['actions', `Pending Actions (${pendingActions.length})`],
-          ['comms', `Pending Comms (${pendingCommsList.length})`],
-          ['activity', 'Activity Log'],
+          ['overview', 'Stores & Alerts'],
+          ['orchestrator', 'Orchestrator'],
           ['emails', 'Email Tracking'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={S.tab(tab === t)}>{label}</button>
@@ -349,12 +283,12 @@ export default function AdminStatus() {
         <>
           {/* Stores */}
           <div style={S.card}>
-            <div style={S.cardHeader}><h2 style={S.h2}>Stores</h2></div>
+            <div style={S.cardHeader}><h2 style={S.h2}>Active Stores</h2></div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    {['Store', 'Email', 'Plan', 'Comms', 'Token', 'Brief', 'Push', 'Weekly', 'Pending'].map(h => (
+                    {['Store', 'Email', 'Plan', 'Token', 'Brief', 'Push', 'Weekly', 'Last Comm'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '8px 12px', ...S.label }}>{h}</th>
                     ))}
                   </tr>
@@ -368,14 +302,6 @@ export default function AdminStatus() {
                       </td>
                       <td style={{ padding: '8px 12px', fontSize: 11, color: '#6b7280' }}>{store.email}</td>
                       <td style={{ padding: '8px 12px' }}><span style={statusBadge(store.subscription)}>{store.subscription}</span></td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <button
-                          onClick={() => toggleCommsApproval(store.account_id, store.comms_approval)}
-                          style={{ ...S.badge(store.comms_approval === 'auto' ? '#2D6A4F' : '#C9964A', store.comms_approval === 'auto' ? '#fff' : '#000'), cursor: 'pointer', border: 'none' }}
-                        >
-                          {store.comms_approval}
-                        </button>
-                      </td>
                       <td style={{ padding: '8px 12px' }}>
                         <span style={statusBadge(store.token_status)}>{store.token_status}</span>
                         {store.token_failing_since && <div style={{ fontSize: 9, color: '#dc2626', marginTop: 2 }}>since {timeAgo(store.token_failing_since)}</div>}
@@ -399,10 +325,13 @@ export default function AdminStatus() {
                           </div>
                         ) : <span style={S.muted}>—</span>}
                       </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                        {store.pending_actions > 0 ? (
-                          <span style={{ ...S.badge('#C9964A', '#000'), fontSize: 12, padding: '3px 10px', borderRadius: 10 }}>{store.pending_actions}</span>
-                        ) : <span style={S.muted}>0</span>}
+                      <td style={{ padding: '8px 12px' }}>
+                        {store.last_comm_at ? (
+                          <div>
+                            <span style={channelBadge(store.last_comm_channel ?? 'unknown')}>{store.last_comm_channel}</span>
+                            <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 2 }}>{timeAgo(store.last_comm_at)}</div>
+                          </div>
+                        ) : <span style={S.muted}>—</span>}
                       </td>
                     </tr>
                   ))}
@@ -432,178 +361,108 @@ export default function AdminStatus() {
               )}
             </div>
           </div>
+
+          {/* Recent Deliveries */}
+          {data.recent_deliveries && data.recent_deliveries.length > 0 && (
+            <div style={S.card}>
+              <div style={S.cardHeader}><h2 style={S.h2}>Recent Deliveries</h2></div>
+              <div style={S.cardBody}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {data.recent_deliveries.slice(0, 15).map((d, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                      <span style={channelBadge(d.channel)}>{d.channel}</span>
+                      <span style={statusBadge(d.status)}>{d.status}</span>
+                      <span style={{ color: '#374151', fontSize: 12, flex: 1 }}>{d.account_email}</span>
+                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(d.sent_at)}</span>
+                      {d.error_message && <span style={{ fontSize: 10, color: '#dc3545' }}>{d.error_message}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* ── TAB: Pending Approval ─────────────────────────────────────────────── */}
-      {tab === 'actions' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {pendingActions.length === 0 ? (
-            <div style={{ ...S.card, ...S.cardBody }}>
-              <p style={{ color: '#2D6A4F' }}>No pending actions</p>
+      {/* ── TAB: Orchestrator ─────────────────────────────────────────────────── */}
+      {tab === 'orchestrator' && orchData && (
+        <>
+          {/* Overall status */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <h2 style={S.h2}>System Health</h2>
+              <span style={statusBadge(orchData.overall_status)}>{orchData.overall_status}</span>
             </div>
-          ) : (
-            pendingActions.map(action => (
-              <ActionCard
-                key={action.id}
-                action={action}
-                loading={actionLoading === action.id}
-                onApprove={() => handleApprove(action.id)}
-                onReject={() => handleReject(action.id)}
-              />
-            ))
-          )}
-        </div>
-      )}
-
-      {/* ── TAB: Pending Comms ───────────────────────────────────────────────── */}
-      {tab === 'comms' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {pendingCommsList.length === 0 ? (
-            <div style={{ ...S.card, ...S.cardBody }}>
-              <p style={{ color: '#2D6A4F' }}>No pending communications</p>
-            </div>
-          ) : (
-            pendingCommsList.map(comm => (
-              <div key={comm.id} style={S.card}>
-                <div style={S.cardHeader}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-                    <span style={channelBadge(comm.channel)}>{comm.channel}</span>
-                    <span style={{ color: '#111827', fontWeight: 600, fontSize: 13 }}>
-                      {comm.shop_name ?? comm.account_email ?? comm.account_id.slice(0, 8)}
-                    </span>
-                    <span style={{ color: '#9ca3af', fontSize: 11 }}>{comm.account_email}</span>
-                  </div>
-                  <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(comm.created_at)}</span>
-                </div>
-                <div style={S.cardBody}>
-                  {/* Push content preview */}
-                  {comm.type === 'push' && (
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={S.label}>Push Notification</div>
-                      <div style={{ background: '#f9fafb', borderRadius: 6, padding: 12, border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontWeight: 600, color: '#111827', fontSize: 13, marginBottom: 4 }}>
-                          {(comm.content as { title?: string }).title ?? 'Push'}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#4b5563', lineHeight: 1.5 }}>
-                          {(comm.content as { body?: string }).body ?? ''}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Weekly email preview */}
-                  {comm.type === 'weekly_email' && (
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={S.label}>Weekly Email</div>
-                      <p style={{ fontSize: 12, color: '#374151' }}>
-                        Brief ID: {(comm.content as { weekly_brief_id?: string }).weekly_brief_id ?? '—'}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Raw JSON */}
-                  <details style={{ marginBottom: 12 }}>
-                    <summary style={{ ...S.label, cursor: 'pointer', userSelect: 'none' }}>Raw Content</summary>
-                    <pre style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 200, border: '1px solid #e5e7eb', marginTop: 6 }}>
-                      {JSON.stringify(comm.content, null, 2)}
-                    </pre>
-                  </details>
-
-                  {/* Approve / Reject */}
-                  <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
-                    <button
-                      onClick={() => handleCommApprove(comm.id)}
-                      disabled={actionLoading === comm.id}
-                      style={{ ...S.btn('#2D6A4F'), opacity: actionLoading === comm.id ? 0.5 : 1 }}
-                    >
-                      {actionLoading === comm.id ? '...' : 'Approve & Send'}
-                    </button>
-                    <button
-                      onClick={() => handleCommReject(comm.id)}
-                      disabled={actionLoading === comm.id}
-                      style={{ ...S.btn('#721c24'), opacity: actionLoading === comm.id ? 0.5 : 1 }}
-                    >
-                      {actionLoading === comm.id ? '...' : 'Reject'}
-                    </button>
-                  </div>
-                </div>
+            <div style={S.cardBody}>
+              <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+                <div><span style={{ fontSize: 22, fontWeight: 700, color: '#2D6A4F' }}>{orchData.summary.ok}</span> <span style={S.muted}>OK</span></div>
+                <div><span style={{ fontSize: 22, fontWeight: 700, color: '#C9964A' }}>{orchData.summary.auto_fixed}</span> <span style={S.muted}>Auto-Fixed</span></div>
+                <div><span style={{ fontSize: 22, fontWeight: 700, color: '#dc3545' }}>{orchData.summary.needs_attention}</span> <span style={S.muted}>Needs Attention</span></div>
+                <div><span style={{ fontSize: 22, fontWeight: 700, color: '#6b7280' }}>{orchData.summary.auto_fixes_24h}</span> <span style={S.muted}>Fixes (24h)</span></div>
               </div>
-            ))
-          )}
+              <p style={S.muted}>Last run: {timeAgo(orchData.last_run)}</p>
+            </div>
+          </div>
 
-          {/* Show recent approved/rejected comms */}
-          {pendingComms.filter(c => c.status !== 'pending').length > 0 && (
+          {/* Needs Attention */}
+          {orchData.checks_needs_attention.length > 0 && (
             <div style={S.card}>
-              <div style={S.cardHeader}><h2 style={S.h2}>Recent Comms History</h2></div>
+              <div style={S.cardHeader}><h2 style={{ ...S.h2, color: '#dc3545' }}>Needs Attention</h2></div>
               <div style={S.cardBody}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {pendingComms.filter(c => c.status !== 'pending').slice(0, 20).map(c => (
-                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <span style={statusBadge(c.status)}>{c.status}</span>
-                      <span style={channelBadge(c.channel)}>{c.channel}</span>
-                      <span style={{ color: '#374151', fontSize: 12, flex: 1 }}>{c.shop_name ?? c.account_email}</span>
-                      <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(c.approved_at ?? c.created_at)}</span>
+                {orchData.checks_needs_attention.map((c, i) => (
+                  <div key={i} style={{ padding: '8px 12px', borderLeft: '3px solid #dc3545', background: '#fef2f2', borderRadius: 4, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600, color: '#111827', fontSize: 12 }}>{String(c.check_name)}</span>
+                      <span style={statusBadge(String(c.status))}>{String(c.status)}</span>
                     </div>
-                  ))}
-                </div>
+                    <pre style={{ margin: 0, fontSize: 10, color: '#6b7280', whiteSpace: 'pre-wrap' }}>{JSON.stringify(c.details, null, 2)}</pre>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* ── TAB: Activity Log ─────────────────────────────────────────────────── */}
-      {tab === 'activity' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Completed */}
+          {/* Auto-Fixed */}
+          {orchData.checks_auto_fixed.length > 0 && (
+            <div style={S.card}>
+              <div style={S.cardHeader}><h2 style={{ ...S.h2, color: '#C9964A' }}>Auto-Fixed</h2></div>
+              <div style={S.cardBody}>
+                {orchData.checks_auto_fixed.map((c, i) => (
+                  <div key={i} style={{ padding: '8px 12px', borderLeft: '3px solid #C9964A', background: '#fffbeb', borderRadius: 4, marginBottom: 8 }}>
+                    <span style={{ fontWeight: 600, color: '#111827', fontSize: 12 }}>{String(c.check_name)}</span>
+                    <pre style={{ margin: 0, fontSize: 10, color: '#6b7280', whiteSpace: 'pre-wrap', marginTop: 4 }}>{JSON.stringify(c.details, null, 2)}</pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent History */}
           <div style={S.card}>
-            <div style={S.cardHeader}><h2 style={S.h2}>Completed ({completedActions.length})</h2></div>
-            <div style={S.cardBody}>
-              {completedActions.length === 0 ? (
-                <p style={S.muted}>No completed actions</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {completedActions.map(a => (
-                    <ActivityRow key={a.id} action={a} />
+            <div style={S.cardHeader}><h2 style={S.h2}>Last 24h History ({orchData.history_24h.length})</h2></div>
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    {['Time', 'Check', 'Status', 'Auto-Fix'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 12px', ...S.label }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {orchData.history_24h.slice(0, 50).map((h, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '6px 12px', fontSize: 10, color: '#9ca3af' }}>{shortTime(String(h.created_at))}</td>
+                      <td style={{ padding: '6px 12px', fontSize: 11, color: '#374151' }}>{String(h.check_name)}</td>
+                      <td style={{ padding: '6px 12px' }}><span style={statusBadge(String(h.status))}>{String(h.status)}</span></td>
+                      <td style={{ padding: '6px 12px', fontSize: 11 }}>{h.auto_fixed ? 'Yes' : '—'}</td>
+                    </tr>
                   ))}
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          {/* Rejected */}
-          <div style={S.card}>
-            <div style={S.cardHeader}><h2 style={S.h2}>Rejected ({rejectedActions.length})</h2></div>
-            <div style={S.cardBody}>
-              {rejectedActions.length === 0 ? (
-                <p style={S.muted}>No rejected actions</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {rejectedActions.map(a => (
-                    <ActivityRow key={a.id} action={a} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Failed */}
-          <div style={S.card}>
-            <div style={S.cardHeader}><h2 style={S.h2}>Failed ({failedActions.length})</h2></div>
-            <div style={S.cardBody}>
-              {failedActions.length === 0 ? (
-                <p style={S.muted}>No failed actions</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {failedActions.map(a => (
-                    <ActivityRow key={a.id} action={a} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {/* ── TAB: Email Tracking ───────────────────────────────────────────────── */}
@@ -611,7 +470,6 @@ export default function AdminStatus() {
         <>
           {/* Funnel + Recovery stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            {/* Email Funnel */}
             <div style={S.card}>
               <div style={S.cardHeader}><h2 style={S.h2}>Email Funnel</h2></div>
               <div style={{ padding: '16px 18px' }}>
@@ -650,7 +508,6 @@ export default function AdminStatus() {
               </div>
             </div>
 
-            {/* Recovery Stats */}
             <div style={S.card}>
               <div style={S.cardHeader}><h2 style={S.h2}>Cart Recovery</h2></div>
               <div style={{ padding: '16px 18px' }}>
@@ -675,6 +532,11 @@ export default function AdminStatus() {
                     <span style={{ fontSize: 12, color: '#6b7280' }}>
                       Recovery rate: {Math.round(recoveryStats.recovered / recoveryStats.total_carts * 100)}%
                     </span>
+                    {recoveryStats.by_sillages != null && recoveryStats.by_sillages > 0 && (
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                        By Sillages: {recoveryStats.by_sillages} ({'\u20AC'}{(recoveryStats.by_sillages_revenue ?? 0).toFixed(0)}) | Organic: {recoveryStats.organic ?? 0} ({'\u20AC'}{(recoveryStats.organic_revenue ?? 0).toFixed(0)})
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -724,169 +586,6 @@ export default function AdminStatus() {
             </div>
           </div>
         </>
-      )}
-    </div>
-  );
-}
-
-// ── Action Card Component ─────────────────────────────────────────────────────
-
-function ActionCard({ action, loading, onApprove, onReject }: {
-  action: AdminAction;
-  loading: boolean;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const content = action.content ?? {};
-  const isEmail = ['cart_recovery', 'welcome_email', 'reactivation_email'].includes(action.type);
-  const recipients = content.recipients as Array<{ email: string; name: string }> | undefined;
-
-  return (
-    <div style={S.card}>
-      <div style={{ ...S.cardHeader, cursor: 'pointer' }} onClick={() => setExpanded(!expanded)}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-          <span style={statusBadge(action.type === 'cart_recovery' ? 'failing' : action.type === 'welcome_email' ? 'healthy' : 'pending')}>
-            {action.type.replace(/_/g, ' ')}
-          </span>
-          <span style={{ color: '#111827', fontWeight: 600, fontSize: 13 }}>{action.title}</span>
-          <span style={{ color: '#9ca3af', fontSize: 11 }}>
-            {action.shop_name ?? action.shop_domain ?? '—'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, color: '#9ca3af' }}>{shortTime(action.created_at)}</span>
-          <span style={{ color: '#9ca3af', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div style={S.cardBody}>
-          {/* Description */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={S.label}>Description</div>
-            <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.5 }}>{action.description}</p>
-          </div>
-
-          {/* Recipient info */}
-          {isEmail && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={S.label}>Recipient</div>
-              {Boolean(content.customer_email) ? (
-                <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
-                  {String(content.customer_name ?? '')} &lt;{String(content.customer_email)}&gt;
-                </p>
-              ) : recipients ? (
-                <div>
-                  {recipients.map((r, i) => (
-                    <p key={i} style={{ margin: 0, fontSize: 12, color: '#374151' }}>{r.name} &lt;{r.email}&gt;</p>
-                  ))}
-                </div>
-              ) : <p style={S.muted}>No recipient specified</p>}
-            </div>
-          )}
-
-          {/* Copy / Content preview */}
-          {Boolean(content.copy) && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={S.label}>Copy</div>
-              <div style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 12, color: '#4b5563', lineHeight: 1.6, whiteSpace: 'pre-wrap', border: '1px solid #e5e7eb' }}>
-                {String(content.copy)}
-              </div>
-            </div>
-          )}
-
-          {/* Products (for cart recovery) */}
-          {Boolean(content.products) && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={S.label}>Products</div>
-              {(content.products as Array<{ title: string; quantity: number; price: number }>).map((p, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#374151' }}>
-                  {p.title} x{p.quantity} — {p.price}
-                </div>
-              ))}
-              {Boolean(content.total_price) && (
-                <div style={{ fontSize: 12, color: '#C9964A', fontWeight: 600, marginTop: 4 }}>
-                  Total: {String(content.total_price)} {String(content.currency ?? '')}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Full content JSON (collapsible) */}
-          <details style={{ marginBottom: 12 }}>
-            <summary style={{ ...S.label, cursor: 'pointer', userSelect: 'none' }}>Raw Content JSON</summary>
-            <pre style={{ background: '#f9fafb', borderRadius: 6, padding: 12, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 200, border: '1px solid #e5e7eb', marginTop: 6 }}>
-              {JSON.stringify(content, null, 2)}
-            </pre>
-          </details>
-
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #e5e7eb' }}>
-            <button
-              onClick={onApprove}
-              disabled={loading}
-              style={{ ...S.btn('#2D6A4F'), opacity: loading ? 0.5 : 1 }}
-            >
-              {loading ? '...' : 'Approve'}
-            </button>
-            <button
-              onClick={onReject}
-              disabled={loading}
-              style={{ ...S.btn('#721c24'), opacity: loading ? 0.5 : 1 }}
-            >
-              {loading ? '...' : 'Reject'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Activity Row Component ────────────────────────────────────────────────────
-
-function ActivityRow({ action }: { action: AdminAction }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div style={{ background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-      <div
-        style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span style={statusBadge(action.status)}>{action.status}</span>
-        <span style={statusBadge(action.type)}>{action.type.replace(/_/g, ' ')}</span>
-        <span style={{ color: '#374151', fontSize: 12, flex: 1 }}>{action.title}</span>
-        <span style={{ color: '#9ca3af', fontSize: 11 }}>{action.shop_name ?? '—'}</span>
-        <span style={{ color: '#9ca3af', fontSize: 10 }}>
-          {shortTime(action.executed_at ?? action.created_at)}
-        </span>
-        <span style={{ color: '#9ca3af', fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
-      </div>
-
-      {expanded && (
-        <div style={{ padding: '8px 12px', borderTop: '1px solid #f3f4f6' }}>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>{action.description}</div>
-
-          {Boolean(action.content?.copy) && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={S.label}>Copy</div>
-              <div style={{ background: '#f3f4f6', borderRadius: 4, padding: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {String(action.content.copy)}
-              </div>
-            </div>
-          )}
-
-          {action.result && (
-            <div>
-              <div style={S.label}>Result</div>
-              <pre style={{ background: '#f3f4f6', borderRadius: 4, padding: 8, fontSize: 10, color: '#9ca3af', overflow: 'auto', maxHeight: 150 }}>
-                {JSON.stringify(action.result, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

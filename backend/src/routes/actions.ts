@@ -15,13 +15,11 @@ import { checkEmailBlocked, buildUnsubscribeUrl } from '../lib/unsubscribe.js';
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Send a confirmation push to the merchant ONLY if comms_approval is 'auto'.
- * If 'manual', the admin sees results in the dashboard — no push spam.
+ * Send a confirmation push to the merchant after action execution.
+ * All merchants get direct notifications — no admin approval gate.
  */
 async function sendConfirmationPush(accountId: string, payload: { title: string; body: string; url: string }): Promise<void> {
   try {
-    const { data } = await supabase.from('accounts').select('comms_approval').eq('id', accountId).single();
-    if (data?.comms_approval !== 'auto') return; // manual → no confirmation push
     await sendPushNotification(accountId, payload);
   } catch { /* non-fatal */ }
 }
