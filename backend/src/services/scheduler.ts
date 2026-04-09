@@ -300,8 +300,14 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
       const tz = configs.find(c => c.account_id === accountId)?.timezone ?? 'UTC';
       const localDay = getLocalDayOfWeek(tz, now);
       if (localDay === 1) {
-        console.log(`[scheduler] [${accountId}] Monday — running weekly pipeline`);
-        await runWeeklyPipeline(accountId, now);
+        const { hasFeature } = await import('../lib/plans.js');
+        const canWeekly = await hasFeature(accountId, 'weekly_brief');
+        if (canWeekly) {
+          console.log(`[scheduler] [${accountId}] Monday — running weekly pipeline`);
+          await runWeeklyPipeline(accountId, now);
+        } else {
+          console.log(`[scheduler] [${accountId}] Monday — weekly_brief not in plan, skipping`);
+        }
       }
 
       // No reminders — actions wait silently until approved or expired after 7 days

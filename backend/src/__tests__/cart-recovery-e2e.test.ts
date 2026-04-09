@@ -64,6 +64,14 @@ function resetTables() {
   }];
   tables.email_log = [];
   tables.push_subscriptions = [];
+  tables.subscription_plans = [{
+    id: 'scale', name: 'Scale', price_usd: 199,
+    features: { daily_brief: true, dashboard: true, weekly_brief: true, cart_recovery: true, welcome_emails: true, reactivation: true, push_notifications: true, auto_discounts: true, auto_seo: true, auto_merchandising: true },
+    limits: { emails_per_month: -1, actions_per_day: -1 },
+  }];
+  tables.account_subscriptions = [{
+    id: 'sub-1', account_id: ACCOUNT_ID, plan_id: 'scale', status: 'active', is_beta: true,
+  }];
 }
 
 // ── Supabase mock: chainable query builder over in-memory tables ─────────────

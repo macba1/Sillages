@@ -216,6 +216,38 @@ router.put('/:id/approve', requireAuth, async (req: Request, res: Response, next
 
     const executor = executors[actionType];
     if (executor) {
+      // Feature gating: check plan allows this action type
+      const { hasFeature, checkLimit, getMonthlyEmailCount } = await import('../lib/plans.js');
+      const featureMap: Record<string, string> = {
+        cart_recovery: 'cart_recovery',
+        welcome_email: 'welcome_emails',
+        reactivation_email: 'reactivation',
+        discount_code: 'auto_discounts',
+        seo_fix: 'auto_seo',
+        product_highlight: 'auto_merchandising',
+      };
+      const requiredFeature = featureMap[actionType];
+      if (requiredFeature) {
+        const allowed = await hasFeature(accountId, requiredFeature);
+        if (!allowed) {
+          await markFailed(actionId, `Feature '${requiredFeature}' not available in current plan`);
+          res.json({ action: { id: actionId, status: 'failed' }, executed: false, upgrade_required: requiredFeature });
+          return;
+        }
+      }
+
+      // Email limit check for email-sending actions
+      const emailActions = ['cart_recovery', 'welcome_email', 'reactivation_email'];
+      if (emailActions.includes(actionType)) {
+        const monthlyCount = await getMonthlyEmailCount(accountId);
+        const limitCheck = await checkLimit(accountId, 'emails_per_month', monthlyCount);
+        if (!limitCheck.allowed) {
+          await markFailed(actionId, `Monthly email limit reached (${limitCheck.limit})`);
+          res.json({ action: { id: actionId, status: 'failed' }, executed: false, limit_reached: 'emails_per_month' });
+          return;
+        }
+      }
+
       await executor(accountId, actionId, content);
     } else {
       // Unknown type — mark completed with note

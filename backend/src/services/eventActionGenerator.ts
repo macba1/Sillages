@@ -305,6 +305,22 @@ Return JSON:
       content: Record<string, unknown>;
     };
 
+    // ── Feature gating: check if account's plan allows this action type ──
+    const { hasFeature: checkFeature } = await import('../lib/plans.js');
+    const featureMap: Record<string, string> = {
+      cart_recovery: 'cart_recovery',
+      welcome_email: 'welcome_emails',
+      reactivation_email: 'reactivation',
+    };
+    const requiredFeature = featureMap[actionType];
+    if (requiredFeature) {
+      const allowed = await checkFeature(accountId, requiredFeature);
+      if (!allowed) {
+        console.log(`${LOG} SKIP: ${accountId} plan does not include '${requiredFeature}' — action not created`);
+        return null;
+      }
+    }
+
     // Save to pending_actions
     const { data: saved, error } = await supabase
       .from('pending_actions')
