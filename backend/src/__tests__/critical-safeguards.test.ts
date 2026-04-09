@@ -320,19 +320,16 @@ describe('Test 10: commsGate gates correctly', () => {
     // Should NOT have gateEmail or gateCartRecovery etc.
     expect(commsGateCode).not.toContain('gateEmail');
     expect(commsGateCode).not.toContain('gateCartRecovery');
-
-    // Should check comms_approval
-    expect(commsGateCode).toContain('comms_approval');
-    expect(commsGateCode).toContain("'auto'");
-    expect(commsGateCode).toContain("'manual'");
   });
 
-  it('should queue push for manual accounts', async () => {
+  it('should send directly with frequency limits (no admin approval gate)', async () => {
     const commsGateCode = await readSrc('services/commsGate.ts');
 
-    // Manual accounts should have pending_comms insert
-    expect(commsGateCode).toContain("pending_comms");
-    expect(commsGateCode).toContain("status: 'pending'");
+    // All comms go directly — no manual approval queue
+    expect(commsGateCode).not.toContain("pending_comms");
+    expect(commsGateCode).toContain('sendPushNotification');
+    expect(commsGateCode).toContain('max 1 push/day');
+    expect(commsGateCode).toContain('9:00-20:00');
   });
 
   it('should have fail-closed behavior for Shopify check', async () => {

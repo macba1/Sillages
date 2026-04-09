@@ -51,7 +51,7 @@ async function isWithinPushHours(accountId: string): Promise<boolean> {
 
 /**
  * Check how many pushes (any type) were already sent today for this account.
- * Counts from email_log (actual sends) instead of pending_comms.
+ * Counts from email_log (actual sends).
  */
 async function getPushCountToday(accountId: string): Promise<number> {
   const todayStart = new Date();

@@ -2,12 +2,13 @@
  * END-TO-END INTEGRATION TEST: Cart Recovery Flow
  *
  * Simulates the complete pipeline:
- *   abandoned cart → detector → Growth Hacker (LLM) → orchestrator validates →
- *   push in pending_comms → admin endpoint returns action → approve →
- *   real-time verify → email sent
+ *   abandoned cart → detector → Growth Hacker (LLM) → action created →
+ *   push sent directly to merchant → merchant approves in PWA → email sent
  *
  * All external APIs (Supabase, Shopify, OpenAI, Resend) are mocked.
  * Each step is verified independently — if any fails, the test fails.
+ *
+ * NOTE: Tony (admin) is NOT in this flow. Merchants manage their own actions.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -44,10 +45,9 @@ function resetTables() {
   }];
   tables.event_log = [];
   tables.pending_actions = [];
-  tables.pending_comms = [];
   tables.accounts = [{
     id: ACCOUNT_ID, email: 'merchant@test.com', full_name: 'Test Merchant',
-    language: 'es', comms_approval: 'manual',
+    language: 'es', comms_approval: 'auto',
   }];
   tables.shopify_connections = [{
     account_id: ACCOUNT_ID, shop_name: 'TestShop', shop_domain: 'test.myshopify.com',
@@ -63,7 +63,6 @@ function resetTables() {
     },
   }];
   tables.email_log = [];
-  tables.orchestrator_checks = [];
   tables.push_subscriptions = [];
 }
 
@@ -220,18 +219,10 @@ vi.mock('../lib/tokenGuard.js', () => ({
   handleTokenFailure: vi.fn(), markTokenHealthy: vi.fn(),
 }));
 
-// gatePush — writes to in-memory pending_comms
+// gatePush — sends directly (new model: no admin approval gate)
 vi.mock('../services/commsGate.js', () => ({
-  gatePush: vi.fn().mockImplementation(async (accountId: string, payload: Row) => {
-    tables.pending_comms.push({
-      id: `comm-${Math.random().toString(36).slice(2, 8)}`,
-      account_id: accountId,
-      type: 'push', channel: 'event_push',
-      content: payload,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    });
-    return { sent: false, queued: true };
+  gatePush: vi.fn().mockImplementation(async () => {
+    return { sent: true, queued: false };
   }),
 }));
 
@@ -246,7 +237,7 @@ describe('E2E: Cart Recovery Flow', () => {
     mockGetOrders.mockResolvedValue({ orders: [] });
   });
 
-  it('full pipeline: detect → generate → orchestrate → push → approve → email', async () => {
+  it('full pipeline: detect → generate → push → merchant approves → email', async () => {
     // ── STEP 1: Detect abandoned cart ──
     const { detectEvents } = await import('../services/eventDetector.js');
     const events = await detectEvents(ACCOUNT_ID);
@@ -285,44 +276,32 @@ describe('E2E: Cart Recovery Flow', () => {
     const linked = tables.event_log.find(e => e.action_id === actionId);
     expect(linked, 'Step 2: event_log linked').toBeDefined();
 
-    // ── STEP 3: Orchestrator validates (should pass — clean copy) ──
-    const { runOrchestrator } = await import('../services/orchestrator.js');
-    const results = await runOrchestrator();
-    expect(results.length, 'Step 3: orchestrator ran').toBeGreaterThan(0);
-
-    // Action still pending after orchestrator
-    const afterOrch = tables.pending_actions.find(a => a.id === actionId);
-    expect(afterOrch!.status, 'Step 3: action still pending').toBe('pending');
-
-    // ── STEP 4: Push created (simulating scheduler behavior) ──
+    // ── STEP 3: Push sent directly to merchant (no admin gate) ──
     const { gatePush } = await import('../services/commsGate.js');
-    await gatePush(ACCOUNT_ID, {
+    const pushResult = await gatePush(ACCOUNT_ID, {
       title: 'TestShop',
-      body: 'María García dejó €43 en su carrito. ¿La recuperamos?',
-      url: `/actions?highlight=${actionId}`,
+      body: 'Tienes 1 acción lista para revisar.',
+      url: '/actions',
     }, 'event_push');
 
-    const push = tables.pending_comms.find(c =>
-      ((c.content as Row)?.url as string)?.includes(actionId!),
-    );
-    expect(push, 'Step 4: push created').toBeDefined();
-    expect(push!.status).toBe('pending');
+    expect(pushResult.sent, 'Step 3: push sent directly').toBe(true);
+    expect(pushResult.queued, 'Step 3: not queued for admin').toBe(false);
 
-    // ── STEP 5: Action available in API response shape ──
+    // ── STEP 4: Action available for merchant in their PWA ──
     const pendingForApi = tables.pending_actions.filter(
       a => a.account_id === ACCOUNT_ID && a.status === 'pending',
     );
-    expect(pendingForApi.length, 'Step 5: 1 pending action').toBe(1);
+    expect(pendingForApi.length, 'Step 4: 1 pending action for merchant').toBe(1);
     expect(pendingForApi[0].type).toBe('cart_recovery');
     expect((pendingForApi[0].content as Row).priority).toBe('high');
 
-    // ── STEP 6: Approve → real-time check → send email ──
-    // 6a. Shopify check: customer NOT purchased
+    // ── STEP 5: Merchant approves → real-time check → send email ──
+    // 5a. Shopify check: customer NOT purchased
     const { orders } = await mockGetOrders();
     const bought = orders.some((o: Row) => (o.customer as Row)?.email === 'maria@test.com');
-    expect(bought, 'Step 6a: customer not purchased').toBe(false);
+    expect(bought, 'Step 5a: customer not purchased').toBe(false);
 
-    // 6b. Build and send email
+    // 5b. Build and send email
     const { buildCustomCopyEmail } = await import('../services/emailTemplates.js');
     const email = buildCustomCopyEmail({
       storeName: 'TestShop',
@@ -333,7 +312,7 @@ describe('E2E: Cart Recovery Flow', () => {
       products: cartData.products,
       brand: { shopUrl: 'https://test.myshopify.com' },
     });
-    expect(email.subject, 'Step 6b: email built').toBeTruthy();
+    expect(email.subject, 'Step 5b: email built').toBeTruthy();
 
     const { sendMerchantEmail } = await import('../services/merchantEmail.js');
     const sent = await sendMerchantEmail({
@@ -342,16 +321,16 @@ describe('E2E: Cart Recovery Flow', () => {
       subject: email.subject,
       html: email.html,
     });
-    expect(sent.messageId, 'Step 6b: email sent').toBe('merchant-msg-001');
+    expect(sent.messageId, 'Step 5b: email sent').toBe('merchant-msg-001');
 
-    // 6c. Mark completed
+    // 5c. Mark completed
     Object.assign(action!, {
       status: 'completed',
       executed_at: new Date().toISOString(),
       result: { sent_to: 'maria@test.com', message_id: 'merchant-msg-001' },
     });
 
-    // 6d. Log communication
+    // 5d. Log communication
     const { logCommunication } = await import('../services/commLog.js');
     await logCommunication({
       account_id: ACCOUNT_ID, channel: 'email', status: 'sent',
@@ -394,59 +373,6 @@ describe('E2E: Cart Recovery Flow', () => {
     }
   });
 
-  it('orchestrator regenerates action with invented sensory copy', async () => {
-    // Create action with bad copy directly in DB
-    const badAction: Row = {
-      id: 'action-bad-copy',
-      account_id: ACCOUNT_ID,
-      type: 'cart_recovery',
-      title: 'María, pura fantasía',
-      description: 'test',
-      status: 'pending',
-      content: {
-        customer_email: 'maria@test.com',
-        customer_name: 'María García',
-        products: [{ title: 'TARTA DE LIMÓN', quantity: 1, price: 34.90 }],
-        checkout_url: 'https://test.myshopify.com/checkouts/recover/99999999',
-        copy: 'María, esta tarta es pura fantasía, con sabores que te transportan.',
-        priority: 'high',
-        plan_required: 'growth',
-      },
-      created_at: new Date().toISOString(),
-    };
-    tables.pending_actions.push(badAction);
-
-    // Set up LLM to return clean copy for regeneration
-    setLLMResponse(
-      'María, la Tarta de Limón con merengue italiano te está esperando. ¿Te la preparamos?',
-      'María, tu Tarta de Limón',
-    );
-
-    const { runOrchestrator } = await import('../services/orchestrator.js');
-    const results = await runOrchestrator();
-
-    const guardian = results.find(r => r.check_name === 'action_guardian');
-    expect(guardian, 'guardian check ran').toBeDefined();
-    expect((guardian!.details.content as Row).regenerated, 'regeneration triggered').toBe(1);
-
-    // Original rejected
-    expect(badAction.status, 'original rejected').toBe('rejected');
-
-    // New action created with clean copy
-    const newAction = tables.pending_actions.find(
-      a => a.id !== 'action-bad-copy' && a.type === 'cart_recovery' && a.status === 'pending',
-    );
-    expect(newAction, 'new action exists').toBeDefined();
-    expect((newAction!.content as Row).regeneration_count, 'regen count = 1').toBe(1);
-    expect((newAction!.content as Row).regenerated_from, 'linked to original').toBe('action-bad-copy');
-
-    // Push created for the new action
-    const regenPush = tables.pending_comms.find(c =>
-      ((c.content as Row)?.url as string)?.includes(newAction!.id as string),
-    );
-    expect(regenPush, 'push created for regenerated action').toBeDefined();
-  });
-
   it('orchestrator skips action when customer already purchased', async () => {
     // Add a pending action
     tables.pending_actions.push({
@@ -482,58 +408,6 @@ describe('E2E: Cart Recovery Flow', () => {
     await runOrchestrator();
 
     const action = tables.pending_actions.find(a => a.id === 'action-purchased');
-    expect(['completed', 'rejected'], 'action skipped/rejected').toContain(action!.status);
-  });
-
-  it('orchestrator cascades rejection to pending_comms', async () => {
-    const actionId = 'action-to-cascade';
-
-    // Add action + corresponding push
-    tables.pending_actions.push({
-      id: actionId,
-      account_id: ACCOUNT_ID,
-      type: 'cart_recovery',
-      title: 'María, tu Tarta',
-      description: 'test',
-      status: 'pending',
-      content: {
-        customer_email: 'maria@test.com',
-        customer_name: 'María García',
-        products: [{ title: 'TARTA DE LIMÓN', quantity: 1, price: 34.90 }],
-        checkout_url: 'https://test.myshopify.com/checkouts/recover/99999999',
-        copy: 'María, la Tarta de Limón está lista.',
-        priority: 'high',
-        plan_required: 'growth',
-      },
-      created_at: new Date().toISOString(),
-    });
-
-    tables.pending_comms.push({
-      id: 'push-cascade-test',
-      account_id: ACCOUNT_ID,
-      type: 'push',
-      content: {
-        title: 'TestShop',
-        body: 'María dejó €35 en su carrito',
-        url: `/actions?highlight=${actionId}`,
-      },
-      status: 'pending',
-    });
-
-    // Customer purchased → action will be skipped
-    mockGetOrders.mockResolvedValue({
-      orders: [{
-        customer: { email: 'maria@test.com' },
-        financial_status: 'paid',
-        cancel_reason: null,
-        created_at: new Date().toISOString(),
-      }],
-    });
-
-    const { runOrchestrator } = await import('../services/orchestrator.js');
-    await runOrchestrator();
-
-    const push = tables.pending_comms.find(c => c.id === 'push-cascade-test');
-    expect(push!.status, 'push cascaded to rejected').toBe('rejected');
+    expect(['completed', 'rejected', 'skipped'], 'action skipped/rejected').toContain(action!.status);
   });
 });
