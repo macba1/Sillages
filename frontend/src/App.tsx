@@ -19,6 +19,7 @@ import Reconnect from './pages/Reconnect';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import AdminStatus from './pages/AdminStatus';
+import Plans from './pages/Plans';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -149,6 +150,9 @@ export default function App() {
             </RequireAuth>
           }
         />
+
+        {/* Plans — accessible without full auth (new install redirect from Shopify) */}
+        <Route path="/plans" element={<Plans />} />
 
         {/* Reconnect — requires auth but handled internally */}
         <Route path="/reconnect" element={<Reconnect />} />
