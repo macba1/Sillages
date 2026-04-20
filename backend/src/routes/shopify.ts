@@ -11,6 +11,7 @@ import {
   resolveShopifyCredentials,
   createAppSubscription,
   getAppSubscriptionStatus,
+  SHOPIFY_PLANS,
 } from '../lib/shopify.js';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, resolveAuthToken } from '../middleware/auth.js';
@@ -284,33 +285,17 @@ router.get(
 
         res.redirect(`${env.FRONTEND_URL}/dashboard?reconnected=true`);
       } else {
-        // First install — generate brief and set up billing
+        // First install — generate brief and redirect to plan selection
         void generateFirstBrief(accountId);
 
-        try {
-          const billingReturnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing-callback?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}`;
-          const { confirmationUrl, subscriptionId } = await createAppSubscription(
-            shop,
-            tokenData.access_token,
-            'starter', // default plan
-            billingReturnUrl,
-          );
+        // Mark as pending plan selection — merchant must choose a plan
+        await supabase
+          .from('accounts')
+          .update({ subscription_status: 'trialing' })
+          .eq('id', accountId);
 
-          await supabase
-            .from('accounts')
-            .update({
-              stripe_subscription_id: subscriptionId,
-              subscription_status: 'trialing',
-              trial_ends_at: new Date(Date.now() + 14 * 86400000).toISOString(),
-            })
-            .eq('id', accountId);
-
-          console.log(`[shopify/callback] Billing subscription created — redirecting merchant to approve: ${subscriptionId}`);
-          res.redirect(confirmationUrl);
-        } catch (billingErr) {
-          console.error(`[shopify/callback] Billing creation failed (non-blocking): ${(billingErr as Error).message}`);
-          res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true`);
-        }
+        console.log(`[shopify/callback] First install — redirecting to plan selection`);
+        res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`);
       }
     } catch (err) {
       next(err);
@@ -318,82 +303,223 @@ router.get(
   },
 );
 
-// ── GET /api/shopify/billing-callback ─────────────────────────────────────────
-// Shopify redirects here after the merchant approves (or declines) the charge.
-// Query params: charge_id (from Shopify), shop, account_id (from our returnUrl).
-router.get(
-  '/billing-callback',
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const chargeId = req.query.charge_id as string | undefined;
-      const shop = req.query.shop as string | undefined;
-      const accountId = req.query.account_id as string | undefined;
+// ── GET /api/shopify/billing-callback (legacy — redirects to new endpoint) ───
+router.get('/billing-callback', (req: Request, res: Response) => {
+  const qs = new URLSearchParams(req.query as Record<string, string>).toString();
+  res.redirect(`/api/shopify/billing/callback?${qs}`);
+});
 
-      console.log(`[shopify/billing-callback] charge_id=${chargeId} shop=${shop} account_id=${accountId}`);
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHOPIFY BILLING API ENDPOINTS
+// Merchants choose a plan → Shopify Billing API creates the subscription →
+// merchant approves on Shopify → callback confirms → plan saved.
+// ═══════════════════════════════════════════════════════════════════════════════
 
-      if (!accountId) {
-        throw new AppError(400, 'Missing account_id');
-      }
+// POST /api/shopify/billing/subscribe — Create a Shopify Billing subscription
+// Body: { plan: "growth" | "pro" | "scale" | "starter" }
+router.post('/billing/subscribe', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { plan: planKey } = req.body;
+    const accountId = req.accountId!;
 
-      // Fetch connection to get access token
-      const { data: conn } = await supabase
-        .from('shopify_connections')
-        .select('shop_domain, access_token')
-        .eq('account_id', accountId)
-        .maybeSingle();
+    if (!planKey || !SHOPIFY_PLANS[planKey]) {
+      throw new AppError(400, `Invalid plan. Must be one of: ${Object.keys(SHOPIFY_PLANS).join(', ')}`);
+    }
 
-      if (!conn) {
-        throw new AppError(400, 'No Shopify connection found for this account');
-      }
+    const selectedPlan = SHOPIFY_PLANS[planKey];
 
-      // Fetch the subscription ID we stored during OAuth callback
-      const { data: account } = await supabase
+    // Starter is free — no Shopify billing needed
+    if (selectedPlan.price === 0) {
+      // Save directly as active with starter plan
+      await supabase
         .from('accounts')
-        .select('stripe_subscription_id')
-        .eq('id', accountId)
-        .single();
+        .update({
+          subscription_status: 'active',
+          stripe_subscription_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
 
-      const subscriptionGid = account?.stripe_subscription_id;
+      // Also save in account_subscriptions
+      await supabase.from('account_subscriptions').upsert({
+        account_id: accountId,
+        plan_id: 'starter',
+        status: 'active',
+        is_beta: false,
+        notes: 'Shopify Billing - Free plan',
+      }, { onConflict: 'account_id' });
 
-      if (subscriptionGid) {
-        // Check the subscription status on Shopify
-        try {
-          const { status, trialEndsOn } = await getAppSubscriptionStatus(
+      console.log(`[billing] ${accountId} subscribed to Starter (free) — no Shopify charge needed`);
+      res.json({ ok: true, plan: 'starter', redirect: null });
+      return;
+    }
+
+    // Paid plan — create Shopify subscription
+    const { data: conn } = await supabase
+      .from('shopify_connections')
+      .select('shop_domain, access_token')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (!conn) throw new AppError(400, 'No Shopify connection found');
+
+    const returnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing/callback?account_id=${encodeURIComponent(accountId)}&plan=${encodeURIComponent(planKey)}`;
+
+    const { confirmationUrl, subscriptionId } = await createAppSubscription(
+      conn.shop_domain,
+      conn.access_token,
+      planKey,
+      returnUrl,
+    );
+
+    // Store the pending subscription ID
+    await supabase
+      .from('accounts')
+      .update({
+        stripe_subscription_id: subscriptionId,
+        subscription_status: 'trialing',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', accountId);
+
+    console.log(`[billing] ${accountId} initiated ${planKey} plan — redirecting to Shopify approval`);
+    res.json({ ok: true, plan: planKey, redirect: confirmationUrl });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/shopify/billing/callback — Shopify redirects here after merchant approves/declines
+router.get('/billing/callback', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const accountId = req.query.account_id as string | undefined;
+    const planKey = req.query.plan as string | undefined;
+    const chargeId = req.query.charge_id as string | undefined;
+
+    console.log(`[billing/callback] account_id=${accountId} plan=${planKey} charge_id=${chargeId}`);
+
+    if (!accountId) throw new AppError(400, 'Missing account_id');
+
+    // Fetch connection
+    const { data: conn } = await supabase
+      .from('shopify_connections')
+      .select('shop_domain, access_token')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    if (!conn) throw new AppError(400, 'No Shopify connection found');
+
+    // Fetch the subscription GID we stored
+    const { data: account } = await supabase
+      .from('accounts')
+      .select('stripe_subscription_id')
+      .eq('id', accountId)
+      .single();
+
+    const subscriptionGid = account?.stripe_subscription_id;
+
+    if (subscriptionGid) {
+      try {
+        const { status, trialEndsOn } = await getAppSubscriptionStatus(
+          conn.shop_domain,
+          conn.access_token,
+          subscriptionGid,
+        );
+
+        console.log(`[billing/callback] Subscription ${subscriptionGid} status=${status}`);
+
+        const mappedStatus = status === 'ACTIVE' ? 'active'
+          : status === 'PENDING' ? 'trialing'
+          : status === 'DECLINED' ? 'canceled'
+          : status === 'EXPIRED' ? 'canceled'
+          : 'trialing';
+
+        await supabase
+          .from('accounts')
+          .update({
+            subscription_status: mappedStatus,
+            trial_ends_at: trialEndsOn,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', accountId);
+
+        // Save plan in account_subscriptions if approved
+        if (mappedStatus === 'active' || mappedStatus === 'trialing') {
+          const resolvedPlanId = planKey && SHOPIFY_PLANS[planKey] ? planKey : 'growth';
+          await supabase.from('account_subscriptions').upsert({
+            account_id: accountId,
+            plan_id: resolvedPlanId,
+            status: mappedStatus,
+            is_beta: false,
+            notes: `Shopify Billing - ${SHOPIFY_PLANS[resolvedPlanId]?.name ?? resolvedPlanId}`,
+          }, { onConflict: 'account_id' });
+        }
+
+        console.log(`[billing/callback] ${accountId} → ${mappedStatus} (plan=${planKey})`);
+      } catch (statusErr) {
+        console.error(`[billing/callback] Status check failed: ${(statusErr as Error).message}`);
+      }
+    }
+
+    res.redirect(`${env.FRONTEND_URL}/dashboard?billing=approved&plan=${planKey ?? 'unknown'}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/shopify/billing/status — Current subscription status
+router.get('/billing/status', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const accountId = req.accountId!;
+
+    const { data: account } = await supabase
+      .from('accounts')
+      .select('subscription_status, stripe_subscription_id, trial_ends_at, subscription_ends_at')
+      .eq('id', accountId)
+      .single();
+
+    const { data: sub } = await supabase
+      .from('account_subscriptions')
+      .select('plan_id, status, is_beta, started_at')
+      .eq('account_id', accountId)
+      .maybeSingle();
+
+    // If there's a Shopify subscription, verify it's still active
+    let shopifyStatus: string | null = null;
+    if (account?.stripe_subscription_id) {
+      try {
+        const { data: conn } = await supabase
+          .from('shopify_connections')
+          .select('shop_domain, access_token')
+          .eq('account_id', accountId)
+          .maybeSingle();
+
+        if (conn) {
+          const result = await getAppSubscriptionStatus(
             conn.shop_domain,
             conn.access_token,
-            subscriptionGid,
+            account.stripe_subscription_id,
           );
-
-          console.log(`[shopify/billing-callback] Subscription ${subscriptionGid} status=${status}`);
-
-          // Map Shopify subscription status to our DB status
-          const mappedStatus = status === 'ACTIVE' ? 'active'
-            : status === 'PENDING' ? 'trialing'
-            : status === 'DECLINED' ? 'canceled'
-            : status === 'EXPIRED' ? 'canceled'
-            : 'trialing';
-
-          await supabase
-            .from('accounts')
-            .update({
-              subscription_status: mappedStatus,
-              trial_ends_at: trialEndsOn,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', accountId);
-
-          console.log(`[shopify/billing-callback] Account ${accountId} subscription_status=${mappedStatus}`);
-        } catch (statusErr) {
-          console.error(`[shopify/billing-callback] Failed to check subscription status: ${(statusErr as Error).message}`);
+          shopifyStatus = result.status;
         }
+      } catch {
+        // Non-fatal — return cached status
       }
-
-      res.redirect(`${env.FRONTEND_URL}/dashboard?connected=true&billing=approved`);
-    } catch (err) {
-      next(err);
     }
-  },
-);
+
+    res.json({
+      subscription_status: account?.subscription_status ?? null,
+      trial_ends_at: account?.trial_ends_at ?? null,
+      plan: sub ? { id: sub.plan_id, status: sub.status, is_beta: sub.is_beta } : null,
+      shopify_status: shopifyStatus,
+      plans_available: Object.entries(SHOPIFY_PLANS).map(([key, p]) => ({
+        key, name: p.name, price: p.price, trialDays: p.trialDays,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── GET /api/shopify/reconnect ───────────────────────────────────────────────
 // Quick reconnection — looks up the merchant's existing shop_domain and redirects

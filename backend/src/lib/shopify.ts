@@ -455,9 +455,10 @@ export interface ShopifyBillingPlan {
 }
 
 export const SHOPIFY_PLANS: Record<string, ShopifyBillingPlan> = {
-  starter: { name: 'Starter', price: 19, trialDays: 14 },
-  growth:  { name: 'Growth',  price: 39, trialDays: 14 },
-  pro:     { name: 'Pro',     price: 59, trialDays: 14 },
+  starter: { name: 'Starter', price: 0,   trialDays: 0 },
+  growth:  { name: 'Growth',  price: 29,  trialDays: 14 },
+  pro:     { name: 'Pro',     price: 79,  trialDays: 14 },
+  scale:   { name: 'Scale',   price: 199, trialDays: 14 },
 };
 
 export async function shopifyGraphQL<T>(shop: string, accessToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
