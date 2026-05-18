@@ -38,9 +38,9 @@ router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError(400, 'Invalid or missing shop domain');
     }
 
-    // Resolve credentials — ?app=beta selects Sillages Beta
-    const appParam = req.query.app as string | undefined;
-    const clientIdHint = appParam === 'beta' ? env.SHOPIFY_BETA_API_KEY : (req.query.client_id as string | undefined);
+    // Resolve credentials — use client_id hint if provided (e.g. existing connections),
+    // otherwise default to primary (public) app
+    const clientIdHint = req.query.client_id as string | undefined;
     const credentials = resolveShopifyCredentials(clientIdHint);
 
     const state = generateState();
@@ -112,7 +112,7 @@ router.get(
 
       // Resolve account — two paths:
       // 1. State exists in our DB → install initiated from Sillages dashboard (our /auth flow)
-      // 2. State NOT in our DB → Shopify-initiated install (custom distribution), look up by shop_domain
+      // 2. State NOT in our DB → Shopify-initiated install (App Store), look up by shop_domain
       let accountId: string;
 
       if (state) {
@@ -138,7 +138,7 @@ router.get(
           accountId = stateRow.account_id;
           console.log(`[shopify/callback] resolved account from state: ${accountId}`);
         } else {
-          // Path 2: state not in our DB — Shopify-initiated install (custom distribution)
+          // Path 2: state not in our DB — Shopify-initiated install (App Store)
           // Look up existing connection by shop_domain, or create a new account
           const { data: existingConn } = await supabase
             .from('shopify_connections')
@@ -148,10 +148,10 @@ router.get(
 
           if (existingConn) {
             accountId = existingConn.account_id;
-            console.log(`[shopify/callback] Shopify-initiated install — found existing account by shop_domain: ${accountId}`);
+            console.log(`[shopify/callback] App Store install — found existing account by shop_domain: ${accountId}`);
           } else {
             // No state in our DB and no existing connection — redirect to sign-up flow
-            console.warn(`[shopify/callback] Shopify-initiated install for unknown shop ${shop} — no account to link`);
+            console.warn(`[shopify/callback] App Store install for unknown shop ${shop} — no account to link`);
             res.redirect(`${env.FRONTEND_URL}/signup?shop=${encodeURIComponent(shop)}&source=shopify`);
             return;
           }
@@ -562,19 +562,15 @@ router.get('/reconnect', async (req: Request, res: Response, next: NextFunction)
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     await supabase.from('shopify_oauth_states').insert({ state, account_id: accountId, expires_at: expiresAt });
 
-    // Use the app that originally connected the store.
-    // If no app_client_id saved, try beta first (legacy connections used beta),
-    // fall back to primary.
+    // Use the app that originally connected the store (e.g. Andrea's beta app).
+    // If no app_client_id saved, use the primary (public) app.
     let credentials: import('../lib/shopify.js').ShopifyCredentials;
     if (conn.app_client_id) {
       credentials = resolveShopifyCredentials(conn.app_client_id);
       console.log(`[shopify/reconnect] Using saved app_client_id: ${conn.app_client_id.slice(0, 8)}...`);
-    } else if (env.SHOPIFY_BETA_API_KEY) {
-      credentials = resolveShopifyCredentials(env.SHOPIFY_BETA_API_KEY);
-      console.log(`[shopify/reconnect] No saved app_client_id — trying beta app first`);
     } else {
       credentials = resolveShopifyCredentials();
-      console.log(`[shopify/reconnect] No saved app_client_id, no beta — using primary app`);
+      console.log(`[shopify/reconnect] No saved app_client_id — using primary (public) app`);
     }
 
     const installUrl = buildInstallUrl(conn.shop_domain, state, credentials);
