@@ -152,7 +152,7 @@ export interface GrowthAction {
     // reactivation_email fields
     recipients?: Array<{ email: string; name: string; last_product: string; days_since: number }>;
   };
-  plan_required: 'growth' | 'pro';
+  plan_required: 'basico' | 'crecimiento' | 'pro';
 }
 
 // ── Growth Hacker Output ────────────────────────────────────────────────────

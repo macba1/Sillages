@@ -73,7 +73,7 @@ const router = Router();
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Resolve the user's plan to determine which actions they can see. */
-async function getAccountPlan(accountId: string): Promise<'starter' | 'growth' | 'pro'> {
+async function getAccountPlan(accountId: string): Promise<string> {
   const { data: account } = await supabase
     .from('accounts')
     .select('plan, subscription_status')
@@ -82,12 +82,24 @@ async function getAccountPlan(accountId: string): Promise<'starter' | 'growth' |
 
   // Prefer explicit plan column if set
   const plan = account?.plan;
-  if (plan === 'pro' || plan === 'growth' || plan === 'starter') return plan;
+  const validPlans = ['starter', 'basico', 'crecimiento', 'pro'];
+  if (plan && validPlans.includes(plan)) return plan;
+
+  // Check account_subscriptions for Shopify Billing plan
+  const { data: sub } = await supabase
+    .from('account_subscriptions')
+    .select('plan_id, is_beta')
+    .eq('account_id', accountId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (sub?.is_beta) return 'pro'; // Beta users (Andrea) get full access
+  if (sub?.plan_id && validPlans.includes(sub.plan_id)) return sub.plan_id;
 
   // Fallback to subscription_status
   const status = account?.subscription_status;
-  if (status === 'trialing' || status === 'beta' || status === null) return 'pro';
-  if (status === 'active') return 'growth';
+  if (status === 'trialing' || status === 'beta') return 'pro';
+  if (status === 'active') return 'basico';
   return 'starter';
 }
 
@@ -117,7 +129,10 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    const allowedPlans = plan === 'pro' ? ['growth', 'pro'] : ['growth'];
+    // Plan hierarchy: starter < basico < crecimiento < pro
+    // crecimiento+ gets cart_recovery actions, pro gets welcome_email too
+    const planLevel: Record<string, number> = { starter: 0, basico: 1, crecimiento: 2, pro: 3 };
+    const userLevel = planLevel[plan] ?? 0;
 
     const { data, error } = await supabase
       .from('pending_actions')
@@ -130,8 +145,9 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
 
     // Filter by plan_required (stored in content.plan_required)
     const filtered = (data ?? []).filter(a => {
-      const planReq = a.content?.plan_required ?? 'growth';
-      return allowedPlans.includes(planReq);
+      const planReq = a.content?.plan_required ?? 'crecimiento';
+      const reqLevel = planLevel[planReq] ?? 2;
+      return userLevel >= reqLevel;
     });
 
     // Sort by priority (stored in content.priority): high first, then medium, then low

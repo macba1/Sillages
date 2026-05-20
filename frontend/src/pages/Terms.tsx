@@ -56,10 +56,10 @@ export default function Terms() {
             Sillages offers the following plans:
           </p>
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            <li><strong style={{ color: '#3A2332' }}>Starter</strong> — Free. Daily intelligence brief and basic analytics.</li>
-            <li><strong style={{ color: '#3A2332' }}>Growth</strong> — $29/month. Cart recovery emails, welcome emails, brand voice customization. 14-day free trial.</li>
-            <li><strong style={{ color: '#3A2332' }}>Pro</strong> — $79/month. Advanced analytics, commercial calendar, priority support. 14-day free trial.</li>
-            <li><strong style={{ color: '#3A2332' }}>Scale</strong> — $199/month. Multi-store support, API access, dedicated success manager. 14-day free trial.</li>
+            <li><strong style={{ color: '#3A2332' }}>Starter</strong> — Free. Basic daily brief with yesterday's sales summary.</li>
+            <li><strong style={{ color: '#3A2332' }}>Básico</strong> — $19/month. Full intelligence brief with trends and recommendations. 14-day free trial.</li>
+            <li><strong style={{ color: '#3A2332' }}>Crecimiento</strong> — $39/month. Full brief plus cart recovery emails. 14-day free trial.</li>
+            <li><strong style={{ color: '#3A2332' }}>Pro</strong> — $59/month. Full brief, cart recovery, and welcome emails. 14-day free trial.</li>
           </ul>
           <p>
             All billing is managed through the <strong style={{ color: '#3A2332' }}>Shopify Billing API</strong>.

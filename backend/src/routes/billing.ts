@@ -16,23 +16,30 @@ router.get('/plans', (_req, res) => {
       {
         key: 'starter',
         name: 'Starter',
-        price: 29,
-        description: 'One store. Daily brief delivered every morning.',
-        features: ['Daily intelligence brief', 'All 6 sections', 'Email delivery', '30-day history'],
+        price: 0,
+        description: 'Basic daily brief with yesterday\'s sales summary.',
+        features: ['Daily brief (basic)', 'Store dashboard', 'Basic analytics'],
       },
       {
-        key: 'growth',
-        name: 'Growth',
-        price: 79,
-        description: 'More history, configurable tone and focus areas.',
-        features: ['Everything in Starter', '90-day history', 'Custom focus areas', 'Brief tone control', 'Priority support'],
+        key: 'basico',
+        name: 'Básico',
+        price: 19,
+        description: 'Full daily brief with trends and recommendations.',
+        features: ['Everything in Starter', 'Full daily brief', 'Trends & recommendations', 'Brand voice'],
       },
       {
-        key: 'scale',
-        name: 'Scale',
-        price: 149,
-        description: 'Full access, API, and white-glove onboarding.',
-        features: ['Everything in Growth', 'Unlimited history', 'Competitor context', 'API access (coming soon)', 'Dedicated onboarding'],
+        key: 'crecimiento',
+        name: 'Crecimiento',
+        price: 39,
+        description: 'Full brief plus cart recovery emails.',
+        features: ['Everything in Básico', 'Cart recovery emails', 'Push notifications'],
+      },
+      {
+        key: 'pro',
+        name: 'Pro',
+        price: 59,
+        description: 'Full brief, cart recovery, and welcome emails.',
+        features: ['Everything in Crecimiento', 'Welcome emails', 'Priority support'],
       },
     ],
   });
@@ -70,7 +77,7 @@ router.post(
       const { plan } = req.body as { plan: unknown };
 
       if (!isPlanKey(plan)) {
-        throw new AppError(400, `Invalid plan. Must be one of: starter, growth, scale`);
+        throw new AppError(400, `Invalid plan. Must be one of: starter, basico, crecimiento, pro`);
       }
 
       // Load account

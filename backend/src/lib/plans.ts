@@ -107,9 +107,9 @@ export async function getPlan(accountId: string): Promise<PlanData> {
     console.warn(`${LOG} Failed to load plan for ${accountId}: ${(err as Error).message} — granting full access`);
     const fullAccess: PlanData = {
       ...DEFAULT_PLAN,
-      plan_id: 'scale',
-      name: 'Scale (fallback)',
-      features: { ...DEFAULT_PLAN.features, cart_recovery: true, welcome_emails: true, reactivation: true, weekly_brief: true, push_notifications: true, auto_discounts: true, auto_seo: true, auto_merchandising: true },
+      plan_id: 'pro',
+      name: 'Pro (fallback)',
+      features: { ...DEFAULT_PLAN.features, cart_recovery: true, welcome_emails: true, weekly_brief: true, push_notifications: true },
       limits: { emails_per_month: -1, actions_per_day: -1 },
     };
     setCache(accountId, fullAccess);

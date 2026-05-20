@@ -316,7 +316,7 @@ router.get('/billing-callback', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/shopify/billing/subscribe — Create a Shopify Billing subscription
-// Body: { plan: "growth" | "pro" | "scale" | "starter" }
+// Body: { plan: "starter" | "basico" | "crecimiento" | "pro" }
 router.post('/billing/subscribe', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { plan: planKey } = req.body;
@@ -445,7 +445,7 @@ router.get('/billing/callback', async (req: Request, res: Response, next: NextFu
 
         // Save plan in account_subscriptions if approved
         if (mappedStatus === 'active' || mappedStatus === 'trialing') {
-          const resolvedPlanId = planKey && SHOPIFY_PLANS[planKey] ? planKey : 'growth';
+          const resolvedPlanId = planKey && SHOPIFY_PLANS[planKey] ? planKey : 'basico';
           await supabase.from('account_subscriptions').upsert({
             account_id: accountId,
             plan_id: resolvedPlanId,

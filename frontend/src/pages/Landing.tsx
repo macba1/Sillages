@@ -321,42 +321,39 @@ export default function Landing() {
             cta={t('landing.pricing.starter.cta')}
           />
           <PricingCard
-            name="Growth"
-            price={29}
+            name="Básico"
+            price={19}
+            period="/mo"
+            features={[
+              t('landing.pricing.basico.f1'),
+              t('landing.pricing.basico.f2'),
+              t('landing.pricing.basico.f3'),
+              t('landing.pricing.basico.f4'),
+            ]}
+            cta={t('landing.pricing.basico.cta')}
+          />
+          <PricingCard
+            name="Crecimiento"
+            price={39}
             period="/mo"
             highlighted
             features={[
-              t('landing.pricing.growth.f1'),
-              t('landing.pricing.growth.f2'),
-              t('landing.pricing.growth.f3'),
-              t('landing.pricing.growth.f4'),
-              t('landing.pricing.growth.f5'),
+              t('landing.pricing.crecimiento.f1'),
+              t('landing.pricing.crecimiento.f2'),
+              t('landing.pricing.crecimiento.f3'),
             ]}
-            cta={t('landing.pricing.growth.cta')}
+            cta={t('landing.pricing.crecimiento.cta')}
           />
           <PricingCard
             name="Pro"
-            price={79}
+            price={59}
             period="/mo"
             features={[
               t('landing.pricing.pro.f1'),
               t('landing.pricing.pro.f2'),
               t('landing.pricing.pro.f3'),
-              t('landing.pricing.pro.f4'),
             ]}
             cta={t('landing.pricing.pro.cta')}
-          />
-          <PricingCard
-            name="Scale"
-            price={199}
-            period="/mo"
-            features={[
-              t('landing.pricing.scale.f1'),
-              t('landing.pricing.scale.f2'),
-              t('landing.pricing.scale.f3'),
-              t('landing.pricing.scale.f4'),
-            ]}
-            cta={t('landing.pricing.scale.cta')}
           />
         </div>
         <p style={{ textAlign: 'center', fontSize: 12, color: '#A89880', marginTop: 24 }}>

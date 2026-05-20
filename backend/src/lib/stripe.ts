@@ -6,25 +6,30 @@ export const stripe = new Stripe(env.STRIPE_SECRET_KEY ?? 'sk_placeholder_not_ac
   typescript: true,
 });
 
-// ── Plan definitions ──────────────────────────────────────────────────────────
+// ── Plan definitions (legacy — Shopify Billing is primary) ───────────────────
 
-export type PlanKey = 'starter' | 'growth' | 'scale';
+export type PlanKey = 'starter' | 'basico' | 'crecimiento' | 'pro';
 
 export const PLANS: Record<PlanKey, { name: string; priceId: () => string; amount: number }> = {
   starter: {
     name: 'Starter',
     priceId: () => env.STRIPE_PRICE_ID_STARTER ?? '',
-    amount: 2900,
+    amount: 0,
   },
-  growth: {
-    name: 'Growth',
+  basico: {
+    name: 'Básico',
     priceId: () => env.STRIPE_PRICE_ID_GROWTH ?? '',
-    amount: 7900,
+    amount: 1900,
   },
-  scale: {
-    name: 'Scale',
+  crecimiento: {
+    name: 'Crecimiento',
     priceId: () => env.STRIPE_PRICE_ID_SCALE ?? '',
-    amount: 14900,
+    amount: 3900,
+  },
+  pro: {
+    name: 'Pro',
+    priceId: () => '',
+    amount: 5900,
   },
 };
 
@@ -33,5 +38,5 @@ export function getPriceId(plan: PlanKey): string {
 }
 
 export function isPlanKey(value: unknown): value is PlanKey {
-  return value === 'starter' || value === 'growth' || value === 'scale';
+  return value === 'starter' || value === 'basico' || value === 'crecimiento' || value === 'pro';
 }
