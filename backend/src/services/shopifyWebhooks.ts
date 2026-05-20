@@ -14,6 +14,7 @@ const WEBHOOK_TOPICS = [
   'checkouts/create',
   'checkouts/update',
   'app/uninstalled',
+  'app_subscriptions/update',
 ] as const;
 
 // ── Idempotency: check if webhook already processed ─────────────────────────
@@ -146,6 +147,9 @@ export async function processShopifyWebhook(
       break;
     case 'app/uninstalled':
       await handleAppUninstalled(shopDomain);
+      break;
+    case 'app_subscriptions/update':
+      await handleAppSubscriptionUpdate(shopDomain, payload);
       break;
     default:
       console.log(`${LOG} Unhandled topic: ${topic}`);
@@ -391,6 +395,24 @@ async function handleAppUninstalled(shopDomain: string): Promise<void> {
     console.log(`${LOG} Disabled ${shopDomain} — token_status=invalid, sync_status=disabled`);
   }
 
+  // Mark subscription as canceled
+  await supabase
+    .from('accounts')
+    .update({
+      subscription_status: 'canceled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conn.account_id);
+
+  // Mark account_subscriptions as churned
+  await supabase
+    .from('account_subscriptions')
+    .update({ status: 'churned' })
+    .eq('account_id', conn.account_id)
+    .in('status', ['active', 'trialing']);
+
+  console.log(`${LOG} ${conn.account_id} subscription_status=canceled, account_subscriptions=churned`);
+
   // Also disable sending in user_intelligence_config
   await supabase
     .from('user_intelligence_config')
@@ -406,9 +428,94 @@ async function handleAppUninstalled(shopDomain: string): Promise<void> {
       subject: `[Sillages] App uninstalled: ${shopDomain}`,
       html: `<p>The merchant at <strong>${shopDomain}</strong> has uninstalled the Sillages app.</p>
              <p>Account ID: ${conn.account_id}</p>
-             <p>Token and sending have been disabled automatically.</p>`,
+             <p>Token, sending, and subscription have been disabled automatically.</p>`,
     });
   } catch (err) {
     console.warn(`${LOG} Failed to send uninstall alert email: ${(err as Error).message}`);
+  }
+}
+
+// ── app_subscriptions/update ─────────────────────────────────────────────────
+
+async function handleAppSubscriptionUpdate(shopDomain: string, payload: Record<string, unknown>): Promise<void> {
+  // Shopify sends this when subscription status changes (trial→active, cancelled, etc.)
+  const subscriptionPayload = payload.app_subscription as Record<string, unknown> | undefined;
+  const adminGraphqlApiId = subscriptionPayload?.admin_graphql_api_id as string | undefined;
+  const status = subscriptionPayload?.status as string | undefined;
+
+  console.log(`${LOG} app_subscriptions/update for ${shopDomain} — status=${status} gid=${adminGraphqlApiId}`);
+
+  const { data: conn } = await supabase
+    .from('shopify_connections')
+    .select('account_id')
+    .eq('shop_domain', shopDomain)
+    .maybeSingle();
+
+  if (!conn) {
+    console.warn(`${LOG} No connection for ${shopDomain} — ignoring subscription update`);
+    return;
+  }
+
+  // Map Shopify subscription status to our status
+  // Shopify statuses: ACTIVE, PENDING, DECLINED, EXPIRED, FROZEN, CANCELLED
+  let mappedStatus: string;
+  switch (status?.toUpperCase()) {
+    case 'ACTIVE':
+      mappedStatus = 'active';
+      break;
+    case 'CANCELLED':
+    case 'DECLINED':
+    case 'EXPIRED':
+      mappedStatus = 'canceled';
+      break;
+    case 'FROZEN':
+      mappedStatus = 'past_due';
+      break;
+    case 'PENDING':
+      mappedStatus = 'trialing';
+      break;
+    default:
+      console.log(`${LOG} Unknown subscription status: ${status} — ignoring`);
+      return;
+  }
+
+  // Update accounts table
+  await supabase
+    .from('accounts')
+    .update({
+      subscription_status: mappedStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conn.account_id);
+
+  // Update account_subscriptions
+  if (mappedStatus === 'active') {
+    await supabase
+      .from('account_subscriptions')
+      .update({ status: 'active' })
+      .eq('account_id', conn.account_id)
+      .in('status', ['trialing', 'pending']);
+  } else if (mappedStatus === 'canceled') {
+    await supabase
+      .from('account_subscriptions')
+      .update({ status: 'canceled' })
+      .eq('account_id', conn.account_id)
+      .in('status', ['active', 'trialing', 'pending']);
+  }
+
+  console.log(`${LOG} ${conn.account_id} subscription updated → ${mappedStatus}`);
+
+  // Alert admin on cancellation
+  if (mappedStatus === 'canceled') {
+    try {
+      const { resend } = await import('../lib/resend.js');
+      await resend.emails.send({
+        from: env.RESEND_FROM_EMAIL,
+        to: 'tony@richmondpartner.com',
+        subject: `[Sillages] Subscription cancelled: ${shopDomain}`,
+        html: `<p>Merchant <strong>${shopDomain}</strong> subscription is now <strong>${status}</strong>.</p>
+               <p>Account ID: ${conn.account_id}</p>`,
+      });
+    } catch { /* non-fatal */ }
   }
 }

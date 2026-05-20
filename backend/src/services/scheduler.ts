@@ -15,6 +15,7 @@ import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 import { runOrchestrator } from './orchestrator.js';
 import { verifyAllWebhooks } from './shopifyWebhooks.js';
+import { runTrialReminders } from './trialReminders.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EVENT-DRIVEN SCHEDULER
@@ -86,6 +87,13 @@ export function startScheduler(): void {
     });
   });
 
+  // Trial reminders: once daily at 02:00 UTC
+  cron.schedule('0 2 * * *', () => {
+    runTrialReminders().catch(err => {
+      console.error('[scheduler] Trial reminders error:', err);
+    });
+  });
+
   // Webhook verification: once daily at 03:15 UTC
   cron.schedule('15 3 * * *', () => {
     verifyAllWebhooks().catch(err => {
@@ -98,7 +106,7 @@ export function startScheduler(): void {
     console.warn('[scheduler] Startup webhook verification failed (non-fatal):', err);
   });
 
-  console.log('[scheduler] Started — events at :10, daily/weekly at :05, orchestrator at :00/:30, webhooks at 03:15');
+  console.log('[scheduler] Started — events at :10, daily/weekly at :05, orchestrator at :00/:30, trials at 02:00, webhooks at 03:15');
 }
 
 // Force run for testing
