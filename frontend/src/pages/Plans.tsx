@@ -71,20 +71,32 @@ export default function Plans() {
   const [error, setError] = useState<string | null>(null);
 
   const isNewInstall = searchParams.get('new_install') === 'true';
+  const accountIdParam = searchParams.get('account_id');
 
   async function handleSelectPlan(planKey: string) {
     setLoading(planKey);
     setError(null);
 
     try {
-      const { data } = await api.post('/api/shopify/billing/subscribe', { plan: planKey });
+      // Pass account_id for new installs (merchant not yet logged in)
+      const body: Record<string, string> = { plan: planKey };
+      if (accountIdParam) {
+        body.account_id = accountIdParam;
+      }
+
+      const { data } = await api.post('/api/shopify/billing/subscribe', body);
 
       if (data.redirect) {
         // Shopify billing approval page
         window.location.href = data.redirect;
       } else {
-        // Free plan — go straight to dashboard
-        window.location.href = '/dashboard?plan=starter';
+        // Free plan or billing unavailable — go to dashboard
+        // For new installs without session, go to login first
+        if (isNewInstall) {
+          window.location.href = '/login?plan=' + planKey;
+        } else {
+          window.location.href = '/dashboard?plan=' + planKey;
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';

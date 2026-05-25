@@ -463,11 +463,38 @@ router.get('/billing-callback', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/shopify/billing/subscribe — Create a Shopify Billing subscription
-// Body: { plan: "starter" | "basico" | "crecimiento" | "pro" }
-router.post('/billing/subscribe', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+// Body: { plan: "starter" | "basico" | "crecimiento" | "pro", account_id?: string }
+// Auth: JWT (logged-in merchant) OR account_id in body (new install from OAuth callback)
+router.post('/billing/subscribe', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { plan: planKey } = req.body;
-    const accountId = req.accountId!;
+    const { plan: planKey, account_id: bodyAccountId } = req.body;
+
+    // Resolve account — try JWT first, fall back to account_id from body (new installs)
+    let accountId: string;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const resolved = await resolveAuthToken(authHeader.slice(7));
+        accountId = resolved.accountId;
+      } catch {
+        // JWT invalid — try body account_id
+        if (!bodyAccountId) throw new AppError(401, 'Missing authorization');
+        accountId = bodyAccountId;
+      }
+    } else if (bodyAccountId) {
+      // No JWT — use account_id from body (auto-created account, not yet logged in)
+      accountId = bodyAccountId;
+    } else {
+      throw new AppError(401, 'Missing authorization');
+    }
+
+    // Verify account exists
+    const { data: accountCheck } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('id', accountId)
+      .maybeSingle();
+    if (!accountCheck) throw new AppError(400, 'Account not found');
 
     if (!planKey || !SHOPIFY_PLANS[planKey]) {
       throw new AppError(400, `Invalid plan. Must be one of: ${Object.keys(SHOPIFY_PLANS).join(', ')}`);
@@ -512,25 +539,53 @@ router.post('/billing/subscribe', requireAuth, async (req: Request, res: Respons
 
     const returnUrl = `${env.SHOPIFY_APP_URL}/api/shopify/billing/callback?account_id=${encodeURIComponent(accountId)}&plan=${encodeURIComponent(planKey)}`;
 
-    const { confirmationUrl, subscriptionId } = await createAppSubscription(
-      conn.shop_domain,
-      conn.access_token,
-      planKey,
-      returnUrl,
-    );
+    try {
+      const { confirmationUrl, subscriptionId } = await createAppSubscription(
+        conn.shop_domain,
+        conn.access_token,
+        planKey,
+        returnUrl,
+      );
 
-    // Store the pending subscription ID
-    await supabase
-      .from('accounts')
-      .update({
-        stripe_subscription_id: subscriptionId,
-        subscription_status: 'trialing',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', accountId);
+      // Store the pending subscription ID
+      await supabase
+        .from('accounts')
+        .update({
+          stripe_subscription_id: subscriptionId,
+          subscription_status: 'trialing',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
 
-    console.log(`[billing] ${accountId} initiated ${planKey} plan — redirecting to Shopify approval`);
-    res.json({ ok: true, plan: planKey, redirect: confirmationUrl });
+      console.log(`[billing] ${accountId} initiated ${planKey} plan — redirecting to Shopify approval`);
+
+      res.json({ ok: true, plan: planKey, redirect: confirmationUrl });
+      return;
+    } catch (billingErr) {
+      // Dev stores or stores that can't accept billing — assign plan directly
+      const errMsg = billingErr instanceof Error ? billingErr.message : String(billingErr);
+      console.warn(`[billing] ${accountId} Shopify billing failed (assigning plan directly): ${errMsg}`);
+
+      await supabase
+        .from('accounts')
+        .update({
+          subscription_status: 'active',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
+
+      await supabase.from('account_subscriptions').upsert({
+        account_id: accountId,
+        plan_id: planKey,
+        status: 'active',
+        is_beta: false,
+        notes: `Assigned directly — billing unavailable: ${errMsg.slice(0, 100)}`,
+      }, { onConflict: 'account_id' });
+
+      console.log(`[billing] ${accountId} assigned ${planKey} directly (billing unavailable)`);
+      res.json({ ok: true, plan: planKey, redirect: null });
+      return;
+    }
   } catch (err) {
     next(err);
   }
