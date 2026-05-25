@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import {
@@ -150,9 +151,155 @@ router.get(
             accountId = existingConn.account_id;
             console.log(`[shopify/callback] App Store install — found existing account by shop_domain: ${accountId}`);
           } else {
-            // No state in our DB and no existing connection — redirect to sign-up flow
-            console.warn(`[shopify/callback] App Store install for unknown shop ${shop} — no account to link`);
-            res.redirect(`${env.FRONTEND_URL}/signup?shop=${encodeURIComponent(shop)}&source=shopify`);
+            // App Store install — no existing connection.
+            // Exchange code first to get shop info, then auto-create account.
+            console.log(`[shopify/callback] App Store install for new shop ${shop} — auto-creating account`);
+
+            const tokenData = await exchangeCodeForToken(shop, code, credentials);
+            const client = shopifyClient(shop, tokenData.access_token);
+            const shopInfo = await client.getShop();
+
+            const ownerEmail = shopInfo.email;
+            const ownerName = shopInfo.name || shop.replace('.myshopify.com', '');
+
+            // Check if an account already exists with this email
+            const { data: existingAccount } = await supabase
+              .from('accounts')
+              .select('id')
+              .eq('email', ownerEmail)
+              .maybeSingle();
+
+            if (existingAccount) {
+              accountId = existingAccount.id;
+              console.log(`[shopify/callback] Found existing account by email ${ownerEmail}: ${accountId}`);
+            } else {
+              // Create auth user → triggers handle_new_user() → creates accounts row
+              const tempPassword = crypto.randomBytes(24).toString('base64url');
+              const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+                email: ownerEmail,
+                password: tempPassword,
+                email_confirm: true,
+                user_metadata: { full_name: ownerName },
+              });
+
+              if (authError || !authUser.user) {
+                console.error(`[shopify/callback] Failed to create auth user: ${authError?.message}`);
+                throw new AppError(500, `Failed to create account: ${authError?.message}`);
+              }
+
+              // Wait briefly for the trigger to create the accounts row
+              await new Promise(resolve => setTimeout(resolve, 1000));
+
+              // Find the created account
+              const { data: newAccount } = await supabase
+                .from('accounts')
+                .select('id')
+                .eq('email', ownerEmail)
+                .maybeSingle();
+
+              if (!newAccount) {
+                // Trigger might be slow — create manually
+                const { data: manualAccount, error: manualError } = await supabase
+                  .from('accounts')
+                  .insert({
+                    user_id: authUser.user.id,
+                    email: ownerEmail,
+                    full_name: ownerName,
+                    subscription_status: 'trialing',
+                  })
+                  .select('id')
+                  .single();
+
+                if (manualError || !manualAccount) {
+                  throw new AppError(500, `Failed to create account row: ${manualError?.message}`);
+                }
+                accountId = manualAccount.id;
+                console.log(`[shopify/callback] Created account manually: ${accountId}`);
+              } else {
+                accountId = newAccount.id;
+                console.log(`[shopify/callback] Account created via trigger: ${accountId}`);
+              }
+            }
+
+            // Token already exchanged — skip to upsert connection directly
+            console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}...`);
+
+            const tokenExpiresAt = tokenData.expires_in
+              ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+              : null;
+
+            const { error: upsertError } = await supabase
+              .from('shopify_connections')
+              .upsert(
+                {
+                  account_id: accountId,
+                  shop_domain: shop,
+                  shop_name: shopInfo.name,
+                  shop_email: shopInfo.email,
+                  shop_currency: shopInfo.currency,
+                  shop_timezone: shopInfo.timezone,
+                  access_token: tokenData.access_token,
+                  refresh_token: tokenData.refresh_token ?? null,
+                  token_expires_at: tokenExpiresAt,
+                  scopes: tokenData.scope,
+                  app_client_id: credentials.clientId,
+                  sync_status: 'active',
+                  sync_error: null,
+                  token_status: 'active',
+                  token_failing_since: null,
+                  token_retry_count: 0,
+                },
+                { onConflict: 'shop_domain' },
+              );
+
+            if (upsertError) {
+              throw new AppError(500, `Failed to save connection: ${upsertError.message}`);
+            }
+
+            // Register webhooks
+            const webhookBase = `${env.SHOPIFY_APP_URL}/api/webhooks/shopify`;
+            try {
+              await Promise.all([
+                client.registerWebhook('customers/data_request', `${webhookBase}/customers-data-request`),
+                client.registerWebhook('customers/redact', `${webhookBase}/customers-redact`),
+                client.registerWebhook('shop/redact', `${webhookBase}/shop-redact`),
+              ]);
+            } catch { /* non-fatal */ }
+
+            try {
+              const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
+              console.log(`[shopify/callback] Webhooks: ${registered.length} registered, ${failed.length} failed`);
+            } catch { /* non-fatal */ }
+
+            // Assign Starter plan
+            await supabase
+              .from('accounts')
+              .update({ subscription_status: 'trialing' })
+              .eq('id', accountId);
+
+            await supabase.from('account_subscriptions').upsert({
+              account_id: accountId,
+              plan_id: 'starter',
+              status: 'active',
+              is_beta: false,
+              notes: 'Auto-created on App Store install',
+            }, { onConflict: 'account_id' });
+
+            // Create user_intelligence_config
+            await supabase.from('user_intelligence_config').upsert({
+              account_id: accountId,
+              send_enabled: true,
+              send_hour: 7,
+              timezone: shopInfo.timezone || 'UTC',
+            }, { onConflict: 'account_id' });
+
+            console.log(`[shopify/callback] Auto-install complete for ${shop} → account ${accountId}`);
+
+            // Fire-and-forget: generate first brief
+            void generateFirstBrief(accountId);
+
+            // Redirect to plan selection
+            res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`);
             return;
           }
         }
