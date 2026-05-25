@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
+import { generateBrief } from './briefGenerator.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { detectEvents } from './eventDetector.js';
 import type { AbandonedCartData } from './eventDetector.js';
@@ -300,9 +301,8 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
 
   for (const accountId of due) {
     try {
-      // Daily summary push — this is the ONE push merchants get per day
-      // (commsGate enforces max 1 push/day, so if event push already sent today, this is skipped)
-      await sendDailySummaryPush(accountId);
+      // Daily: sync data, generate brief, send push summary
+      await runDailyBriefPipeline(accountId);
 
       // Monday → weekly email (queued separately as weekly_email type, not a push)
       const tz = configs.find(c => c.account_id === accountId)?.timezone ?? 'UTC';
@@ -325,6 +325,44 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
   }
 
   return due;
+}
+
+// ── Daily brief pipeline: sync → generate brief → send push ──────────────
+
+async function runDailyBriefPipeline(accountId: string): Promise<void> {
+  const pipelineStart = Date.now();
+  console.log(`[scheduler] [${accountId}] Starting daily brief pipeline`);
+
+  // 1. Sync yesterday's data
+  const snapshotDate = await ensureShopifySync(accountId);
+  if (!snapshotDate) {
+    console.log(`[scheduler] [${accountId}] No snapshot — skipping brief`);
+    return;
+  }
+
+  // 2. Check if brief already exists for this date
+  const { data: existingBrief } = await supabase
+    .from('intelligence_briefs')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('brief_date', snapshotDate)
+    .maybeSingle();
+
+  if (existingBrief) {
+    console.log(`[scheduler] [${accountId}] Brief already exists for ${snapshotDate} — skipping generation`);
+  } else {
+    // 3. Generate the brief
+    try {
+      await generateBrief({ accountId, briefDate: snapshotDate });
+      console.log(`[scheduler] [${accountId}] Daily brief generated for ${snapshotDate} (${Date.now() - pipelineStart}ms)`);
+    } catch (err) {
+      console.error(`[scheduler] [${accountId}] Brief generation failed: ${(err as Error).message}`);
+      // Continue to push even if brief fails — merchant still gets snapshot summary
+    }
+  }
+
+  // 4. Send push summary
+  await sendDailySummaryPush(accountId);
 }
 
 // ── Daily summary push (Type 4) ─────────────────────────────────────────

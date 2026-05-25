@@ -333,7 +333,7 @@ Return JSON:
           ...action.content,
           priority: 'high',
           time_estimate: '5 min',
-          plan_required: 'growth',
+          plan_required: 'crecimiento',
         },
         status: 'pending',
       })

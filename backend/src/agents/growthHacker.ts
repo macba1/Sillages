@@ -145,13 +145,13 @@ RULE 4: TIMING — ANTICIPATE, DON'T REACT
 ═══════════════════════════════════════════════════════════════════
 RULE 5: PLAN GATING
 ═══════════════════════════════════════════════════════════════════
-- instagram_post → plan_required: "growth"
-- discount_code → plan_required: "growth"
-- product_highlight → plan_required: "growth"
-- cart_recovery → plan_required: "growth"
-- welcome_email → plan_required: "growth"
-- reactivation_email → plan_required: "growth"
-- seo_fix → plan_required: "growth"
+- instagram_post → plan_required: "basico"
+- discount_code → plan_required: "basico"
+- product_highlight → plan_required: "basico"
+- cart_recovery → plan_required: "crecimiento"
+- welcome_email → plan_required: "pro"
+- reactivation_email → plan_required: "pro"
+- seo_fix → plan_required: "basico"
 - whatsapp_message → plan_required: "pro"
 
 ═══════════════════════════════════════════════════════════════════
@@ -458,7 +458,7 @@ OUTPUT FORMAT — return exactly this JSON:
         "seo_new_value": "<if type=seo_fix: the exact new text to apply>",
         "template": "<optional: 'story_product'|'post_square'|'email_promo'>"
       },
-      "plan_required": "<growth|pro>"
+      "plan_required": "<basico|crecimiento|pro>"
     }
   ]
 }
@@ -565,7 +565,7 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
         discount_value: "10%",
         discount_type: "percentage",
       },
-      plan_required: "growth",
+      plan_required: "crecimiento",
     },
     {
       type: "reactivation_email",
@@ -583,7 +583,7 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
         discount_value: "10%",
         discount_type: "percentage",
       },
-      plan_required: "growth",
+      plan_required: "pro",
     },
     {
       type: "product_highlight",
@@ -594,7 +594,7 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
       content: {
         product: "Volcán de Chocolate",
       },
-      plan_required: "growth",
+      plan_required: "basico",
     },
     {
       type: "seo_fix",
@@ -609,7 +609,7 @@ const FEW_SHOT_ASSISTANT = JSON.stringify({
         seo_product_handle: "volcan-de-chocolate",
         seo_new_value: "Volcán de chocolate artesano con cacao puro belga. Se hornea cada mañana y se derrama al cortarlo. Sin conservantes. Envío a domicilio en Madrid.",
       },
-      plan_required: "growth",
+      plan_required: "basico",
     },
   ],
 }, null, 2);
