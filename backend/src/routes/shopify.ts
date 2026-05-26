@@ -476,6 +476,25 @@ router.get('/billing-callback', (req: Request, res: Response) => {
   res.redirect(`/api/shopify/billing/callback?${qs}`);
 });
 
+// ── Auto-approve helper — sets auto-approve flags based on plan ──────────────
+
+async function setAutoApproveForPlan(accountId: string, planKey: string): Promise<void> {
+  // Crecimiento ($39): cart recovery auto-approve
+  // Pro ($59): cart recovery + welcome + reactivation auto-approve
+  const updates: Record<string, boolean> = {
+    auto_approve_cart_recovery: ['crecimiento', 'pro'].includes(planKey),
+    auto_approve_welcome: planKey === 'pro',
+    auto_approve_reactivation: planKey === 'pro',
+  };
+
+  await supabase
+    .from('user_intelligence_config')
+    .update(updates)
+    .eq('account_id', accountId);
+
+  console.log(`[billing] Auto-approve set for ${accountId}: plan=${planKey} cart=${updates.auto_approve_cart_recovery} welcome=${updates.auto_approve_welcome}`);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHOPIFY BILLING API ENDPOINTS
 // Merchants choose a plan → Shopify Billing API creates the subscription →
@@ -543,6 +562,7 @@ router.post('/billing/subscribe', async (req: Request, res: Response, next: Next
         notes: 'Shopify Billing - Free plan',
       }, { onConflict: 'account_id' });
 
+      await setAutoApproveForPlan(accountId, 'starter');
       console.log(`[billing] ${accountId} subscribed to Starter (free) — no Shopify charge needed`);
       res.json({ ok: true, plan: 'starter', redirect: null });
       return;
@@ -602,6 +622,7 @@ router.post('/billing/subscribe', async (req: Request, res: Response, next: Next
         notes: `Assigned directly — billing unavailable: ${errMsg.slice(0, 100)}`,
       }, { onConflict: 'account_id' });
 
+      await setAutoApproveForPlan(accountId, planKey);
       console.log(`[billing] ${accountId} assigned ${planKey} directly (billing unavailable)`);
       res.json({ ok: true, plan: planKey, redirect: null });
       return;
@@ -675,6 +696,8 @@ router.get('/billing/callback', async (req: Request, res: Response, next: NextFu
             is_beta: false,
             notes: `Shopify Billing - ${SHOPIFY_PLANS[resolvedPlanId]?.name ?? resolvedPlanId}`,
           }, { onConflict: 'account_id' });
+
+          await setAutoApproveForPlan(accountId, resolvedPlanId);
         }
 
         console.log(`[billing/callback] ${accountId} → ${mappedStatus} (plan=${planKey})`);

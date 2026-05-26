@@ -229,15 +229,21 @@ async function processEventsForAccount(accountId: string): Promise<void> {
 
     actionsGenerated++;
 
-    // Auto-approve cart recovery if merchant opted in
-    if (event.type === 'abandoned_cart' && actionId) {
+    // Auto-approve actions if merchant opted in for the action type
+    const autoApproveMap: Record<string, string> = {
+      abandoned_cart: 'auto_approve_cart_recovery',
+      new_first_buyer: 'auto_approve_welcome',
+      overdue_customer: 'auto_approve_reactivation',
+    };
+    const autoApproveColumn = autoApproveMap[event.type];
+    if (autoApproveColumn && actionId) {
       const { data: config } = await supabase
         .from('user_intelligence_config')
-        .select('auto_approve_cart_recovery')
+        .select(autoApproveColumn)
         .eq('account_id', accountId)
         .maybeSingle();
 
-      if (config?.auto_approve_cart_recovery) {
+      if ((config as Record<string, unknown> | null)?.[autoApproveColumn]) {
         try {
           const { data: action } = await supabase
             .from('pending_actions')
@@ -247,7 +253,7 @@ async function processEventsForAccount(accountId: string): Promise<void> {
 
           if (action) {
             await executeCartRecovery(accountId, actionId, action.content as Record<string, unknown>);
-            console.log(`[scheduler] [${accountId}] Auto-approved cart recovery ${actionId}`);
+            console.log(`[scheduler] [${accountId}] Auto-approved ${event.type} action ${actionId}`);
           }
         } catch (autoErr) {
           console.warn(`[scheduler] [${accountId}] Auto-approve failed for ${actionId}: ${(autoErr as Error).message}`);
