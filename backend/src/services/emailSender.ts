@@ -6,80 +6,97 @@ import { env } from '../config/env.js';
 import type { IntelligenceBrief, Account } from '../types.js';
 import type { BrandConfig } from './emailTemplates.js';
 
+// ── Visual constants — from v2 handoff ──────────────────────────────────────
+
+const BG = '#F2EBE3';
+const TEXT = '#14110D';
+const TEXT_BODY = '#3B342B';
+const LABEL = '#8A7F6E';
+const DIVIDER = '#F0E9DF';
+const GREEN_NUM = '#0F7A3D';
+const GREEN_BG = '#ECF7EF';
+const GREEN_BORDER = '#1E9E5A';
+const GREEN_LABEL = '#0B5C2E';
+const RED_NUM = '#C2410C';
+const RED_BG = '#FCEDED';
+const RED_BORDER = '#D94B4B';
+const RED_LABEL = '#8A2424';
+const AMBER_BG = '#FFF8E6';
+const AMBER_BORDER = '#E0A500';
+const AMBER_LABEL = '#7A5C00';
+const GOLD = '#FFE38A';
+const DARK = '#14110D';
+const DARK_MUTED = '#7A7062';
+const MUTED_NUM = '#B8A88F';
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+
 // ── i18n labels ──────────────────────────────────────────────────────────────
 
 const labels = {
   en: {
-    yesterday: 'Yesterday',
+    ayer: 'Yesterday',
+    moneyLeft: 'Money left on the table',
+    whatsWorking: "What's working",
+    yourCustomers: 'Your customers',
+    pattern: 'Pattern',
+    needsAttention: 'Needs attention',
+    oneThingLabel: 'Your one thing',
+    oneThingSub: 'for today · 5 min',
+    thisWeek: 'This week so far',
     revenue: 'Revenue',
-    orders: 'Orders',
+    orders: 'Orders / Pedidos',
     aov: 'Avg. order',
-    topProduct: 'Top Product',
-    whatsWorking: "What's Working",
-    upcoming: "What's Coming This Week",
-    needsAttention: 'Needs Attention',
-    moneyLeft: 'Money Left on the Table',
-    yourCustomers: 'Your Customers',
-    oneThingToday: 'Your One Thing for Today',
-    thisWeek: 'This Week So Far',
-    weekRevenue: 'Week revenue',
-    weekOrders: 'Week orders',
-    weekTopProduct: 'Top product',
-    recurringRate: 'Returning',
-    openDashboard: 'Open your dashboard',
+    topProduct: 'Top product',
+    recurring: 'Returning',
+    total: 'Total',
+    regular: 'Regular',
+    oneTime: 'One-time',
+    inactive: 'Inactive',
     vsLastWeek: 'vs last week',
+    openDashboard: 'Open your dashboard',
+    dailyBrief: 'Daily brief',
+    unsubscribe: 'Unsubscribe',
+    managePrefs: 'Manage preferences',
+    cartRecoveryAuto: 'Recovery emails already sent automatically.',
+    cartRecoveryApprove: 'Approve recovery emails →',
+    cartRecoveryUpgrade: 'Upgrade to recover these carts automatically →',
     defaultSubject: 'Your daily brief',
-    noData: '—',
-    cartRecoveryAuto: 'We already sent a recovery email.',
-    cartRecoveryApprove: 'Approve the email in the app.',
-    cartRecoveryUpgrade: 'Upgrade to Crecimiento to recover these carts automatically.',
   },
   es: {
-    yesterday: 'Ayer',
-    revenue: 'Ingresos',
+    ayer: 'Ayer',
+    moneyLeft: 'Money left on the table',
+    whatsWorking: "What's working",
+    yourCustomers: 'Your customers',
+    pattern: 'Pattern',
+    needsAttention: 'Needs attention',
+    oneThingLabel: 'Your one thing',
+    oneThingSub: 'para hoy · 5 min',
+    thisWeek: 'This week so far',
+    revenue: 'Revenue',
     orders: 'Pedidos',
     aov: 'Ticket medio',
-    topProduct: 'Producto estrella',
-    whatsWorking: 'Lo que funciona',
-    upcoming: 'Lo que viene esta semana',
-    needsAttention: 'Necesita atención',
-    moneyLeft: 'Dinero sobre la mesa',
-    yourCustomers: 'Tus clientes',
-    oneThingToday: 'Tu acción de hoy',
-    thisWeek: 'Esta semana',
-    weekRevenue: 'Ingresos semana',
-    weekOrders: 'Pedidos semana',
-    weekTopProduct: 'Top producto',
-    recurringRate: 'Recurrentes',
-    openDashboard: 'Abrir tu dashboard',
-    vsLastWeek: 'vs semana pasada',
-    defaultSubject: 'Tu brief diario',
-    noData: '—',
+    topProduct: 'Top producto',
+    recurring: 'Recurrentes',
+    total: 'Total',
+    regular: 'Regulares',
+    oneTime: 'One-time',
+    inactive: 'Inactivas',
+    vsLastWeek: 'vs sem. pasada',
+    openDashboard: 'Abrir dashboard',
+    dailyBrief: 'Daily brief',
+    unsubscribe: 'Unsubscribe',
+    managePrefs: 'Manage preferences',
     cartRecoveryAuto: 'Ya le hemos enviado un email de recuperación.',
-    cartRecoveryApprove: 'Aprueba el email en la app.',
-    cartRecoveryUpgrade: 'Activa el plan Crecimiento para recuperar estos carritos automáticamente.',
+    cartRecoveryApprove: 'Aprueba los emails de recuperación →',
+    cartRecoveryUpgrade: 'Activa Crecimiento para recuperar estos carritos →',
+    defaultSubject: 'Tu brief diario',
   },
 } as const;
 
 type Lang = keyof typeof labels;
 
-// ── Visual constants (same as emailTemplates.ts) ──────────────────────────
+// ── Entry point ──────────────────────────────────────────────────────────────
 
-const BG_OUTER = '#F7F1EC';
-const TEXT_DARK = '#3A2332';
-const TEXT_MUTED = '#6B5460';
-const CARD_BORDER = '#EDE5DC';
-const DEFAULT_PRIMARY = '#C9964A';
-const GREEN = '#2D6A4F';
-const RED = '#DC2626';
-const AMBER = '#B45309';
-
-// ── Entry point ───────────────────────────────────────────────────────────────
-
-/**
- * Send the daily intelligence brief by email to the merchant.
- * Uses the branded template with store logo, colors, and contact info.
- */
 export async function sendBriefEmail(briefId: string): Promise<void> {
   const { data: brief, error: briefErr } = await supabase
     .from('intelligence_briefs')
@@ -88,7 +105,6 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
     .single();
 
   if (briefErr || !brief) throw new Error(`Brief not found: ${briefErr?.message}`);
-
   const b = brief as IntelligenceBrief;
   if (b.status !== 'ready') throw new Error(`Brief ${briefId} is not ready (status: ${b.status})`);
 
@@ -99,18 +115,14 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
   ]);
 
   if (accErr || !account) throw new Error(`Account not found: ${accErr?.message}`);
-
   const acc = account as Pick<Account, 'email' | 'full_name'> & { language?: string };
   const ownerName = acc.full_name?.split(' ')[0] ?? acc.email.split('@')[0];
   const lang: Lang = acc.language === 'es' ? 'es' : 'en';
   const currency: string = (shopConn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
-
   const rawShopName: string = (shopConn as { shop_name: string | null } | null)?.shop_name ?? ownerName;
   const emailSlug = rawShopName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const fromAddress = `${emailSlug}@sillages.app`;
-  const fromField = `${rawShopName} via Sillages <${fromAddress}>`;
+  const fromField = `${rawShopName} via Sillages <${emailSlug}@sillages.app>`;
 
-  // Build brand config for template
   const brand: BrandConfig = {
     storeName: rawShopName,
     logoUrl: brandProfile?.logo_url ?? undefined,
@@ -122,139 +134,75 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
     socialLinks: brandProfile?.social_links as BrandConfig['socialLinks'] ?? undefined,
   };
 
-  // Load week-to-date data for "This Week" section
   const weekData = await loadWeekToDate(b.account_id, b.brief_date, currency);
 
-  // Load plan info for cart recovery upsell
-  const { data: sub } = await supabase
-    .from('account_subscriptions')
-    .select('plan_id')
-    .eq('account_id', b.account_id)
-    .in('status', ['active', 'trialing'])
-    .maybeSingle();
-
-  const { data: config } = await supabase
-    .from('user_intelligence_config')
-    .select('auto_approve_cart_recovery')
-    .eq('account_id', b.account_id)
-    .maybeSingle();
-
+  const { data: sub } = await supabase.from('account_subscriptions').select('plan_id').eq('account_id', b.account_id).in('status', ['active', 'trialing']).maybeSingle();
+  const { data: config } = await supabase.from('user_intelligence_config').select('auto_approve_cart_recovery').eq('account_id', b.account_id).maybeSingle();
   const planId = sub?.plan_id ?? 'starter';
   const autoApprove = config?.auto_approve_cart_recovery ?? false;
 
   const t = labels[lang];
-  const subjectHeadline = b.section_signal?.headline ?? b.section_yesterday?.summary?.slice(0, 60) ?? t.defaultSubject;
-  const subject = `${ownerName}, ${subjectHeadline}`;
+  const y = b.section_yesterday;
+  const preheader = y?.summary?.slice(0, 120) ?? t.defaultSubject;
+  const subjectLine = `${ownerName}, ${b.section_signal?.headline?.slice(0, 60) ?? y?.summary?.slice(0, 50) ?? t.defaultSubject}`;
 
-  const html = buildBriefEmailHtml({ brief: b, ownerName, lang, currency, brand, weekData, planId, autoApprove });
+  const html = buildV2Html({ brief: b, lang, currency, brand, weekData, planId, autoApprove });
 
-  // Unsubscribe headers
   const { buildUnsubscribeUrl } = await import('../lib/unsubscribe.js');
   const unsubscribeUrl = buildUnsubscribeUrl(b.account_id, acc.email);
-  const headers: Record<string, string> = {};
-  headers['List-Unsubscribe'] = `<${unsubscribeUrl}>`;
-  headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
 
   const { data: sent, error: sendErr } = await resend.emails.send({
     from: fromField,
     to: acc.email,
-    subject,
+    subject: subjectLine,
     html,
-    headers,
+    headers: {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
   });
 
   if (sendErr || !sent) throw new Error(`Resend error: ${(sendErr as Error)?.message}`);
 
-  await supabase
-    .from('intelligence_briefs')
-    .update({
-      status: 'sent',
-      sent_at: new Date().toISOString(),
-      email_message_id: sent.id,
-    })
-    .eq('id', briefId);
-
+  await supabase.from('intelligence_briefs').update({ status: 'sent', sent_at: new Date().toISOString(), email_message_id: sent.id }).eq('id', briefId);
   console.log(`[emailSender] Sent brief ${briefId} to ${acc.email}`);
 }
 
-// ── Week-to-date data ─────────────────────────────────────────────────────────
+// ── Week-to-date ──────────────────────────────────────────────────────────────
 
-interface WeekToDate {
-  revenue: number;
-  orders: number;
-  topProduct: string | null;
-  returningRate: number;
-  daysInWeek: number;
-}
+interface WeekToDate { revenue: number; orders: number; topProduct: string | null; returningRate: number; daysInWeek: number; }
 
 async function loadWeekToDate(accountId: string, briefDate: string, _currency: string): Promise<WeekToDate> {
-  // Find Monday of this week
-  const briefDateObj = new Date(briefDate + 'T12:00:00Z');
-  const dayOfWeek = briefDateObj.getUTCDay(); // 0=Sun, 1=Mon...
-  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const monday = new Date(briefDateObj.getTime() - mondayOffset * 86400000);
+  const bd = new Date(briefDate + 'T12:00:00Z');
+  const dow = bd.getUTCDay();
+  const mondayOffset = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(bd.getTime() - mondayOffset * 86400000);
   const mondayStr = monday.toISOString().slice(0, 10);
 
-  const { data: weekSnaps } = await supabase
-    .from('shopify_daily_snapshots')
-    .select('total_revenue, total_orders, returning_customer_rate, top_products')
-    .eq('account_id', accountId)
-    .gte('snapshot_date', mondayStr)
-    .lte('snapshot_date', briefDate)
-    .order('snapshot_date');
+  const { data: weekSnaps } = await supabase.from('shopify_daily_snapshots').select('total_revenue, total_orders, returning_customer_rate, top_products').eq('account_id', accountId).gte('snapshot_date', mondayStr).lte('snapshot_date', briefDate).order('snapshot_date');
+  if (!weekSnaps || weekSnaps.length === 0) return { revenue: 0, orders: 0, topProduct: null, returningRate: 0, daysInWeek: 0 };
 
-  if (!weekSnaps || weekSnaps.length === 0) {
-    return { revenue: 0, orders: 0, topProduct: null, returningRate: 0, daysInWeek: 0 };
-  }
-
-  let totalRev = 0;
-  let totalOrd = 0;
-  let totalRetRate = 0;
+  let totalRev = 0, totalOrd = 0, totalRetRate = 0;
   const productSales = new Map<string, number>();
-
   for (const s of weekSnaps) {
-    totalRev += s.total_revenue;
-    totalOrd += s.total_orders;
-    totalRetRate += s.returning_customer_rate ?? 0;
-    for (const p of (s.top_products as Array<{ title: string; quantity_sold: number }>) ?? []) {
-      productSales.set(p.title, (productSales.get(p.title) ?? 0) + p.quantity_sold);
-    }
+    totalRev += s.total_revenue; totalOrd += s.total_orders; totalRetRate += s.returning_customer_rate ?? 0;
+    for (const p of (s.top_products as Array<{ title: string; quantity_sold: number }>) ?? []) productSales.set(p.title, (productSales.get(p.title) ?? 0) + p.quantity_sold);
   }
-
-  let topProduct: string | null = null;
-  let topQty = 0;
-  for (const [name, qty] of productSales) {
-    if (qty > topQty) { topQty = qty; topProduct = name; }
-  }
-
-  return {
-    revenue: totalRev,
-    orders: totalOrd,
-    topProduct,
-    returningRate: weekSnaps.length > 0 ? totalRetRate / weekSnaps.length : 0,
-    daysInWeek: weekSnaps.length,
-  };
+  let topProduct: string | null = null, topQty = 0;
+  for (const [name, qty] of productSales) { if (qty > topQty) { topQty = qty; topProduct = name; } }
+  return { revenue: totalRev, orders: totalOrd, topProduct, returningRate: weekSnaps.length > 0 ? totalRetRate / weekSnaps.length : 0, daysInWeek: weekSnaps.length };
 }
 
-// ── Branded brief email HTML ──────────────────────────────────────────────────
+// ── V2 HTML builder — pixel-perfect from handoff ──────────────────────────────
 
-interface BuildBriefInput {
-  brief: IntelligenceBrief;
-  ownerName: string;
-  lang: Lang;
-  currency: string;
-  brand: BrandConfig;
-  weekData: WeekToDate;
-  planId: string;
-  autoApprove: boolean;
-}
+interface BuildV2Input { brief: IntelligenceBrief; lang: Lang; currency: string; brand: BrandConfig; weekData: WeekToDate; planId: string; autoApprove: boolean; }
 
-function buildBriefEmailHtml({ brief, ownerName, lang, currency, brand, weekData, planId, autoApprove }: BuildBriefInput): string {
+function buildV2Html({ brief, lang, currency, brand, weekData, planId, autoApprove }: BuildV2Input): string {
   const t = labels[lang];
   const locale = lang === 'es' ? esLocale : undefined;
-  const dateStr = format(parseISO(brief.brief_date), 'EEEE, d MMMM', { locale });
-  const accent = brand.primaryColor ?? DEFAULT_PRIMARY;
-
+  const bd = parseISO(brief.brief_date);
+  const dayName = format(bd, 'EEEE', { locale });
+  const datePart = format(bd, ', MMMM d', { locale });
   const y = brief.section_yesterday;
   const ww = brief.section_whats_working;
   const up = brief.section_upcoming;
@@ -262,277 +210,277 @@ function buildBriefEmailHtml({ brief, ownerName, lang, currency, brand, weekData
   const sig = brief.section_signal;
   const act = brief.section_activation;
 
-  function fmt(n: number, style: 'currency' | 'decimal' = 'decimal'): string {
-    if (style === 'currency') {
-      return new Intl.NumberFormat(lang === 'es' ? 'es-ES' : 'en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
-    }
-    return new Intl.NumberFormat(lang === 'es' ? 'es-ES' : 'en-US').format(n);
-  }
+  const sym: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
+  const cs = sym[currency] ?? currency;
 
-  function wowBadge(pct: number | null | undefined): string {
+  function fmtCurrency(n: number): string { return `${cs}${Math.round(n).toLocaleString()}`; }
+  function wowColor(pct: number | null | undefined): string { return (pct ?? 0) >= 0 ? GREEN_NUM : RED_NUM; }
+  function wowArrow(pct: number | null | undefined): string {
     if (pct == null) return '';
-    const color = pct >= 0 ? GREEN : RED;
-    const arrow = pct >= 0 ? '&#9650;' : '&#9660;';
-    return `<span style="font-size:11px;color:${color};font-weight:600;margin-left:4px;">${arrow} ${Math.abs(pct).toFixed(0)}%</span>`;
+    const arrow = pct >= 0 ? '↑' : '↓';
+    return `<span style="font-size:12px;font-weight:600;color:${wowColor(pct)};letter-spacing:0;margin-left:4px;">${arrow} ${Math.abs(pct).toFixed(0)}%</span>`;
+  }
+  function wowLine(pct: number | null | undefined): string {
+    if (pct == null) return `<span style="color:${LABEL};">= ${t.vsLastWeek}</span>`;
+    const arrow = pct >= 0 ? '↑' : '↓';
+    const color = pct >= 0 ? GREEN_NUM : RED_NUM;
+    return `<span style="font-weight:600;color:${color};">${arrow} ${Math.abs(pct).toFixed(0)}%</span> <span style="color:${LABEL};font-weight:400;">${t.vsLastWeek}</span>`;
   }
 
-  // ── Logo header ──────────────────────────────────────────────────────────
+  // Spacer
+  const sp = (h: number) => `<tr><td style="font-size:0;line-height:0;height:${h}px;">&nbsp;</td></tr>`;
+
+  // Preheader
+  const preheader = y?.summary?.slice(0, 120) ?? '';
+
+  // ── Logo header (image if available, text fallback) ──
   const bigLogoUrl = brand.logoUrl?.replace(/_\d+x\./, '_400x.');
-  const shopUrl = brand.shopUrl ?? '#';
-  const headerContent = bigLogoUrl
-    ? `<a href="${shopUrl}" target="_blank" style="text-decoration:none;">
-        <img src="${bigLogoUrl}" alt="${brand.storeName}" width="160" style="display:block;width:160px;height:auto;border:0;" />
-      </a>`
-    : `<a href="${shopUrl}" target="_blank" style="text-decoration:none;font-size:20px;font-weight:700;color:${TEXT_DARK};">${brand.storeName}</a>`;
+  const logoHtml = bigLogoUrl
+    ? `<a href="${brand.shopUrl ?? '#'}" target="_blank" style="text-decoration:none;"><img src="${bigLogoUrl}" alt="${brand.storeName}" width="120" style="display:block;width:120px;height:auto;border:0;" /></a>`
+    : `<div style="font-size:15px;font-weight:700;letter-spacing:0.22em;color:${TEXT};line-height:1;">${brand.storeName.toUpperCase()}</div>`;
 
-  // ── Section builders ──────────────────────────────────────────────────────
+  // ── Headline ──
+  const headlineSummary = y?.summary ?? '';
+  // Find the most impactful phrase for the highlight
+  const highlightPhrase = act?.what?.match(/€\d+[^\.]*/)?.[0] ?? act?.expected_impact?.match(/€[^\.]+/)?.[0] ?? '';
 
-  const sectionLabel = (text: string) =>
-    `<tr><td style="padding:24px 32px 8px;"><p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#9A8090;">${text}</p></td></tr>`;
+  // ── Cart recovery note ──
+  let cartNote = '';
+  if (['crecimiento', 'pro'].includes(planId)) {
+    cartNote = autoApprove ? t.cartRecoveryAuto : t.cartRecoveryApprove;
+  } else {
+    cartNote = t.cartRecoveryUpgrade;
+  }
 
-  const borderedCard = (borderColor: string, content: string) =>
-    `<tr><td style="padding:0 32px 16px;">
-      <div style="border-left:3px solid ${borderColor};padding:12px 16px;background:#FAFAFA;border-radius:0 8px 8px 0;">
-        ${content}
-      </div>
-    </td></tr>`;
+  // ── Detect sections ──
+  const hasMoneyLeft = wnw?.items?.some(i => /carrit|cart|abandon/i.test(i.insight ?? ''));
+  const moneyLeftItem = wnw?.items?.find(i => /carrit|cart|abandon/i.test(i.insight ?? ''));
+  const hasNeedsAttention = (y?.wow?.revenue_pct ?? 0) < -20;
+  const needsAttentionItems = wnw?.items?.filter(i => !/carrit|cart|abandon/i.test(i.insight ?? '')) ?? [];
 
-  // ── Build sections ────────────────────────────────────────────────────────
-  let bodyContent = '';
+  // ── Build HTML ──
+  let body = '';
 
-  // DATE
-  bodyContent += `<tr><td style="padding:20px 32px 4px;">
-    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#9A8090;">${dateStr}</p>
+  // HEADER
+  body += `<tr><td style="padding:4px 6px 0 6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td valign="middle" align="left">${logoHtml}</td>
+    <td valign="middle" align="right"><div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:${LABEL};line-height:1;">${t.dailyBrief}</div></td>
+  </tr></table></td></tr>`;
+
+  body += sp(28);
+
+  // HERO DATE + HEADLINE
+  body += `<tr><td style="padding:0 6px;">
+    <p class="day-big" style="margin:0 0 6px 0;font-size:36px;font-weight:700;letter-spacing:-0.025em;color:${TEXT};line-height:1.05;font-family:${FONT};">
+      ${dayName}<span style="color:${MUTED_NUM};">${datePart}</span>
+    </p>
+    <p class="highlight-text" style="margin:18px 0 0 0;font-size:24px;font-weight:500;letter-spacing:-0.015em;color:${TEXT_BODY};line-height:1.4;font-family:${FONT};">
+      ${headlineSummary}
+    </p>
   </td></tr>`;
 
-  // SECTION 1: YESTERDAY
+  body += sp(32);
+
+  // AYER — hero card
   if (y) {
-    bodyContent += `<tr><td style="padding:8px 32px 16px;">
-      <p style="margin:0 0 16px;font-size:15px;color:${TEXT_DARK};line-height:1.6;">${y.summary}</p>
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-          <td style="width:33%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.revenue}</p>
-            <p style="margin:0;font-size:20px;font-weight:700;color:${TEXT_DARK};">${fmt(y.revenue, 'currency')}${wowBadge(y.wow?.revenue_pct)}</p>
-          </td>
-          <td style="width:33%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.orders}</p>
-            <p style="margin:0;font-size:20px;font-weight:700;color:${TEXT_DARK};">${fmt(y.orders)}${wowBadge(y.wow?.orders_pct)}</p>
-          </td>
-          <td style="width:33%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.aov}</p>
-            <p style="margin:0;font-size:20px;font-weight:700;color:${TEXT_DARK};">${fmt(y.aov, 'currency')}${wowBadge(y.wow?.aov_pct)}</p>
-          </td>
-        </tr>
-      </table>
+    const wowRevPct = y.wow?.revenue_pct;
+    const wowRevText = wowRevPct != null ? `${wowRevPct >= 0 ? '↑' : '↓'} ${Math.abs(wowRevPct).toFixed(0)}% ${t.vsLastWeek}` : '';
+    const wowRevColor = (wowRevPct ?? 0) >= 0 ? GREEN_NUM : RED_NUM;
+
+    body += `<tr><td class="hero-card" style="background-color:#FFFFFF;border-radius:18px;padding:32px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td align="left"><p style="margin:0 0 18px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.ayer}</p></td>
+        ${wowRevText ? `<td align="right"><p style="margin:0 0 18px 0;font-size:11px;font-weight:600;letter-spacing:0.06em;color:${wowRevColor};font-family:${FONT};">${wowRevText}</p></td>` : ''}
+      </tr></table>
+      <p class="hero-num" style="margin:0;font-size:64px;font-weight:700;letter-spacing:-0.035em;color:${TEXT};line-height:1;font-family:${FONT};">${fmtCurrency(y.revenue)}</p>
+      <p class="narrative" style="margin:22px 0 28px 0;font-size:16px;line-height:1.65;color:${TEXT_BODY};font-family:${FONT};">
+        ${y.orders} ${t.orders.toLowerCase()}. ${y.summary?.replace(/^[^.]*\.\s*/, '') ?? ''}
+      </p>
+      <div style="height:1px;background-color:${DIVIDER};margin-bottom:24px;">&nbsp;</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr class="stack">
+        <td class="stack-cell" valign="top" width="50%" style="padding-right:12px;">
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.orders}</p>
+          <p style="margin:0;font-size:24px;font-weight:700;color:${TEXT};letter-spacing:-0.02em;line-height:1.1;font-family:${FONT};">${y.orders} ${wowArrow(y.wow?.orders_pct)}</p>
+        </td>
+        <td class="stack-cell" valign="top" width="50%" style="padding-left:12px;border-left:1px solid ${DIVIDER};">
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.aov}</p>
+          <p style="margin:0;font-size:24px;font-weight:700;color:${TEXT};letter-spacing:-0.02em;line-height:1.1;font-family:${FONT};">${fmtCurrency(y.aov)} ${wowArrow(y.wow?.aov_pct)}</p>
+        </td>
+      </tr></table>
     </td></tr>`;
-    bodyContent += `<tr><td style="padding:0 32px 16px;"><div style="height:1px;background:${CARD_BORDER};"></div></td></tr>`;
+    body += sp(14);
   }
 
-  // SECTION 2: MONEY LEFT ON THE TABLE (conditional — abandoned carts)
-  const hasCartMention = wnw?.items?.some(item =>
-    item.insight?.toLowerCase().includes('carrito') ||
-    item.insight?.toLowerCase().includes('cart') ||
-    item.insight?.toLowerCase().includes('abandonó') ||
-    item.insight?.toLowerCase().includes('abandon'));
-
-  if (hasCartMention && wnw?.items) {
-    const cartItem = wnw.items.find(item =>
-      item.insight?.toLowerCase().includes('carrito') ||
-      item.insight?.toLowerCase().includes('cart') ||
-      item.insight?.toLowerCase().includes('abandonó') ||
-      item.insight?.toLowerCase().includes('abandon')) ?? wnw.items[0];
-
-    let cartNote = '';
-    if (['crecimiento', 'pro'].includes(planId)) {
-      cartNote = autoApprove ? t.cartRecoveryAuto : t.cartRecoveryApprove;
-    } else {
-      cartNote = t.cartRecoveryUpgrade;
-    }
-
-    bodyContent += sectionLabel(t.moneyLeft);
-    bodyContent += borderedCard(AMBER,
-      `<p style="margin:0 0 8px;font-size:13px;color:${TEXT_DARK};line-height:1.6;">${cartItem.insight}</p>
-       <p style="margin:0;font-size:12px;color:${AMBER};font-weight:600;">${cartNote}</p>`);
+  // MONEY LEFT ON THE TABLE
+  if (hasMoneyLeft && moneyLeftItem) {
+    body += `<tr><td class="card-accent" style="background-color:${AMBER_BG};border-left:4px solid ${AMBER_BORDER};padding:28px 30px;">
+      <p style="margin:0 0 14px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${AMBER_LABEL};font-family:${FONT};">${t.moneyLeft}</p>
+      <p class="narrative" style="margin:0 0 14px 0;font-size:15px;line-height:1.65;color:${TEXT_BODY};font-family:${FONT};">${moneyLeftItem.insight}</p>
+      <p style="margin:0;font-size:12px;color:${AMBER_LABEL};line-height:1.4;letter-spacing:0.01em;font-family:${FONT};">${cartNote}</p>
+    </td></tr>`;
+    body += sp(14);
   }
 
-  // SECTION 3: WHAT'S WORKING (conditional)
+  // WHAT'S WORKING
   if (ww?.items && ww.items.length > 0) {
-    bodyContent += sectionLabel(t.whatsWorking);
-    for (const item of ww.items) {
-      bodyContent += borderedCard(GREEN,
-        `<p style="margin:0 0 2px;font-size:13px;font-weight:600;color:${TEXT_DARK};">${item.title}${item.metric ? ` — ${item.metric}` : ''}</p>
-         <p style="margin:0;font-size:13px;color:${TEXT_MUTED};line-height:1.5;">${item.insight}</p>`);
-    }
+    const item = ww.items[0];
+    body += `<tr><td class="card-accent" style="background-color:${GREEN_BG};border-left:4px solid ${GREEN_BORDER};padding:28px 30px;">
+      <p style="margin:0 0 14px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${GREEN_LABEL};font-family:${FONT};">${t.whatsWorking}</p>
+      <p class="narrative" style="margin:0;font-size:15px;line-height:1.6;color:${TEXT_BODY};font-family:${FONT};">${item.title}${item.metric ? ` — <strong>${item.metric}</strong>` : ''}. ${item.insight}</p>
+    </td></tr>`;
+    body += sp(14);
   }
 
-  // SECTION 4: YOUR CUSTOMERS
+  // YOUR CUSTOMERS
   if (sig) {
-    bodyContent += sectionLabel(t.yourCustomers);
-    bodyContent += `<tr><td style="padding:0 32px 16px;">
-      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${TEXT_DARK};">${sig.headline}</p>
-      <p style="margin:0;font-size:13px;color:${TEXT_MUTED};line-height:1.6;">${sig.market_context}</p>
+    body += `<tr><td class="card" style="background-color:#FFFFFF;border-radius:18px;padding:32px;">
+      <p style="margin:0 0 14px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.yourCustomers}</p>
+      <p class="narrative" style="margin:0 0 6px 0;font-size:16px;line-height:1.6;color:${TEXT_BODY};font-family:${FONT};">${sig.headline}</p>
+      <p class="narrative" style="margin:0;font-size:15px;line-height:1.6;color:${TEXT_BODY};font-family:${FONT};">${sig.market_context}</p>
     </td></tr>`;
+    body += sp(14);
   }
 
-  // SECTION 5: PATTERN / UPCOMING
+  // PATTERN
   if (up?.items && up.items.length > 0) {
-    bodyContent += sectionLabel(t.upcoming);
-    for (const item of up.items) {
-      bodyContent += `<tr><td style="padding:0 32px 8px;">
-        <div style="background:#FDF8F0;border-radius:8px;border:1px solid ${CARD_BORDER};padding:12px 16px;">
-          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:${TEXT_DARK};">${item.pattern}</p>
-          <p style="margin:0 0 8px;font-size:13px;color:${TEXT_MUTED};line-height:1.5;">${item.action}</p>
-          ${item.ready_copy ? `<div style="background:#FFFFFF;border-radius:6px;border:1px solid ${CARD_BORDER};padding:10px 12px;margin-top:4px;">
-            <p style="margin:0;font-size:12px;color:${TEXT_DARK};line-height:1.5;font-style:italic;">${item.ready_copy}</p>
-          </div>` : ''}
-        </div>
-      </td></tr>`;
-    }
+    const item = up.items[0];
+    body += `<tr><td class="card" style="background-color:#FFFFFF;border-radius:18px;padding:32px;">
+      <p style="margin:0 0 14px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.pattern}</p>
+      <p style="margin:0 0 12px 0;font-size:26px;font-weight:700;letter-spacing:-0.025em;color:${TEXT};line-height:1.15;font-family:${FONT};">${item.pattern}</p>
+      <p class="narrative" style="margin:0;font-size:15px;line-height:1.6;color:${TEXT_BODY};font-family:${FONT};">${item.action}</p>
+    </td></tr>`;
+    body += sp(14);
   }
 
-  // SECTION 6: NEEDS ATTENTION (conditional — significant WoW decline)
-  const wowRevPct = y?.wow?.revenue_pct;
-  const hasSignificantDecline = wowRevPct != null && wowRevPct < -20;
-  if (hasSignificantDecline) {
-    const nonCartItems = wnw?.items?.filter(item =>
-      !item.insight?.toLowerCase().includes('carrito') &&
-      !item.insight?.toLowerCase().includes('cart')) ?? [];
-    if (nonCartItems.length > 0) {
-      bodyContent += sectionLabel(t.needsAttention);
-      for (const item of nonCartItems) {
-        bodyContent += borderedCard('#EF4444',
-          `<p style="margin:0 0 2px;font-size:13px;font-weight:600;color:${TEXT_DARK};">${item.title}${item.metric ? ` — ${item.metric}` : ''}</p>
-           <p style="margin:0;font-size:13px;color:${TEXT_MUTED};line-height:1.5;">${item.insight}</p>`);
-      }
-    }
+  // NEEDS ATTENTION
+  if (hasNeedsAttention && needsAttentionItems.length > 0) {
+    const item = needsAttentionItems[0];
+    const declinePct = Math.abs(y?.wow?.revenue_pct ?? 0);
+    body += `<tr><td class="card-accent" style="background-color:${RED_BG};border-left:4px solid ${RED_BORDER};padding:28px 30px;">
+      <p style="margin:0 0 14px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${RED_LABEL};font-family:${FONT};">${t.needsAttention}</p>
+      <p class="mega-num" style="margin:0 0 14px 0;font-size:48px;font-weight:700;letter-spacing:-0.035em;color:${TEXT};line-height:1;font-family:${FONT};">−${declinePct.toFixed(0)}%</p>
+      <p class="narrative" style="margin:0;font-size:15px;line-height:1.6;color:${TEXT_BODY};font-family:${FONT};">${item.insight}</p>
+    </td></tr>`;
+    body += sp(28);
+  } else {
+    body += sp(14);
   }
 
-  // SECTION 7: YOUR ONE THING FOR TODAY (always)
+  // YOUR ONE THING — DARK HERO
   if (act) {
-    bodyContent += sectionLabel(t.oneThingToday);
-    const howSteps = act.how?.map((step: string, i: number) => `
-      <tr>
-        <td style="padding:4px 0;">
-          <table cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="width:22px;vertical-align:top;">
-              <div style="width:18px;height:18px;background:${accent};border-radius:50%;text-align:center;line-height:18px;font-size:10px;font-weight:700;color:#FFFFFF;">${i + 1}</div>
-            </td>
-            <td style="padding-left:8px;font-size:13px;color:${TEXT_DARK};line-height:1.5;">${step}</td>
-          </tr></table>
-        </td>
-      </tr>`).join('') ?? '';
-
-    bodyContent += `<tr><td style="padding:0 32px 16px;">
-      <div style="border-left:3px solid ${accent};padding:12px 16px;background:#FAFAFA;border-radius:0 8px 8px 0;">
-        <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${TEXT_DARK};">${act.what}</p>
-        <p style="margin:0 0 12px;font-size:13px;color:${TEXT_MUTED};line-height:1.5;">${act.why}</p>
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">${howSteps}</table>
-        ${act.expected_impact ? `<p style="margin:12px 0 0;font-size:12px;font-weight:600;color:${accent};">${act.expected_impact}</p>` : ''}
-      </div>
+    body += `<tr><td class="dark-card" style="background-color:${DARK};border-radius:18px;padding:36px;">
+      <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:${GOLD};font-family:${FONT};">${t.oneThingLabel}</p>
+      <p style="margin:0 0 22px 0;font-size:11px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:${DARK_MUTED};font-family:${FONT};">${t.oneThingSub}</p>
+      <p class="one-thing-text" style="margin:0 0 28px 0;font-size:26px;font-weight:500;letter-spacing:-0.015em;color:#FFFFFF;line-height:1.35;font-family:${FONT};">
+        ${act.what} <span style="color:${MUTED_NUM};font-weight:400;">${act.expected_impact ?? ''}</span>
+      </p>
+      <!--[if !mso]><!-- -->
+      <a href="${env.FRONTEND_URL}/actions" style="display:inline-block;background-color:#FFFFFF;color:${DARK};text-decoration:none;font-size:14px;font-weight:600;letter-spacing:0.01em;padding:14px 22px;border-radius:10px;line-height:1.2;font-family:${FONT};">
+        ${lang === 'es' ? 'Ver en la app' : 'View in app'} →
+      </a>
+      <!--<![endif]-->
     </td></tr>`;
+    body += sp(28);
   }
 
-  // SECTION 8: THIS WEEK SO FAR
+  // THIS WEEK SO FAR
   if (weekData.daysInWeek > 0) {
-    bodyContent += sectionLabel(t.thisWeek);
-    bodyContent += `<tr><td style="padding:0 32px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAFA;border-radius:8px;border:1px solid ${CARD_BORDER};">
-        <tr>
-          <td style="padding:12px 16px;width:25%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.weekRevenue}</p>
-            <p style="margin:0;font-size:16px;font-weight:700;color:${TEXT_DARK};">${fmt(weekData.revenue, 'currency')}</p>
-          </td>
-          <td style="padding:12px 16px;width:25%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.weekOrders}</p>
-            <p style="margin:0;font-size:16px;font-weight:700;color:${TEXT_DARK};">${fmt(weekData.orders)}</p>
-          </td>
-          <td style="padding:12px 16px;width:25%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.weekTopProduct}</p>
-            <p style="margin:0;font-size:13px;font-weight:600;color:${TEXT_DARK};">${weekData.topProduct ?? t.noData}</p>
-          </td>
-          <td style="padding:12px 16px;width:25%;vertical-align:top;">
-            <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#9A8090;">${t.recurringRate}</p>
-            <p style="margin:0;font-size:16px;font-weight:700;color:${TEXT_DARK};">${(weekData.returningRate * 100).toFixed(0)}%</p>
-          </td>
-        </tr>
-      </table>
+    body += `<tr><td class="card" style="background-color:#FFFFFF;border-radius:18px;padding:32px;">
+      <p style="margin:0 0 24px 0;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.thisWeek}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr class="stack">
+        <td class="stack-cell" valign="top" width="50%" style="padding:0 14px 22px 0;border-bottom:1px solid ${DIVIDER};">
+          <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.revenue}</p>
+          <p style="margin:0;font-size:30px;font-weight:700;color:${TEXT};letter-spacing:-0.025em;line-height:1.05;font-family:${FONT};">${fmtCurrency(weekData.revenue)}</p>
+        </td>
+        <td class="stack-cell" valign="top" width="50%" style="padding:0 0 22px 22px;border-bottom:1px solid ${DIVIDER};border-left:1px solid ${DIVIDER};">
+          <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.orders}</p>
+          <p style="margin:0;font-size:30px;font-weight:700;color:${TEXT};letter-spacing:-0.025em;line-height:1.05;font-family:${FONT};">${weekData.orders}</p>
+        </td>
+      </tr><tr class="stack">
+        <td class="stack-cell" valign="top" width="50%" style="padding:22px 14px 0 0;">
+          <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.topProduct}</p>
+          <p style="margin:0;font-size:20px;font-weight:700;color:${TEXT};letter-spacing:-0.015em;line-height:1.2;font-family:${FONT};">${weekData.topProduct ?? '—'}</p>
+        </td>
+        <td class="stack-cell" valign="top" width="50%" style="padding:22px 0 0 22px;border-left:1px solid ${DIVIDER};">
+          <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${LABEL};font-family:${FONT};">${t.recurring}</p>
+          <p style="margin:0;font-size:30px;font-weight:700;color:${TEXT};letter-spacing:-0.025em;line-height:1.05;font-family:${FONT};">${(weekData.returningRate * 100).toFixed(0)}%</p>
+        </td>
+      </tr></table>
     </td></tr>`;
+    body += sp(32);
   }
 
-  // CTA BUTTON
-  bodyContent += `<tr><td style="padding:8px 32px 24px;" align="center">
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-      <tr>
-        <td align="center" style="background:${accent};border-radius:8px;">
-          <a href="${env.FRONTEND_URL}/dashboard" target="_blank" style="display:inline-block;padding:14px 40px;font-size:15px;font-weight:600;color:#FFFFFF;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-            ${t.openDashboard} &rarr;
-          </a>
-        </td>
-      </tr>
-    </table>
+  // CTA
+  body += `<tr><td align="center" class="cta-btn" style="padding:0 0 4px 0;">
+    <!--[if !mso]><!-- -->
+    <a href="${env.FRONTEND_URL}/dashboard" style="display:inline-block;background-color:${DARK};color:#FFFFFF;text-decoration:none;font-size:15px;font-weight:600;letter-spacing:0.01em;padding:18px 38px;border-radius:12px;line-height:1.2;font-family:${FONT};">
+      ${t.openDashboard} →
+    </a>
+    <!--<![endif]-->
   </td></tr>`;
 
-  // ── Footer: contact + social + unsubscribe ──────────────────────────────
-  const contactLines: string[] = [];
-  if (brand.contactAddress) contactLines.push(brand.contactAddress);
-  if (brand.contactPhone) contactLines.push(`Tel: ${brand.contactPhone}`);
-  if (brand.contactEmail) contactLines.push(brand.contactEmail);
-  const contactBlock = contactLines.length > 0
-    ? `<p style="margin:0 0 8px;font-size:12px;color:#9A8090;line-height:1.6;">${contactLines.join(' · ')}</p>`
-    : '';
+  body += sp(40);
 
-  const socialParts: string[] = [];
-  if (brand.socialLinks?.instagram) socialParts.push(`<a href="${brand.socialLinks.instagram}" style="color:#9A8090;text-decoration:none;">Instagram</a>`);
-  if (brand.socialLinks?.facebook) socialParts.push(`<a href="${brand.socialLinks.facebook}" style="color:#9A8090;text-decoration:none;">Facebook</a>`);
-  if (brand.socialLinks?.tiktok) socialParts.push(`<a href="${brand.socialLinks.tiktok}" style="color:#9A8090;text-decoration:none;">TikTok</a>`);
-  const socialBlock = socialParts.length > 0
-    ? `<p style="margin:0 0 12px;font-size:12px;color:#9A8090;">${socialParts.join(' · ')}</p>`
-    : '';
+  // FOOTER
+  const footerLinks = [
+    brand.shopUrl ? `<a href="${brand.shopUrl}" style="color:${LABEL};text-decoration:none;">${brand.shopUrl.replace(/^https?:\/\//, '')}</a>` : null,
+    brand.contactEmail ? `<a href="mailto:${brand.contactEmail}" style="color:${LABEL};text-decoration:none;">${brand.contactEmail}</a>` : null,
+  ].filter(Boolean).join(' &middot; ');
 
-  // ── Assemble full email ─────────────────────────────────────────────────
+  body += `<tr><td align="center" style="padding:8px 16px 0 16px;">
+    <p style="margin:0 0 6px 0;font-size:13px;font-weight:600;color:${TEXT_BODY};letter-spacing:0.18em;line-height:1.5;font-family:${FONT};">${brand.storeName.toUpperCase()}</p>
+    ${footerLinks ? `<p style="margin:0 0 14px 0;font-size:12px;color:${LABEL};line-height:1.6;font-family:${FONT};">${footerLinks}</p>` : ''}
+    <p style="margin:0 0 18px 0;font-size:12px;color:${LABEL};line-height:1.6;font-family:${FONT};">
+      <a href="{{unsubscribe_url}}" style="color:${LABEL};text-decoration:underline;">${t.unsubscribe}</a> &middot;
+      <a href="${env.FRONTEND_URL}/settings" style="color:${LABEL};text-decoration:underline;">${t.managePrefs}</a>
+    </p>
+    <p style="margin:0;font-size:11px;color:${MUTED_NUM};letter-spacing:0.04em;line-height:1.4;font-family:${FONT};">Powered by <strong style="font-weight:600;">Sillages</strong></p>
+  </td></tr>`;
+
+  body += sp(24);
+
+  // ── Full email wrapper ──
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>${t.dailyBrief}</title>
+<style>
+  body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+  img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; display: block; }
+  body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: ${BG}; font-family: ${FONT}; color: ${TEXT}; }
+  a { color: inherit; }
+  @media screen and (max-width: 620px) {
+    .container { width: 100% !important; }
+    .px-outer { padding-left: 14px !important; padding-right: 14px !important; padding-top: 20px !important; padding-bottom: 20px !important; }
+    .card { padding: 24px !important; }
+    .card-accent { padding: 24px !important; padding-left: 24px !important; }
+    .hero-card { padding: 26px !important; }
+    .dark-card { padding: 28px !important; }
+    .hero-num { font-size: 56px !important; letter-spacing: -0.03em !important; }
+    .mega-num { font-size: 44px !important; letter-spacing: -0.03em !important; }
+    .one-thing-text { font-size: 22px !important; line-height: 1.3 !important; }
+    .narrative { font-size: 15.5px !important; }
+    .highlight-text { font-size: 22px !important; line-height: 1.35 !important; }
+    .day-big { font-size: 30px !important; letter-spacing: -0.02em !important; }
+    .stack { display: block !important; width: 100% !important; }
+    .stack-cell { display: block !important; width: 100% !important; padding: 0 0 18px 0 !important; }
+    .stack-cell:last-child { padding-bottom: 0 !important; }
+    .cta-btn a { display: block !important; width: 100% !important; box-sizing: border-box !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;background:${BG_OUTER};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BG_OUTER};">
+<body style="margin:0;padding:0;background-color:${BG};">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${BG};opacity:0;">${preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BG};">
     <tr>
-      <td align="center" style="padding:32px 16px 48px;">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
-
-          <!-- Header: store logo -->
-          <tr>
-            <td style="background:#FFFFFF;border-radius:12px 12px 0 0;border:1px solid ${CARD_BORDER};border-bottom:none;padding:24px 32px;" align="center">
-              ${headerContent}
-            </td>
-          </tr>
-
-          <!-- Body -->
-          <tr>
-            <td style="background:#FFFFFF;border-left:1px solid ${CARD_BORDER};border-right:1px solid ${CARD_BORDER};">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${bodyContent}
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background:#FAFAFA;border-radius:0 0 12px 12px;border:1px solid ${CARD_BORDER};border-top:none;padding:24px 32px;" align="center">
-              <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:${TEXT_DARK};">${brand.storeName}</p>
-              ${contactBlock}
-              ${socialBlock}
-              <p style="margin:0 0 4px;font-size:11px;color:#C4B0B9;">
-                <a href="${env.FRONTEND_URL}/settings" style="color:#C4B0B9;text-decoration:none;">Manage preferences</a>
-              </p>
-              <p style="margin:0;font-size:11px;color:#C4B0B9;">Powered by <a href="https://sillages.app" style="color:#C4B0B9;text-decoration:none;">Sillages</a></p>
-            </td>
-          </tr>
-
+      <td align="center" class="px-outer" style="padding:40px 24px;">
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+          ${body}
         </table>
       </td>
     </tr>
