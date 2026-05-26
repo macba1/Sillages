@@ -47,4 +47,40 @@ router.patch('/language', requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/accounts/auto-approve — get auto-approve cart recovery setting
+router.get('/auto-approve', requireAuth, async (req, res, next) => {
+  try {
+    const { data } = await supabase
+      .from('user_intelligence_config')
+      .select('auto_approve_cart_recovery')
+      .eq('account_id', req.accountId!)
+      .maybeSingle();
+
+    res.json({ auto_approve_cart_recovery: data?.auto_approve_cart_recovery ?? false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/accounts/auto-approve — toggle auto-approve cart recovery
+router.patch('/auto-approve', requireAuth, async (req, res, next) => {
+  try {
+    const { auto_approve_cart_recovery } = req.body as { auto_approve_cart_recovery?: boolean };
+    if (typeof auto_approve_cart_recovery !== 'boolean') {
+      throw new AppError(400, 'auto_approve_cart_recovery must be a boolean');
+    }
+
+    const { error } = await supabase
+      .from('user_intelligence_config')
+      .update({ auto_approve_cart_recovery })
+      .eq('account_id', req.accountId!);
+
+    if (error) throw new AppError(500, error.message);
+    console.log(`[accounts] ${req.accountId} set auto_approve_cart_recovery=${auto_approve_cart_recovery}`);
+    res.json({ ok: true, auto_approve_cart_recovery });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

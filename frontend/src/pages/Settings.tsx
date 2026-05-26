@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { AppShell } from '../components/layout/LeftNav';
@@ -449,6 +449,12 @@ export default function Settings() {
 
         {/* ── Section 2: Brief preferences ── */}
         <SettingsSection label={t('settings.section.preferences')}>
+          <SettingRow
+            label="Auto-approve cart recovery emails"
+            description="When enabled, cart recovery emails are sent automatically without waiting for your approval."
+          >
+            <AutoApproveToggle />
+          </SettingRow>
           <SettingRow label={t('settings.delivery.label')} description={t('settings.delivery.desc')} noBorder>
             <Badge label={t('settings.badge.comingSoon')} color="var(--ink-faint)" bg="var(--cream-dark)" />
           </SettingRow>
@@ -548,5 +554,64 @@ export default function Settings() {
 
       </div>
     </AppShell>
+  );
+}
+
+// ── Auto-approve toggle ──────────────────────────────────────────────────────
+
+function AutoApproveToggle() {
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/accounts/auto-approve`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.ok) {
+        const body = await res.json() as { auto_approve_cart_recovery: boolean };
+        setEnabled(body.auto_approve_cart_recovery);
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function toggle() {
+    const newVal = !enabled;
+    setEnabled(newVal);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(`${import.meta.env.VITE_API_URL}/api/accounts/auto-approve`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_approve_cart_recovery: newVal }),
+      });
+    } catch {
+      setEnabled(!newVal); // revert on error
+    }
+  }
+
+  if (loading) return <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>...</span>;
+
+  return (
+    <button
+      onClick={toggle}
+      style={{
+        width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+        background: enabled ? 'var(--green)' : 'var(--cream-dark)',
+        position: 'relative', transition: 'background 0.2s',
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 2, left: enabled ? 22 : 2,
+        width: 20, height: 20, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+      }} />
+    </button>
   );
 }

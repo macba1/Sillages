@@ -4,6 +4,8 @@ import { toZonedTime } from 'date-fns-tz';
 import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
+import { sendBriefEmail } from './emailSender.js';
+import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { detectEvents } from './eventDetector.js';
 import type { AbandonedCartData } from './eventDetector.js';
@@ -227,6 +229,32 @@ async function processEventsForAccount(accountId: string): Promise<void> {
 
     actionsGenerated++;
 
+    // Auto-approve cart recovery if merchant opted in
+    if (event.type === 'abandoned_cart' && actionId) {
+      const { data: config } = await supabase
+        .from('user_intelligence_config')
+        .select('auto_approve_cart_recovery')
+        .eq('account_id', accountId)
+        .maybeSingle();
+
+      if (config?.auto_approve_cart_recovery) {
+        try {
+          const { data: action } = await supabase
+            .from('pending_actions')
+            .select('content')
+            .eq('id', actionId)
+            .single();
+
+          if (action) {
+            await executeCartRecovery(accountId, actionId, action.content as Record<string, unknown>);
+            console.log(`[scheduler] [${accountId}] Auto-approved cart recovery ${actionId}`);
+          }
+        } catch (autoErr) {
+          console.warn(`[scheduler] [${accountId}] Auto-approve failed for ${actionId}: ${(autoErr as Error).message}`);
+        }
+      }
+    }
+
     // Mark in event_log
     await supabase
       .from('event_log')
@@ -390,7 +418,25 @@ async function runDailyBriefPipeline(accountId: string): Promise<void> {
     }
   }
 
-  // 4. Send push summary
+  // 4. Send daily brief by email
+  const { data: briefToSend } = await supabase
+    .from('intelligence_briefs')
+    .select('id, status')
+    .eq('account_id', accountId)
+    .eq('brief_date', snapshotDate)
+    .eq('status', 'ready')
+    .maybeSingle();
+
+  if (briefToSend) {
+    try {
+      await sendBriefEmail(briefToSend.id);
+      console.log(`[scheduler] [${accountId}] Daily brief email sent for ${snapshotDate}`);
+    } catch (err) {
+      console.error(`[scheduler] [${accountId}] Brief email failed: ${(err as Error).message}`);
+    }
+  }
+
+  // 5. Send push summary
   await sendDailySummaryPush(accountId);
 }
 

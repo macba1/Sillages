@@ -734,7 +734,7 @@ async function executeWhatsAppMessage(_accountId: string, actionId: string, cont
 
 // ── Cart Recovery Executor ───────────────────────────────────────────────────
 
-async function executeCartRecovery(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
+export async function executeCartRecovery(accountId: string, actionId: string, content: Record<string, unknown>): Promise<void> {
   const customerEmail = content.customer_email as string | undefined;
   const customerName = content.customer_name as string ?? '';
   // Products may be an array or a comma-separated string from the AI

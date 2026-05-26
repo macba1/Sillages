@@ -73,12 +73,10 @@ type Lang = keyof typeof labels;
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 /**
- * @deprecated Daily brief emails are NOT sent to merchants.
- * Merchants only receive: (1) weekly email on Monday, (2) push notifications.
- * This function is kept only for dev/debug scripts — NEVER call from production code.
+ * Send the daily intelligence brief by email to the merchant.
+ * Called by the scheduler after brief generation at the merchant's send_hour.
  */
 export async function sendBriefEmail(briefId: string): Promise<void> {
-  console.warn('[emailSender] WARNING: sendBriefEmail called — this should NOT happen in production');
 
   const { data: brief, error: briefErr } = await supabase
     .from('intelligence_briefs')
@@ -116,11 +114,19 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
 
   const html = buildEmailHtml({ brief: b, ownerName, lang, currency });
 
+  // Build unsubscribe URL for GDPR compliance
+  const { buildUnsubscribeUrl } = await import('../lib/unsubscribe.js');
+  const unsubscribeUrl = buildUnsubscribeUrl(b.account_id, acc.email);
+  const headers: Record<string, string> = {};
+  headers['List-Unsubscribe'] = `<${unsubscribeUrl}>`;
+  headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+
   const { data: sent, error: sendErr } = await resend.emails.send({
     from: fromField,
     to: acc.email,
     subject,
     html,
+    headers,
   });
 
   if (sendErr || !sent) throw new Error(`Resend error: ${(sendErr as Error)?.message}`);

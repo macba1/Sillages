@@ -190,12 +190,19 @@ export async function sendWeeklyBriefEmail(weeklyBriefId: string): Promise<void>
   const subject = t.subjectPrefix(rawShopName, wb.week_start, wb.week_end);
   const html = buildWeeklyEmailHtml({ brief: wb, lang, currency });
 
-  // 5. Send via Resend
+  // 5. Send via Resend with unsubscribe headers (GDPR compliance)
+  const { buildUnsubscribeUrl } = await import('../lib/unsubscribe.js');
+  const unsubscribeUrl = buildUnsubscribeUrl(wb.account_id, acc.email);
+  const headers: Record<string, string> = {};
+  headers['List-Unsubscribe'] = `<${unsubscribeUrl}>`;
+  headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+
   const { data: sent, error: sendErr } = await resend.emails.send({
     from: fromField,
     to: acc.email,
     subject,
     html,
+    headers,
   });
 
   if (sendErr || !sent) throw new Error(`Resend error: ${(sendErr as Error)?.message}`);

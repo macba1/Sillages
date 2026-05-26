@@ -298,8 +298,28 @@ router.get(
             // Fire-and-forget: generate first brief
             void generateFirstBrief(accountId);
 
-            // Redirect to plan selection
-            res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`);
+            // Generate magic link so merchant is auto-logged in
+            let magicToken = '';
+            try {
+              const { data: linkData } = await supabase.auth.admin.generateLink({
+                type: 'magiclink',
+                email: ownerEmail,
+                options: { redirectTo: `${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true` },
+              });
+              if (linkData?.properties?.hashed_token) {
+                magicToken = linkData.properties.hashed_token;
+              }
+            } catch (linkErr) {
+              console.warn(`[shopify/callback] Magic link generation failed: ${(linkErr as Error).message}`);
+            }
+
+            if (magicToken) {
+              // Redirect via Supabase auth verify endpoint — auto-logs in the merchant
+              res.redirect(`${env.SUPABASE_URL}/auth/v1/verify?token=${magicToken}&type=magiclink&redirect_to=${encodeURIComponent(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`)}`);
+            } else {
+              // Fallback: redirect to plans with message
+              res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true&email=${encodeURIComponent(ownerEmail)}`);
+            }
             return;
           }
         }

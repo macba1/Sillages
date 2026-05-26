@@ -72,6 +72,7 @@ export default function Plans() {
 
   const isNewInstall = searchParams.get('new_install') === 'true';
   const accountIdParam = searchParams.get('account_id');
+  const emailParam = searchParams.get('email');
 
   async function handleSelectPlan(planKey: string) {
     setLoading(planKey);
@@ -113,6 +114,11 @@ export default function Plans() {
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#1f2937', margin: 0 }}>
             {isNewInstall ? 'Choose your plan' : 'Plans & Pricing'}
           </h1>
+          {isNewInstall && emailParam && (
+            <p style={{ fontSize: 13, color: '#2D6A4F', background: 'rgba(45,106,79,0.08)', borderRadius: 8, padding: '10px 16px', marginBottom: 16 }}>
+              We created your account with <strong>{emailParam}</strong>. After choosing a plan, you can set your password from the login page.
+            </p>
+          )}
           <p style={{ fontSize: 15, color: '#6b7280', marginTop: 8 }}>
             {isNewInstall
               ? 'Start with a 14-day free trial on any paid plan. Cancel anytime.'
