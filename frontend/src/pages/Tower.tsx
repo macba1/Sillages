@@ -18,10 +18,10 @@ interface TowerResponse {
 // ── Status helpers ─────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { dot: string; label: string; color: string; bg: string }> = {
-  ok:       { dot: '#2D6A4F', label: 'NOMINAL',  color: '#2D6A4F', bg: 'rgba(45,106,79,0.12)' },
-  warning:  { dot: '#D4A017', label: 'WARNING',  color: '#D4A017', bg: 'rgba(212,160,23,0.12)' },
-  critical: { dot: '#DC2626', label: 'CRITICAL', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
-  offline:  { dot: '#6B7280', label: 'OFFLINE',  color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
+  ok:       { dot: '#2D6A4F', label: 'NOMINAL',  color: '#2D6A4F', bg: 'rgba(45,106,79,0.08)' },
+  warning:  { dot: '#B45309', label: 'WARNING',  color: '#B45309', bg: 'rgba(180,83,9,0.08)' },
+  critical: { dot: '#DC2626', label: 'CRITICAL', color: '#DC2626', bg: 'rgba(220,38,38,0.08)' },
+  offline:  { dot: '#9CA3AF', label: 'OFFLINE',  color: '#9CA3AF', bg: 'rgba(156,163,175,0.08)' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -63,7 +63,6 @@ function HealthCard({ agent }: { agent: AgentData }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Metrics row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         <Metric label="Tokens" value={`${d.tokens?.active ?? 0}/${(d.tokens?.active ?? 0) + (d.tokens?.invalid ?? 0)}`} />
         <Metric label="Emails today" value={String(d.emailsToday ?? 0)} />
@@ -71,29 +70,27 @@ function HealthCard({ agent }: { agent: AgentData }) {
         <Metric label="Last sync" value={d.lastSync ?? 'never'} />
       </div>
 
-      {/* Issues */}
       {d.issues && d.issues.length > 0 && (
-        <div style={{ background: 'rgba(220,38,38,0.08)', borderRadius: 8, padding: '10px 14px' }}>
+        <div style={{ background: 'rgba(220,38,38,0.06)', borderRadius: 8, padding: '10px 14px', border: '1px solid rgba(220,38,38,0.12)' }}>
           {d.issues.map((issue, i) => (
-            <p key={i} style={{ margin: 0, fontSize: 12, color: '#F87171', lineHeight: 1.6 }}>{issue}</p>
+            <p key={i} style={{ margin: 0, fontSize: 12, color: '#DC2626', lineHeight: 1.6 }}>{issue}</p>
           ))}
         </div>
       )}
 
-      {/* Connections */}
       {d.connections && d.connections.length > 0 && (
         <div>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#6B7280', marginBottom: 8 }}>CONNECTIONS</p>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#9CA3AF', marginBottom: 8 }}>CONNECTIONS</p>
           {d.connections.map((c, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #F3F4F6' }}>
               <div>
-                <span style={{ fontSize: 13, color: '#E5E7EB' }}>{c.name}</span>
-                <span style={{ fontSize: 11, color: '#6B7280', marginLeft: 8 }}>{c.shop}</span>
+                <span style={{ fontSize: 13, color: '#1F2937' }}>{c.name}</span>
+                <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 8 }}>{c.shop}</span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <MiniTag label={c.tokenStatus} ok={c.tokenStatus === 'active'} />
                 <MiniTag label={c.syncStatus} ok={c.syncStatus === 'active'} />
-                <span style={{ fontSize: 10, color: '#6B7280' }}>{timeAgo(c.lastSynced)}</span>
+                <span style={{ fontSize: 10, color: '#9CA3AF' }}>{timeAgo(c.lastSynced)}</span>
               </div>
             </div>
           ))}
@@ -120,7 +117,6 @@ function ActivationCard({ agent }: { agent: AgentData }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Funnel */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
         <Metric label="Total" value={String(f.total)} />
         <Metric label="Installed" value={String(f.installed)} warn={f.installed > 0} />
@@ -129,44 +125,40 @@ function ActivationCard({ agent }: { agent: AgentData }) {
         <Metric label="Active" value={String(f.active)} />
       </div>
 
-      {/* Funnel bar */}
-      <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
+      <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: '#F3F4F6' }}>
         {f.active > 0 && <div style={{ flex: f.active, background: '#2D6A4F' }} />}
-        {f.synced > 0 && <div style={{ flex: f.synced, background: '#D4A017' }} />}
+        {f.synced > 0 && <div style={{ flex: f.synced, background: '#B45309' }} />}
         {f.connected > 0 && <div style={{ flex: f.connected, background: '#3B82F6' }} />}
-        {f.installed > 0 && <div style={{ flex: f.installed, background: '#6B7280' }} />}
+        {f.installed > 0 && <div style={{ flex: f.installed, background: '#9CA3AF' }} />}
       </div>
 
-      {/* New today */}
       {(d.newToday ?? 0) > 0 && (
         <p style={{ margin: 0, fontSize: 13, color: '#2D6A4F' }}>+{d.newToday} new merchant(s) today</p>
       )}
 
-      {/* Stuck merchants */}
       {d.stuck && d.stuck.length > 0 && (
         <div>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#D4A017', marginBottom: 8 }}>STUCK MERCHANTS</p>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#B45309', marginBottom: 8 }}>STUCK MERCHANTS</p>
           {d.stuck.map((m, i) => (
-            <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: '#E5E7EB' }}>{m.email}</span>
+                <span style={{ fontSize: 13, color: '#1F2937' }}>{m.email}</span>
                 <MiniTag label={m.stage} ok={false} />
               </div>
-              {m.action && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>{m.action}</p>}
+              {m.action && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6B7280' }}>{m.action}</p>}
             </div>
           ))}
         </div>
       )}
 
-      {/* Merchant list */}
       {d.merchants && (
         <div>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#6B7280', marginBottom: 8 }}>ALL MERCHANTS</p>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#9CA3AF', marginBottom: 8 }}>ALL MERCHANTS</p>
           {d.merchants.map((m, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #F3F4F6' }}>
               <div>
-                <span style={{ fontSize: 13, color: '#E5E7EB' }}>{m.name ?? m.email}</span>
-                {m.shopName && <span style={{ fontSize: 11, color: '#6B7280', marginLeft: 8 }}>{m.shopName}</span>}
+                <span style={{ fontSize: 13, color: '#1F2937' }}>{m.name ?? m.email}</span>
+                {m.shopName && <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 8 }}>{m.shopName}</span>}
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <MiniTag label={m.plan} ok={m.plan !== 'none'} />
@@ -186,7 +178,7 @@ function PlaceholderCard({ agent }: { agent: AgentData }) {
   const msg = (agent.data as { message?: string }).message ?? 'Coming soon';
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
-      <p style={{ fontSize: 13, color: '#6B7280', fontStyle: 'italic' }}>{msg}</p>
+      <p style={{ fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>{msg}</p>
     </div>
   );
 }
@@ -195,9 +187,9 @@ function PlaceholderCard({ agent }: { agent: AgentData }) {
 
 function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '10px 12px' }}>
-      <p style={{ margin: 0, fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: '#6B7280', textTransform: 'uppercase' }}>{label}</p>
-      <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 600, color: warn ? '#D4A017' : '#E5E7EB', lineHeight: 1 }}>{value}</p>
+    <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '10px 12px', border: '1px solid #F3F4F6' }}>
+      <p style={{ margin: 0, fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: '#9CA3AF', textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 600, color: warn ? '#B45309' : '#1F2937', lineHeight: 1 }}>{value}</p>
     </div>
   );
 }
@@ -207,8 +199,8 @@ function MiniTag({ label, ok }: { label: string; ok: boolean }) {
     <span style={{
       fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
       padding: '2px 6px', borderRadius: 4,
-      background: ok ? 'rgba(45,106,79,0.15)' : 'rgba(212,160,23,0.15)',
-      color: ok ? '#2D6A4F' : '#D4A017',
+      background: ok ? 'rgba(45,106,79,0.1)' : 'rgba(180,83,9,0.1)',
+      color: ok ? '#2D6A4F' : '#B45309',
     }}>
       {label}
     </span>
@@ -250,8 +242,8 @@ export default function Tower() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0F1117',
-      color: '#E5E7EB',
+      background: '#FFFFFF',
+      color: '#1F2937',
       fontFamily: "'DM Sans', system-ui, sans-serif",
       padding: '32px 24px',
     }}>
@@ -263,28 +255,28 @@ export default function Tower() {
               SILLAGES CONTROL TOWER
             </span>
             {data && (
-              <span style={{ fontSize: 10, color: '#6B7280' }}>
+              <span style={{ fontSize: 10, color: '#9CA3AF' }}>
                 Updated {timeAgo(data.timestamp)}
               </span>
             )}
           </div>
-          <a href="/dashboard" style={{ fontSize: 12, color: '#6B7280', textDecoration: 'none' }}>
+          <a href="/dashboard" style={{ fontSize: 12, color: '#9CA3AF', textDecoration: 'none' }}>
             Back to Dashboard
           </a>
         </div>
-        <div style={{ height: 1, background: 'rgba(201,150,74,0.15)', marginTop: 16 }} />
+        <div style={{ height: 1, background: '#E5E7EB', marginTop: 16 }} />
       </div>
 
       {/* Error / Loading */}
       {loading && (
         <div style={{ maxWidth: 1400, margin: '0 auto', textAlign: 'center', padding: 80 }}>
-          <p style={{ color: '#6B7280' }}>Loading tower data...</p>
+          <p style={{ color: '#9CA3AF' }}>Loading tower data...</p>
         </div>
       )}
 
       {error && (
-        <div style={{ maxWidth: 1400, margin: '0 auto', background: 'rgba(220,38,38,0.1)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
-          <p style={{ margin: 0, color: '#F87171', fontSize: 14 }}>{error}</p>
+        <div style={{ maxWidth: 1400, margin: '0 auto', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.15)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <p style={{ margin: 0, color: '#DC2626', fontSize: 14 }}>{error}</p>
         </div>
       )}
 
@@ -303,18 +295,20 @@ export default function Tower() {
               <div
                 key={i}
                 style={{
-                  background: '#1A1D27',
+                  background: '#FFFFFF',
                   borderRadius: 16,
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  border: '1px solid #E5E7EB',
                   overflow: 'hidden',
                   gridColumn: (agent.name === 'Merchant Activation') ? 'span 2' : undefined,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                 }}
               >
                 {/* Card header */}
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '16px 20px',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  borderBottom: '1px solid #F3F4F6',
+                  background: '#FAFAFA',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{
@@ -325,7 +319,7 @@ export default function Tower() {
                     }}>
                       {i + 1}
                     </span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#E5E7EB' }}>{agent.name}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1F2937' }}>{agent.name}</span>
                   </div>
                   <StatusBadge status={agent.status} />
                 </div>
@@ -338,10 +332,10 @@ export default function Tower() {
                 {/* Card footer */}
                 <div style={{
                   padding: '8px 20px',
-                  borderTop: '1px solid rgba(255,255,255,0.04)',
+                  borderTop: '1px solid #F3F4F6',
                   display: 'flex', justifyContent: 'flex-end',
                 }}>
-                  <span style={{ fontSize: 10, color: '#4B5563' }}>
+                  <span style={{ fontSize: 10, color: '#D1D5DB' }}>
                     {agent.lastCheck ? `Last check: ${timeAgo(agent.lastCheck)}` : 'Not active'}
                   </span>
                 </div>

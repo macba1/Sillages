@@ -62,7 +62,13 @@ router.get('/', requireAuth, requireAdmin, async (_req: Request, res: Response, 
       supabase.from('user_intelligence_config').select('account_id, send_enabled, send_hour, timezone'),
     ]);
 
-    const accounts = accountsResult.data ?? [];
+    // Filter out Shopify reviewers and testers — not real merchants
+    const GHOST_EMAILS = new Set([
+      'reviewer@sillages.app',
+      'purposeapp.tester7@shopify.com',
+      'app.tester58@shopify.com',
+    ]);
+    const accounts = (accountsResult.data ?? []).filter(a => !GHOST_EMAILS.has(a.email));
     const connections = connectionsResult.data ?? [];
     const subscriptions = subscriptionsResult.data ?? [];
     const briefsRecent = briefsRecentResult.data ?? [];
