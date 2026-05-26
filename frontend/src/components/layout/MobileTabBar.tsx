@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Zap, MessageCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Zap, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useUnreadAlerts } from '../../hooks/useUnreadAlerts';
 import { useAccount } from '../../hooks/useAccount';
@@ -9,7 +9,6 @@ const TABS: { icon: LucideIcon; label: string; to: string; match: string }[] = [
   { icon: LayoutDashboard, label: 'Home',     to: '/dashboard', match: '/dashboard' },
   { icon: BookOpen,        label: 'Briefs',   to: '/briefs',    match: '/briefs'    },
   { icon: Zap,             label: 'Actions',  to: '/actions',   match: '/actions'   },
-  { icon: MessageCircle,   label: 'Chat',     to: '/chat',      match: '/chat'      },
   { icon: Settings,        label: 'Settings', to: '/settings',  match: '/settings'  },
 ];
 
