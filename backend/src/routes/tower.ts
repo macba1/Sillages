@@ -209,15 +209,109 @@ router.get('/', requireAuth, requireAdmin, async (_req: Request, res: Response, 
     };
 
     // ═════════════════════════════════════════════════════════════════════
-    // AGENTS 3-7: PLACEHOLDER (Phase 2+3)
+    // AGENTS 3-4, 7: PLACEHOLDER (Phase 3)
     // ═════════════════════════════════════════════════════════════════════
 
     const placeholder = (name: string, phase: number) => ({
       name,
-      status: 'offline',
+      status: 'offline' as const,
       lastCheck: null,
       data: { message: `Coming in Phase ${phase}` },
     });
+
+    // ═════════════════════════════════════════════════════════════════════
+    // AGENT 5: GROWTH CONTENT
+    // ═════════════════════════════════════════════════════════════════════
+
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+    const weekEndDate5 = new Date(weekStart);
+    weekEndDate5.setDate(weekEndDate5.getDate() + 6); // Sunday
+
+    const { data: allContent } = await supabase
+      .from('growth_content')
+      .select('id, scheduled_date, platform, content, status, engagement')
+      .gte('scheduled_date', weekStart.toISOString().slice(0, 10))
+      .lte('scheduled_date', weekEndDate5.toISOString().slice(0, 10))
+      .order('scheduled_date');
+
+    const contentItems = allContent ?? [];
+    const todayContent = contentItems.find(c => c.scheduled_date === todayStr) ?? null;
+    const publishedThisWeek = contentItems.filter(c => c.status === 'published').length;
+
+    // Also get today's post even if outside this week range
+    let todayPost = todayContent;
+    if (!todayPost) {
+      const { data: tp } = await supabase
+        .from('growth_content')
+        .select('id, scheduled_date, platform, content, status, engagement')
+        .eq('scheduled_date', todayStr)
+        .maybeSingle();
+      todayPost = tp;
+    }
+
+    const agent5 = {
+      name: 'Growth Content',
+      status: todayPost ? (todayPost.status === 'published' ? 'ok' : 'warning') : 'ok',
+      lastCheck: now.toISOString(),
+      data: {
+        todayPost: todayPost ? {
+          id: todayPost.id,
+          platform: todayPost.platform,
+          content: todayPost.content,
+          status: todayPost.status,
+          engagement: todayPost.engagement,
+        } : null,
+        weekCalendar: contentItems.map(c => ({
+          id: c.id,
+          date: c.scheduled_date,
+          platform: c.platform,
+          status: c.status,
+          preview: c.content.slice(0, 80) + (c.content.length > 80 ? '...' : ''),
+        })),
+        publishedThisWeek,
+        totalThisWeek: contentItems.length,
+      },
+    };
+
+    // ═════════════════════════════════════════════════════════════════════
+    // AGENT 6: AGENCY OUTREACH
+    // ═════════════════════════════════════════════════════════════════════
+
+    const { data: agencies } = await supabase
+      .from('agency_outreach')
+      .select('id, name, url, contact_name, contact_linkedin, status, last_contact, notes')
+      .order('created_at');
+
+    const agencyList = agencies ?? [];
+    const contacted = agencyList.filter(a => a.status !== 'not_contacted').length;
+    const responded = agencyList.filter(a => ['responded', 'demo', 'converted'].includes(a.status)).length;
+    const demos = agencyList.filter(a => ['demo', 'converted'].includes(a.status)).length;
+    const converted = agencyList.filter(a => a.status === 'converted').length;
+
+    const agent6 = {
+      name: 'Agency Outreach',
+      status: agencyList.length === 0 ? 'offline' : (demos > 0 ? 'ok' : 'warning'),
+      lastCheck: now.toISOString(),
+      data: {
+        total: agencyList.length,
+        contacted,
+        responded,
+        demos,
+        converted,
+        agencies: agencyList.map(a => ({
+          id: a.id,
+          name: a.name,
+          url: a.url,
+          contactName: a.contact_name,
+          contactLinkedin: a.contact_linkedin,
+          status: a.status,
+          lastContact: a.last_contact,
+          notes: a.notes,
+        })),
+        suggestedMessage: `Hi [name], I built a Shopify app called Sillages that sends store owners a daily AI brief about their business. I think it could be a great fit for your e-commerce clients. Would you be open to a quick 15-minute demo? apps.shopify.com/sillages`,
+      },
+    };
 
     res.json({
       timestamp: now.toISOString(),
@@ -226,11 +320,99 @@ router.get('/', requireAuth, requireAdmin, async (_req: Request, res: Response, 
         agent2,
         placeholder('Customer Intelligence', 3),
         placeholder('Product Decision', 3),
-        placeholder('Growth Content', 2),
-        placeholder('Agency Outreach', 2),
+        agent5,
+        agent6,
         placeholder('Review & Trust', 3),
       ],
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/tower/content/:id/publish — Mark content as published
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/content/:id/publish', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { error } = await supabase
+      .from('growth_content')
+      .update({ status: 'published' })
+      .eq('id', req.params.id);
+
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/tower/content/:id/engagement — Update engagement data
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/content/:id/engagement', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { error } = await supabase
+      .from('growth_content')
+      .update({ engagement: req.body })
+      .eq('id', req.params.id);
+
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/tower/agency — Add new agency
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/agency', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, url, contact_name, contact_linkedin, notes } = req.body;
+    if (!name) throw new AppError(400, 'Name required');
+
+    const { data, error } = await supabase
+      .from('agency_outreach')
+      .insert({ name, url, contact_name, contact_linkedin, notes })
+      .select('id')
+      .single();
+
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true, id: data.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PATCH /api/tower/agency/:id — Update agency status
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.patch('/agency/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updates: Record<string, unknown> = {};
+    if (req.body.status) {
+      updates.status = req.body.status;
+      if (req.body.status !== 'not_contacted') {
+        updates.last_contact = new Date().toISOString();
+      }
+    }
+    if (req.body.notes !== undefined) updates.notes = req.body.notes;
+    if (req.body.contact_name) updates.contact_name = req.body.contact_name;
+    if (req.body.contact_linkedin) updates.contact_linkedin = req.body.contact_linkedin;
+    if (req.body.url) updates.url = req.body.url;
+
+    const { error } = await supabase
+      .from('agency_outreach')
+      .update(updates)
+      .eq('id', req.params.id);
+
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

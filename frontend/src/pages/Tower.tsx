@@ -174,6 +174,207 @@ function ActivationCard({ agent }: { agent: AgentData }) {
   );
 }
 
+function GrowthContentCard({ agent }: { agent: AgentData }) {
+  const d = agent.data as {
+    todayPost?: { id: string; platform: string; content: string; status: string; engagement: Record<string, number> } | null;
+    weekCalendar?: Array<{ id: string; date: string; platform: string; status: string; preview: string }>;
+    publishedThisWeek?: number;
+    totalThisWeek?: number;
+  };
+
+  const [publishing, setPublishing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const PLATFORM_LABELS: Record<string, string> = { linkedin: 'LinkedIn', twitter: 'X / Twitter', reddit: 'Reddit' };
+  const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  async function handlePublish(id: string) {
+    setPublishing(true);
+    try {
+      await api.post(`/api/tower/content/${id}/publish`);
+      window.location.reload();
+    } catch { setPublishing(false); }
+  }
+
+  async function handleCopy(text: string) {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        <Metric label="Published this week" value={`${d.publishedThisWeek ?? 0}/${d.totalThisWeek ?? 0}`} />
+        <Metric label="Today's platform" value={d.todayPost ? (PLATFORM_LABELS[d.todayPost.platform] ?? d.todayPost.platform) : 'None scheduled'} />
+      </div>
+
+      {d.todayPost && (
+        <div style={{ background: '#F9FAFB', borderRadius: 10, border: '1px solid #E5E7EB', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <MiniTag label={PLATFORM_LABELS[d.todayPost.platform] ?? d.todayPost.platform} ok />
+            <MiniTag label={d.todayPost.status} ok={d.todayPost.status === 'published'} />
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+            {d.todayPost.content}
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={() => handleCopy(d.todayPost!.content)} style={towerBtnStyle}>
+              {copied ? 'Copied!' : 'Copy text'}
+            </button>
+            {d.todayPost.status !== 'published' && (
+              <button onClick={() => handlePublish(d.todayPost!.id)} disabled={publishing} style={{ ...towerBtnStyle, background: '#2D6A4F', color: '#fff' }}>
+                {publishing ? 'Saving...' : 'Mark Published'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {d.weekCalendar && d.weekCalendar.length > 0 && (
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#9CA3AF', marginBottom: 8 }}>WEEK CALENDAR</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {DAY_LABELS.map(d => (
+              <div key={d} style={{ fontSize: 9, fontWeight: 700, color: '#9CA3AF', textAlign: 'center', padding: 4 }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+            {d.weekCalendar.map(c => {
+              const dayOfWeek = new Date(c.date + 'T12:00:00').getDay();
+              const col = dayOfWeek === 0 ? 7 : dayOfWeek;
+              return (
+                <div key={c.id} style={{
+                  gridColumn: col,
+                  background: c.status === 'published' ? 'rgba(45,106,79,0.08)' : '#F9FAFB',
+                  border: `1px solid ${c.status === 'published' ? 'rgba(45,106,79,0.2)' : '#E5E7EB'}`,
+                  borderRadius: 6, padding: '6px 8px', textAlign: 'center',
+                }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: '#374151' }}>{c.date.slice(8)}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 8, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>
+                    {(PLATFORM_LABELS[c.platform] ?? c.platform).slice(0, 2)}
+                  </p>
+                  <span style={{
+                    display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginTop: 2,
+                    background: c.status === 'published' ? '#2D6A4F' : '#D1D5DB',
+                  }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgencyOutreachCard({ agent }: { agent: AgentData }) {
+  const d = agent.data as {
+    total?: number; contacted?: number; responded?: number; demos?: number; converted?: number;
+    agencies?: Array<{ id: string; name: string; url: string | null; contactName: string | null; contactLinkedin: string | null; status: string; lastContact: string | null; notes: string | null }>;
+    suggestedMessage?: string;
+  };
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addUrl, setAddUrl] = useState('');
+  const [addContact, setAddContact] = useState('');
+  const [addLinkedin, setAddLinkedin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const STATUS_ORDER = ['not_contacted', 'contacted', 'responded', 'demo', 'converted'];
+  const STATUS_LABELS: Record<string, string> = {
+    not_contacted: 'Not contacted', contacted: 'Contacted', responded: 'Responded', demo: 'Demo', converted: 'Converted',
+  };
+
+  async function handleAdd() {
+    if (!addName.trim()) return;
+    setSaving(true);
+    try {
+      await api.post('/api/tower/agency', { name: addName, url: addUrl || undefined, contact_name: addContact || undefined, contact_linkedin: addLinkedin || undefined });
+      window.location.reload();
+    } catch { setSaving(false); }
+  }
+
+  async function handleAdvance(id: string, currentStatus: string) {
+    const idx = STATUS_ORDER.indexOf(currentStatus);
+    if (idx >= STATUS_ORDER.length - 1) return;
+    setUpdatingId(id);
+    try {
+      await api.patch(`/api/tower/agency/${id}`, { status: STATUS_ORDER[idx + 1] });
+      window.location.reload();
+    } catch { setUpdatingId(null); }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+        <Metric label="Total" value={String(d.total ?? 0)} />
+        <Metric label="Contacted" value={String(d.contacted ?? 0)} />
+        <Metric label="Responded" value={String(d.responded ?? 0)} />
+        <Metric label="Demos" value={String(d.demos ?? 0)} />
+        <Metric label="Converted" value={String(d.converted ?? 0)} />
+      </div>
+
+      {d.agencies && d.agencies.length > 0 && (
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#9CA3AF', marginBottom: 8 }}>AGENCIES</p>
+          {d.agencies.map(a => (
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#1F2937' }}>{a.name}</span>
+                {a.contactName && <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 8 }}>{a.contactName}</span>}
+                {a.url && <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#3B82F6', marginLeft: 8, textDecoration: 'none' }}>web</a>}
+                {a.contactLinkedin && <a href={a.contactLinkedin} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#3B82F6', marginLeft: 4, textDecoration: 'none' }}>in</a>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <MiniTag label={STATUS_LABELS[a.status] ?? a.status} ok={['responded', 'demo', 'converted'].includes(a.status)} />
+                {a.status !== 'converted' && (
+                  <button
+                    onClick={() => handleAdvance(a.id, a.status)}
+                    disabled={updatingId === a.id}
+                    style={{ ...towerBtnStyle, fontSize: 10, padding: '2px 8px' }}
+                  >
+                    {updatingId === a.id ? '...' : 'Advance'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add agency form */}
+      <div>
+        {!showAdd ? (
+          <button onClick={() => setShowAdd(true)} style={towerBtnStyle}>+ Add Agency</button>
+        ) : (
+          <div style={{ background: '#F9FAFB', borderRadius: 10, border: '1px solid #E5E7EB', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input value={addName} onChange={e => setAddName(e.target.value)} placeholder="Agency name *" style={towerInputStyle} />
+            <input value={addUrl} onChange={e => setAddUrl(e.target.value)} placeholder="Website URL" style={towerInputStyle} />
+            <input value={addContact} onChange={e => setAddContact(e.target.value)} placeholder="Contact name" style={towerInputStyle} />
+            <input value={addLinkedin} onChange={e => setAddLinkedin(e.target.value)} placeholder="LinkedIn URL" style={towerInputStyle} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleAdd} disabled={saving} style={{ ...towerBtnStyle, background: '#2D6A4F', color: '#fff' }}>
+                {saving ? 'Saving...' : 'Add'}
+              </button>
+              <button onClick={() => setShowAdd(false)} style={towerBtnStyle}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {d.suggestedMessage && (
+        <div>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#9CA3AF', marginBottom: 6 }}>SUGGESTED MESSAGE</p>
+          <p style={{ margin: 0, fontSize: 12, color: '#6B7280', lineHeight: 1.6, fontStyle: 'italic' }}>{d.suggestedMessage}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlaceholderCard({ agent }: { agent: AgentData }) {
   const msg = (agent.data as { message?: string }).message ?? 'Coming soon';
   return (
@@ -184,6 +385,18 @@ function PlaceholderCard({ agent }: { agent: AgentData }) {
 }
 
 // ── Primitives ──────────────────────────────────────────────────────────────
+
+const towerBtnStyle: React.CSSProperties = {
+  padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+  border: '1px solid #E5E7EB', background: '#fff', color: '#374151',
+  cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+};
+
+const towerInputStyle: React.CSSProperties = {
+  padding: '8px 12px', borderRadius: 6, fontSize: 13,
+  border: '1px solid #E5E7EB', background: '#fff', color: '#1F2937',
+  fontFamily: "'DM Sans', sans-serif", outline: 'none', width: '100%', boxSizing: 'border-box',
+};
 
 function Metric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
@@ -212,6 +425,8 @@ function MiniTag({ label, ok }: { label: string; ok: boolean }) {
 const AGENT_RENDERERS: Record<string, (agent: AgentData) => React.ReactNode> = {
   'Production Health': (a) => <HealthCard agent={a} />,
   'Merchant Activation': (a) => <ActivationCard agent={a} />,
+  'Growth Content': (a) => <GrowthContentCard agent={a} />,
+  'Agency Outreach': (a) => <AgencyOutreachCard agent={a} />,
 };
 
 // ── Page ────────────────────────────────────────────────────────────────────
