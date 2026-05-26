@@ -231,18 +231,25 @@ async function checkBriefs(
     if (!brief) {
       const { data: lastSnap } = await supabase
         .from('shopify_daily_snapshots')
-        .select('snapshot_date')
+        .select('snapshot_date, total_orders')
         .eq('account_id', account.id)
         .order('snapshot_date', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (lastSnap) {
-        alerts.push({
-          alert_type: 'brief_missing',
-          account_id: account.id,
-          message: `No brief for ${account.email} (last snapshot: ${lastSnap.snapshot_date}). Needs manual investigation.`,
-        });
+        const daysSinceSnap = Math.floor((Date.now() - new Date(lastSnap.snapshot_date).getTime()) / 86400000);
+        if (daysSinceSnap > 3) {
+          // Inactive store — log as info, don't alert admin
+          console.log(`${LOG} [briefs] ${account.email} — no brief, but store inactive (last snapshot ${daysSinceSnap}d ago). INFO only.`);
+        } else {
+          // Active store missing brief — alert
+          alerts.push({
+            alert_type: 'brief_missing',
+            account_id: account.id,
+            message: `No brief for ${account.email} (last snapshot: ${lastSnap.snapshot_date}, ${daysSinceSnap}d ago). Needs investigation.`,
+          });
+        }
       } else {
         console.log(`${LOG} [briefs] ${account.email} — no snapshots (new account)`);
       }

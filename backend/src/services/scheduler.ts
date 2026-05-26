@@ -334,10 +334,39 @@ async function runDailyBriefPipeline(accountId: string): Promise<void> {
   console.log(`[scheduler] [${accountId}] Starting daily brief pipeline`);
 
   // 1. Sync yesterday's data
-  const snapshotDate = await ensureShopifySync(accountId);
+  let snapshotDate = await ensureShopifySync(accountId);
+
+  // If no snapshot (no orders yesterday), create an empty-day snapshot so brief can still generate
   if (!snapshotDate) {
-    console.log(`[scheduler] [${accountId}] No snapshot — skipping brief`);
-    return;
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    console.log(`[scheduler] [${accountId}] No snapshot from sync — creating empty-day snapshot for ${yesterday}`);
+
+    const { error: emptySnapErr } = await supabase
+      .from('shopify_daily_snapshots')
+      .upsert({
+        account_id: accountId,
+        snapshot_date: yesterday,
+        total_revenue: 0,
+        net_revenue: 0,
+        total_orders: 0,
+        average_order_value: 0,
+        sessions: 0,
+        conversion_rate: 0,
+        returning_customer_rate: 0,
+        new_customers: 0,
+        returning_customers: 0,
+        total_customers: 0,
+        top_products: [],
+        total_refunds: 0,
+        cancelled_orders: 0,
+        raw_shopify_payload: { empty_day: true },
+      }, { onConflict: 'account_id,snapshot_date' });
+
+    if (emptySnapErr) {
+      console.error(`[scheduler] [${accountId}] Failed to create empty snapshot: ${emptySnapErr.message}`);
+      return;
+    }
+    snapshotDate = yesterday;
   }
 
   // 2. Check if brief already exists for this date
