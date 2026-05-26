@@ -18,7 +18,6 @@ import Actions from './pages/Actions';
 import Reconnect from './pages/Reconnect';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
-import AdminStatus from './pages/AdminStatus';
 import Plans from './pages/Plans';
 import Tower from './pages/Tower';
 
@@ -142,15 +141,8 @@ export default function App() {
           }
         />
 
-        {/* Admin — requires auth, server-side admin check */}
-        <Route
-          path="/admin/status"
-          element={
-            <RequireAuth>
-              <AdminStatus />
-            </RequireAuth>
-          }
-        />
+        {/* Admin — redirect old /admin/status to /tower */}
+        <Route path="/admin/status" element={<Navigate to="/tower" replace />} />
 
         {/* Tower — admin control panel */}
         <Route

@@ -1,24 +1,26 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useIsPWA } from '../hooks/useIsPWA';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { Button } from '../components/ui/Button';
 
+const SHOPIFY_APP_URL = 'https://apps.shopify.com/sillages';
+
 export default function Login() {
-  const { signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithEmail } = useAuth();
   const navigate = useNavigate();
   const isPWA = useIsPWA();
   const isMobile = useIsMobile();
   const showMobileLogo = isPWA || isMobile;
+  const [searchParams] = useSearchParams();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [signupSuccess, setSignupSuccess] = useState(false);
+
+  const planParam = searchParams.get('plan');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,13 +28,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      if (mode === 'signin') {
-        await signInWithEmail(email, password);
-        navigate('/dashboard');
-      } else {
-        await signUpWithEmail(email, password, fullName);
-        setSignupSuccess(true);
-      }
+      await signInWithEmail(email, password);
+      navigate('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -70,103 +67,90 @@ export default function Login() {
       </div>
 
       <div className="w-full max-w-sm">
-        {signupSuccess ? (
-          <div className="bg-white border border-[#E8DDD6] p-8 text-center">
-            <p className="text-[#3A2332] font-semibold text-base mb-2">Check your inbox</p>
-            <p className="text-sm text-[#7A6B63] leading-relaxed">
-              We sent a confirmation link to <span className="font-medium text-[#3A2332]">{email}</span>.
-              Click it to activate your account.
+        {/* Plan selected message (from post-install redirect) */}
+        {planParam && (
+          <div style={{
+            background: 'rgba(45,106,79,0.08)', border: '1px solid rgba(45,106,79,0.15)',
+            borderRadius: 8, padding: '12px 16px', marginBottom: 16, textAlign: 'center',
+          }}>
+            <p style={{ margin: 0, fontSize: 13, color: '#2D6A4F' }}>
+              Plan selected. Sign in to access your dashboard.
             </p>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="bg-white border border-[#E8DDD6] p-8 flex flex-col gap-5">
-            <div className="mb-1">
-              <h1 className="text-[#3A2332] font-semibold text-lg tracking-tight">
-                {mode === 'signin' ? 'Sign in to Sillages' : 'Create your account'}
-              </h1>
-              <p className="text-sm text-[#7A6B63] mt-1">
-                {mode === 'signin' ? 'Welcome back.' : 'Start your free trial today.'}
-              </p>
-            </div>
-
-            {mode === 'signup' && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="input"
-                  placeholder="Jane Smith"
-                />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
-                Email
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input"
-                placeholder="jane@store.com"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
-                  Password
-                </label>
-                {mode === 'signin' && (
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors"
-                  >
-                    Forgot password?
-                  </Link>
-                )}
-              </div>
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input"
-                placeholder="••••••••"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-700 bg-red-50 border border-red-100 px-3 py-2.5">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" loading={loading} className="w-full mt-1">
-              {mode === 'signin' ? 'Sign in' : 'Create account'}
-            </Button>
-
-            <div className="border-t border-[#E8DDD6] pt-4">
-              <button
-                type="button"
-                onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); }}
-                className="w-full text-sm text-[#7A6B63] hover:text-[#3A2332] text-center transition-colors"
-              >
-                {mode === 'signin'
-                  ? "Don't have an account? Sign up"
-                  : 'Already have an account? Sign in'}
-              </button>
-            </div>
-          </form>
         )}
+
+        <form onSubmit={handleSubmit} className="bg-white border border-[#E8DDD6] p-8 flex flex-col gap-5">
+          <div className="mb-1">
+            <h1 className="text-[#3A2332] font-semibold text-lg tracking-tight">
+              Sign in to Sillages
+            </h1>
+            <p className="text-sm text-[#7A6B63] mt-1">
+              Welcome back.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input"
+              placeholder="jane@store.com"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[#7A6B63] uppercase tracking-widest">
+                Password
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-xs text-[#7A6B63] hover:text-[#3A2332] transition-colors"
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-100 px-3 py-2.5">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" loading={loading} className="w-full mt-1">
+            Sign in
+          </Button>
+
+          {/* No signup — accounts are created automatically on App Store install */}
+          <div className="border-t border-[#E8DDD6] pt-4 text-center">
+            <p className="text-sm text-[#7A6B63] mb-2">
+              Don't have an account yet?
+            </p>
+            <a
+              href={SHOPIFY_APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-[#D8B07A] hover:text-[#c9a06a] transition-colors"
+            >
+              Install Sillages from the Shopify App Store
+            </a>
+          </div>
+        </form>
       </div>
     </div>
   );

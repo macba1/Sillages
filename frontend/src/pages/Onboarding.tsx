@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAccount } from '../hooks/useAccount';
@@ -318,6 +318,16 @@ export default function Onboarding() {
     setTimeout(() => navigate('/dashboard'), 100);
     return null;
   }
+
+  // If store already connected, go to dashboard — no manual onboarding needed
+  // Accounts are created automatically on App Store install
+  useEffect(() => {
+    api.get('/api/shopify/connection')
+      .then(({ data }) => {
+        if (data.connection) navigate('/dashboard', { replace: true });
+      })
+      .catch(() => { /* ignore */ });
+  }, [navigate]);
 
   const firstName = account?.full_name?.split(' ')[0] ?? 'there';
 

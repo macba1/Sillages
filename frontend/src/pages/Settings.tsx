@@ -8,9 +8,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
-// ── Shopify connect form (inline in Settings) ─────────────────────────────────
+// ── Legacy connect form (kept for reference, not used — accounts auto-created on install)
 
-function ShopifyAdminMock() {
+// @ts-ignore unused
+function _ShopifyAdminMock() {
   return (
     <div style={{
       background: '#1a1310', borderRadius: 10, overflow: 'hidden',
@@ -49,7 +50,8 @@ function ShopifyAdminMock() {
   );
 }
 
-function InlineConnectForm() {
+// @ts-ignore unused
+function _InlineConnectForm() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [shop, setShop] = useState('');
@@ -160,7 +162,7 @@ function InlineConnectForm() {
                   </li>
                 ))}
               </ol>
-              <ShopifyAdminMock />
+              <_ShopifyAdminMock />
             </div>
           )}
         </div>
@@ -294,7 +296,7 @@ function ActionButton({
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const { connection, loading: connLoading, disconnect } = useShopifyConnection();
+  const { connection, loading: connLoading } = useShopifyConnection();
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -323,12 +325,6 @@ export default function Settings() {
   const [runningScheduler, setRunningScheduler] = useState(false);
   const [schedulerResult, setSchedulerResult] = useState<{ processed: string[]; count: number } | null>(null);
   const [schedulerError, setSchedulerError] = useState<string | null>(null);
-
-  async function handleDisconnect() {
-    if (!confirm('Disconnect your Shopify store? This will stop brief generation.')) return;
-    await disconnect();
-    navigate('/onboarding');
-  }
 
   async function handleGenerateNow() {
     setGenerating(true);
@@ -421,12 +417,7 @@ export default function Settings() {
                 label={connection.shop_name ?? connection.shop_domain}
                 description={connection.shop_domain}
               >
-                <div className="flex items-center gap-3">
-                  <Badge label={t('settings.shopify.connected')} color="var(--green)" bg="var(--green-bg)" />
-                  <ActionButton variant="danger" onClick={handleDisconnect}>
-                    {t('settings.shopify.disconnect')}
-                  </ActionButton>
-                </div>
+                <Badge label={t('settings.shopify.connected')} color="var(--green)" bg="var(--green-bg)" />
               </SettingRow>
               <SettingRow
                 label={t('settings.shopify.briefsNightly')}
@@ -437,12 +428,24 @@ export default function Settings() {
           ) : (
             <div style={{ padding: '16px 0' }}>
               <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 4 }}>
-                {t('settings.shopify.noStore')}
+                No store connected
               </p>
-              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 0 }}>
-                {t('settings.shopify.noStoreDesc')}
+              <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 12 }}>
+                Install Sillages from the Shopify App Store to connect your store automatically.
               </p>
-              <InlineConnectForm />
+              <a
+                href="https://apps.shopify.com/sillages"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  padding: '8px 18px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  background: 'var(--ink)', color: 'var(--cream)',
+                  textDecoration: 'none',
+                }}
+              >
+                Install on Shopify
+              </a>
             </div>
           )}
         </SettingsSection>
