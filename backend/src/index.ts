@@ -21,6 +21,7 @@ import chatRoutes from './routes/chat.js';
 import pushRoutes from './routes/push.js';
 import actionsRoutes from './routes/actions.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
+import towerRoutes from './routes/tower.js';
 
 import { startScheduler } from './services/scheduler.js';
 import { startAuditor } from './services/auditor.js';
@@ -78,6 +79,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/actions', actionsRoutes);
 app.use('/api/unsubscribe', unsubscribeRoutes);
+app.use('/api/tower', towerRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────
 app.use((_req, res) => {

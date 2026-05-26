@@ -20,6 +20,7 @@ import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import AdminStatus from './pages/AdminStatus';
 import Plans from './pages/Plans';
+import Tower from './pages/Tower';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -147,6 +148,16 @@ export default function App() {
           element={
             <RequireAuth>
               <AdminStatus />
+            </RequireAuth>
+          }
+        />
+
+        {/* Tower — admin control panel */}
+        <Route
+          path="/tower"
+          element={
+            <RequireAuth>
+              <Tower />
             </RequireAuth>
           }
         />
