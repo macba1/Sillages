@@ -164,7 +164,19 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
 
   if (sendErr || !sent) throw new Error(`Resend error: ${(sendErr as Error)?.message}`);
 
-  await supabase.from('intelligence_briefs').update({ status: 'sent', sent_at: new Date().toISOString(), email_message_id: sent.id }).eq('id', briefId);
+  const sentAt = new Date().toISOString();
+  await supabase.from('intelligence_briefs').update({ status: 'sent', sent_at: sentAt, email_message_id: sent.id }).eq('id', briefId);
+
+  // Log to email_log for tracking
+  await supabase.from('email_log').insert({
+    account_id: b.account_id,
+    channel: 'daily_brief',
+    recipient_email: acc.email,
+    status: 'sent',
+    sent_at: sentAt,
+    message_id: sent.id,
+  }); // non-fatal — no await needed
+
   console.log(`[emailSender] Sent brief ${briefId} to ${acc.email}`);
 }
 

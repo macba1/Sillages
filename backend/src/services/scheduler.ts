@@ -551,7 +551,7 @@ const PAUSED_ACCOUNTS: Set<string> = new Set([
 async function getEligibleAccounts(): Promise<string[]> {
   const { data: accounts, error } = await supabase
     .from('accounts')
-    .select('id')
+    .select('id, email')
     .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
 
   if (error || !accounts) {
@@ -559,8 +559,18 @@ async function getEligibleAccounts(): Promise<string[]> {
     return [];
   }
 
-  // Filter by paused list AND send_enabled
-  const allIds = accounts.map(a => a.id).filter(id => !PAUSED_ACCOUNTS.has(id));
+  // Filter out ghost accounts (Shopify testers/reviewers) + paused accounts
+  const GHOST_DOMAINS = ['@shopify.com'];
+  const GHOST_EMAILS = new Set(['reviewer@sillages.app']);
+  const allIds = accounts
+    .filter(a => {
+      const email = (a as { email?: string }).email ?? '';
+      if (GHOST_EMAILS.has(email)) return false;
+      if (GHOST_DOMAINS.some(d => email.endsWith(d))) return false;
+      return true;
+    })
+    .map(a => a.id)
+    .filter(id => !PAUSED_ACCOUNTS.has(id));
   const eligible: string[] = [];
   for (const id of allIds) {
     if (await isSendEnabled(id)) {
