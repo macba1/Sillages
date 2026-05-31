@@ -6,6 +6,7 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { runBriefWorkflow } from '../workflows/brief.js';
+import { runRecoveryWorkflow } from '../workflows/recovery.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -134,6 +135,20 @@ async function runEventLoop(): Promise<void> {
     const accounts = await getEligibleAccounts();
     if (accounts.length === 0) return;
 
+    // ── Dynamic workflow path: parallel recovery for all merchants ──
+    if (env.USE_DYNAMIC_RECOVERY) {
+      console.log(`[scheduler] USE_DYNAMIC_RECOVERY=true — running parallel recovery for ${accounts.length} merchant(s)`);
+
+      // Sync data sequentially (Shopify rate limits)
+      for (const accountId of accounts) {
+        try { await ensureShopifySync(accountId); } catch { /* non-fatal */ }
+      }
+
+      await runRecoveryWorkflow(accounts.map(accountId => ({ accountId })));
+      return;
+    }
+
+    // ── Legacy sequential path ──
     for (const accountId of accounts) {
       try {
         await processEventsForAccount(accountId);
