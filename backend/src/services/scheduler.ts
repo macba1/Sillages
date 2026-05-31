@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase.js';
 import { syncYesterdayForAccount } from './shopifySync.js';
 import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
+import { runBriefWorkflow } from '../workflows/brief.js';
+import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
 import { detectEvents } from './eventDetector.js';
@@ -333,6 +335,69 @@ async function _runDailyAndWeeklyCheckInner(force: boolean): Promise<string[]> {
 
   console.log(`[scheduler] ${due.length} account(s) due for daily summary`);
 
+  // ── Dynamic workflow path: run all merchants in parallel ──
+  if (env.USE_DYNAMIC_BRIEF && due.length > 0) {
+    console.log(`[scheduler] USE_DYNAMIC_BRIEF=true — running parallel workflow for ${due.length} merchant(s)`);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    // Step 1: sync data for all merchants (still sequential — Shopify rate limits)
+    for (const accountId of due) {
+      try {
+        let snapshotDate = await ensureShopifySync(accountId);
+        if (!snapshotDate) {
+          // Create empty-day snapshot
+          await supabase.from('shopify_daily_snapshots').upsert({
+            account_id: accountId, snapshot_date: yesterday,
+            total_revenue: 0, net_revenue: 0, total_orders: 0, average_order_value: 0,
+            sessions: 0, conversion_rate: 0, returning_customer_rate: 0,
+            new_customers: 0, returning_customers: 0, total_customers: 0,
+            top_products: [], total_refunds: 0, cancelled_orders: 0,
+            raw_shopify_payload: { empty_day: true },
+          }, { onConflict: 'account_id,snapshot_date' });
+          snapshotDate = yesterday;
+        }
+      } catch (syncErr) {
+        console.error(`[scheduler] [${accountId}] Sync failed: ${(syncErr as Error).message}`);
+      }
+    }
+
+    // Step 2: generate briefs in parallel via workflow
+    const workflowResult = await runBriefWorkflow(
+      due.map(accountId => ({ accountId, briefDate: yesterday })),
+    );
+
+    // Step 3: send emails + push for succeeded merchants
+    for (const r of workflowResult.merchants) {
+      if (!r.success || !r.briefId) continue;
+      try {
+        await sendBriefEmail(r.briefId);
+        console.log(`[scheduler] [${r.accountId}] Brief email sent via workflow`);
+      } catch (emailErr) {
+        console.error(`[scheduler] [${r.accountId}] Brief email failed: ${(emailErr as Error).message}`);
+      }
+      await sendDailySummaryPush(r.accountId);
+    }
+
+    // Step 4: weekly pipeline for Monday (still per-merchant)
+    for (const accountId of due) {
+      try {
+        const tz = configs.find(c => c.account_id === accountId)?.timezone ?? 'UTC';
+        const localDay = getLocalDayOfWeek(tz, now);
+        if (localDay === 1) {
+          const { hasFeature } = await import('../lib/plans.js');
+          if (await hasFeature(accountId, 'weekly_brief')) {
+            await runWeeklyPipeline(accountId, now);
+          }
+        }
+      } catch (err) {
+        console.error(`[scheduler] [${accountId}] Weekly error: ${(err as Error).message}`);
+      }
+    }
+
+    return due;
+  }
+
+  // ── Legacy sequential path (USE_DYNAMIC_BRIEF=false or unset) ──
   for (const accountId of due) {
     try {
       // Daily: sync data, generate brief, send push summary
