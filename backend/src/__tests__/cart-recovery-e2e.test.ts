@@ -65,12 +65,12 @@ function resetTables() {
   tables.email_log = [];
   tables.push_subscriptions = [];
   tables.subscription_plans = [{
-    id: 'scale', name: 'Scale', price_usd: 199,
-    features: { daily_brief: true, dashboard: true, weekly_brief: true, cart_recovery: true, welcome_emails: true, reactivation: true, push_notifications: true, auto_discounts: true, auto_seo: true, auto_merchandising: true },
-    limits: { emails_per_month: -1, actions_per_day: -1 },
+    id: 'pro', name: 'Pro', price_usd: 59,
+    features: { daily_brief: true, dashboard: true, full_brief: true, brand_voice: true, cart_recovery: true, welcome_emails: true, push_notifications: true },
+    limits: { emails_per_month: -1 },
   }];
   tables.account_subscriptions = [{
-    id: 'sub-1', account_id: ACCOUNT_ID, plan_id: 'scale', status: 'active', is_beta: true,
+    id: 'sub-1', account_id: ACCOUNT_ID, plan_id: 'pro', status: 'active', is_beta: true,
   }];
 }
 
@@ -278,7 +278,7 @@ describe('E2E: Cart Recovery Flow', () => {
     expect(action!.type).toBe('cart_recovery');
     expect(action!.status).toBe('pending');
     expect((action!.content as Row).copy).toBe(validCopy);
-    expect((action!.content as Row).plan_required).toBe('growth');
+    expect((action!.content as Row).plan_required).toBe('crecimiento');
 
     // event_log linked
     const linked = tables.event_log.find(e => e.action_id === actionId);
@@ -397,7 +397,7 @@ describe('E2E: Cart Recovery Flow', () => {
         checkout_url: 'https://test.myshopify.com/checkouts/recover/99999999',
         copy: 'María, la Tarta de Limón está lista.',
         priority: 'high',
-        plan_required: 'growth',
+        plan_required: 'crecimiento',
       },
       created_at: new Date().toISOString(),
     });

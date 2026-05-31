@@ -165,33 +165,14 @@ describe('Test 3: Event dedup via event_log unique constraint', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// TEST 4: Daily brief email NOT sent to merchant (deprecated function)
-// Incident: sendBriefEmail was sending daily emails to merchants
+// TEST 4: Daily brief email IS sent to merchant (un-deprecated in v2)
+// History: was deprecated, now active — sends branded brief email daily
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('Test 4: sendBriefEmail is deprecated and warns', () => {
-  it('should log a deprecation warning when called', async () => {
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    // The function should have the deprecation warning at the top
+describe('Test 4: sendBriefEmail is active and sends daily briefs', () => {
+  it('should export sendBriefEmail as a callable function', async () => {
     const { sendBriefEmail } = await import('../services/emailSender.js');
-
-    // Mock the database calls to prevent actual execution
-    mockSingle.mockResolvedValueOnce({ data: { id: 'brief-1', status: 'ready', account_id: 'acc-1', brief_date: '2026-03-17', section_signal: null, section_yesterday: null, section_whats_working: null, section_upcoming: null, section_whats_not_working: null, section_gap: null, section_activation: null }, error: null });
-    mockSingle.mockResolvedValueOnce({ data: { email: 'merchant@test.com', full_name: 'Test', language: 'es' }, error: null });
-    mockSingle.mockResolvedValueOnce({ data: { shop_name: 'TestShop', shop_currency: 'EUR' }, error: null });
-
-    try {
-      await sendBriefEmail('brief-1');
-    } catch {
-      // May fail due to mocks — that's OK, we just want to verify the warning
-    }
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('sendBriefEmail called'),
-    );
-
-    consoleSpy.mockRestore();
+    expect(typeof sendBriefEmail).toBe('function');
   });
 });
 

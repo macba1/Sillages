@@ -49,15 +49,15 @@ describe('Plans helper', () => {
 
     // First call: account_subscriptions
     mockMaybeSingle.mockResolvedValueOnce({
-      data: { plan_id: 'growth', is_beta: false },
+      data: { plan_id: 'crecimiento', is_beta: false },
       error: null,
     });
 
     // Second call: subscription_plans
     mockSingle.mockResolvedValueOnce({
       data: {
-        id: 'growth',
-        name: 'Growth',
+        id: 'crecimiento',
+        name: 'Crecimiento',
         price_usd: 29,
         features: { daily_brief: true, cart_recovery: true, welcome_emails: true, weekly_brief: true },
         limits: { emails_per_month: 100, actions_per_day: 5 },
@@ -66,8 +66,8 @@ describe('Plans helper', () => {
     });
 
     const plan = await getPlan('growth-account');
-    expect(plan.plan_id).toBe('growth');
-    expect(plan.name).toBe('Growth');
+    expect(plan.plan_id).toBe('crecimiento');
+    expect(plan.name).toBe('Crecimiento');
     expect(plan.features.cart_recovery).toBe(true);
     expect(plan.features.reactivation).toBeUndefined();
     expect(plan.limits.emails_per_month).toBe(100);
@@ -83,7 +83,7 @@ describe('Plans helper', () => {
     });
     mockSingle.mockResolvedValueOnce({
       data: {
-        id: 'pro', name: 'Pro', price_usd: 79,
+        id: 'pro', name: 'Pro', price_usd: 59,
         features: { cart_recovery: true, reactivation: true, auto_discounts: true },
         limits: { emails_per_month: -1 },
       },
@@ -112,12 +112,12 @@ describe('Plans helper', () => {
     invalidatePlanCache('limited-account');
 
     mockMaybeSingle.mockResolvedValueOnce({
-      data: { plan_id: 'growth', is_beta: false },
+      data: { plan_id: 'crecimiento', is_beta: false },
       error: null,
     });
     mockSingle.mockResolvedValueOnce({
       data: {
-        id: 'growth', name: 'Growth', price_usd: 29,
+        id: 'crecimiento', name: 'Crecimiento', price_usd: 39,
         features: {},
         limits: { emails_per_month: 100 },
       },
@@ -135,12 +135,12 @@ describe('Plans helper', () => {
     invalidatePlanCache('maxed-account');
 
     mockMaybeSingle.mockResolvedValueOnce({
-      data: { plan_id: 'growth', is_beta: false },
+      data: { plan_id: 'crecimiento', is_beta: false },
       error: null,
     });
     mockSingle.mockResolvedValueOnce({
       data: {
-        id: 'growth', name: 'Growth', price_usd: 29,
+        id: 'crecimiento', name: 'Crecimiento', price_usd: 39,
         features: {},
         limits: { emails_per_month: 100 },
       },
@@ -162,7 +162,7 @@ describe('Plans helper', () => {
     });
     mockSingle.mockResolvedValueOnce({
       data: {
-        id: 'pro', name: 'Pro', price_usd: 79,
+        id: 'pro', name: 'Pro', price_usd: 59,
         features: {},
         limits: { emails_per_month: -1 },
       },
@@ -181,10 +181,9 @@ describe('Plans helper', () => {
     mockMaybeSingle.mockRejectedValueOnce(new Error('relation "account_subscriptions" does not exist'));
 
     const plan = await getPlan('error-account');
-    // Should fail open with scale-level access
+    // Should fail open with pro-level access
     expect(plan.features.cart_recovery).toBe(true);
     expect(plan.features.welcome_emails).toBe(true);
-    expect(plan.features.reactivation).toBe(true);
     expect(plan.limits.emails_per_month).toBe(-1);
   });
 });

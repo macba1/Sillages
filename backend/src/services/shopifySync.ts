@@ -21,11 +21,14 @@ interface WowComparison {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function syncYesterdayForAccount(accountId: string): Promise<SyncResult> {
-  // Load connection
+  // Load connection — pick most recently synced active one (multi-store safe)
   const { data: connection, error: connError } = await supabase
     .from('shopify_connections')
     .select('*')
     .eq('account_id', accountId)
+    .eq('token_status', 'active')
+    .order('last_synced_at', { ascending: false, nullsFirst: false })
+    .limit(1)
     .single();
 
   if (connError || !connection) {

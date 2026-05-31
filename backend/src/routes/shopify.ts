@@ -587,12 +587,18 @@ router.post('/billing/subscribe', async (req: Request, res: Response, next: Next
         returnUrl,
       );
 
-      // Store the pending subscription ID
+      // Store the pending subscription ID + set trial_ends_at
+      const trialDays = SHOPIFY_PLANS[planKey]?.trialDays ?? 14;
+      const trialEndsAt = trialDays > 0
+        ? new Date(Date.now() + trialDays * 86400000).toISOString()
+        : null;
+
       await supabase
         .from('accounts')
         .update({
           stripe_subscription_id: subscriptionId,
           subscription_status: 'trialing',
+          trial_ends_at: trialEndsAt,
           updated_at: new Date().toISOString(),
         })
         .eq('id', accountId);

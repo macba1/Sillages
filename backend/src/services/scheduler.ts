@@ -586,10 +586,14 @@ async function getEligibleAccounts(): Promise<string[]> {
 }
 
 async function ensureShopifySync(accountId: string): Promise<string | null> {
+  // Pick the most recently synced active connection (multi-store safe)
   const { data: connRow } = await supabase
     .from('shopify_connections')
     .select('shop_domain, token_status')
     .eq('account_id', accountId)
+    .eq('token_status', 'active')
+    .order('last_synced_at', { ascending: false, nullsFirst: false })
+    .limit(1)
     .maybeSingle();
 
   if (connRow?.token_status === 'invalid') {
