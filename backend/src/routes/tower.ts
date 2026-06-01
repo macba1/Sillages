@@ -419,6 +419,150 @@ router.patch('/agency/:id', requireAuth, requireAdmin, async (req: Request, res:
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// GET /api/tower/command — Command Center data
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    const PLAN_PRICES: Record<string, number> = { basico: 19, crecimiento: 39, pro: 59 };
+
+    // ── Parallel queries ──────────────────────────────────────────────────
+    const [
+      workflowRunsResult,
+      accountsResult,
+      subsResult,
+      leadsResult,
+      nurtureLogResult,
+      workflowHistoryResult,
+    ] = await Promise.all([
+      supabase.from('workflow_runs').select('workflow, duration_ms, merchants_succeeded, merchants_failed, results, created_at').gte('created_at', twentyFourHoursAgo).order('created_at', { ascending: false }),
+      supabase.from('accounts').select('id, email, full_name, subscription_status, trial_ends_at, created_at'),
+      supabase.from('account_subscriptions').select('account_id, plan_id, status, is_beta, started_at'),
+      supabase.from('leads').select('id, shop_domain, shop_name, category, pain_score, pain_tags, status, contact_email, outreach_message, contacted_at, created_at').order('pain_score', { ascending: false }).limit(200),
+      supabase.from('nurture_log').select('account_id, day, sent_at'),
+      supabase.from('workflow_runs').select('workflow, merchants_total, merchants_succeeded, merchants_failed, created_at').gte('created_at', thirtyDaysAgo).order('created_at', { ascending: true }),
+    ]);
+
+    const workflowRuns = workflowRunsResult.data ?? [];
+    const accounts = accountsResult.data ?? [];
+    const subs = subsResult.data ?? [];
+    const leads = leadsResult.data ?? [];
+    const nurtureLog = nurtureLogResult.data ?? [];
+    const workflowHistory = workflowHistoryResult.data ?? [];
+
+    // Filter ghosts
+    const GHOST_EMAILS = new Set(['reviewer@sillages.app', 'purposeapp.tester7@shopify.com', 'app.tester58@shopify.com']);
+    const realAccounts = accounts.filter(a => !GHOST_EMAILS.has(a.email));
+
+    // ── SECTION 1: SISTEMA ──────────────────────────────────────────────
+    const activeWorkflows = new Set(workflowRuns.filter(r => r.merchants_succeeded > 0).map(r => r.workflow)).size;
+    const lastRun = workflowRuns[0]?.created_at ?? null;
+    const errorsToday = workflowRuns.filter(r => r.merchants_failed > 0).length;
+    // Token count from results (if stored)
+    let tokensToday = 0;
+    for (const run of workflowRuns) {
+      const results = run.results as Record<string, unknown> | Array<Record<string, unknown>> | null;
+      if (Array.isArray(results)) {
+        for (const r of results) {
+          const t = r.tokens as { total?: number } | undefined;
+          if (t?.total) tokensToday += t.total;
+        }
+      }
+    }
+
+    const sistema = { activeWorkflows, lastRun, errorsToday, tokensToday };
+
+    // ── SECTION 2: MERCHANTS ────────────────────────────────────────────
+    const paidSubs = subs.filter(s => s.status === 'active' && !s.is_beta && PLAN_PRICES[s.plan_id]);
+    const mrr = paidSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan_id] ?? 0), 0);
+    const trialsActive = realAccounts.filter(a => a.subscription_status === 'trialing' && a.trial_ends_at && new Date(a.trial_ends_at) > now).length;
+    const trialToPaidWeek = subs.filter(s => s.status === 'active' && !s.is_beta && s.started_at && new Date(s.started_at) > new Date(sevenDaysAgo)).length;
+    const threeDaysFromNow = new Date(Date.now() + 3 * 86400000);
+    const atRisk = realAccounts.filter(a => a.subscription_status === 'trialing' && a.trial_ends_at && new Date(a.trial_ends_at) < threeDaysFromNow && new Date(a.trial_ends_at) > now).length;
+
+    const merchants = { mrr, trialsActive, trialToPaidWeek, atRisk, total: realAccounts.length };
+
+    // ── SECTION 3: OUTREACH CRM FUNNEL ──────────────────────────────────
+    const statusCounts: Record<string, number> = { new: 0, draft: 0, contacted: 0, installed: 0, converted: 0, bounced: 0 };
+    for (const l of leads) { statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1; }
+
+    const funnel = {
+      nuevo: statusCounts.new + statusCounts.draft,
+      contactado: statusCounts.contacted,
+      instalado: statusCounts.installed,
+      convertido: statusCounts.converted,
+      perdido: statusCounts.bounced,
+    };
+
+    const leadsTable = leads.map(l => ({
+      id: l.id,
+      shopName: l.shop_name ?? l.shop_domain,
+      shopDomain: l.shop_domain,
+      category: l.category,
+      painScore: l.pain_score,
+      painTags: l.pain_tags,
+      status: l.status,
+      contactEmail: l.contact_email,
+      outreachPreview: l.outreach_message?.slice(0, 100) ?? null,
+      contactedAt: l.contacted_at,
+      createdAt: l.created_at,
+    }));
+
+    // ── SECTION 4: NURTURE PIPELINE ─────────────────────────────────────
+    const nurturePipeline = realAccounts.map(a => {
+      const installDate = a.created_at;
+      const daysSinceInstall = Math.floor((Date.now() - new Date(installDate).getTime()) / 86400000);
+      const sentDays = nurtureLog.filter(n => n.account_id === a.id).map(n => n.day);
+      const sub = subs.find(s => s.account_id === a.id);
+      const STEPS = [0, 2, 5, 10, 13];
+      const timeline = STEPS.map(day => ({
+        day,
+        sent: sentDays.includes(day),
+        current: day === Math.max(...STEPS.filter(d => d <= daysSinceInstall)),
+      }));
+
+      return {
+        accountId: a.id,
+        email: a.email,
+        name: a.full_name,
+        plan: sub?.plan_id ?? 'none',
+        daysSinceInstall,
+        timeline,
+      };
+    }).filter(m => m.daysSinceInstall <= 30); // only show first 30 days
+
+    // ── SECTION 5: DAILY HISTORY (30 days) ──────────────────────────────
+    const dailyHistory: Record<string, { leads: number; outreach: number }> = {};
+    for (const run of workflowHistory) {
+      const date = run.created_at.slice(0, 10);
+      if (!dailyHistory[date]) dailyHistory[date] = { leads: 0, outreach: 0 };
+      if (run.workflow === 'leads') dailyHistory[date].leads += run.merchants_succeeded;
+      if (run.workflow === 'outreach') dailyHistory[date].outreach += run.merchants_succeeded;
+    }
+    const dailyChart = Object.entries(dailyHistory)
+      .map(([date, data]) => ({ date, ...data }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({
+      timestamp: now.toISOString(),
+      sistema,
+      merchants,
+      funnel,
+      leadsTable,
+      nurturePipeline,
+      dailyChart,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // LEADS MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
