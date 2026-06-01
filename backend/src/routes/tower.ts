@@ -478,14 +478,16 @@ router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Res
     const sistema = { activeWorkflows, lastRun, errorsToday, tokensToday };
 
     // ── SECTION 2: MERCHANTS ────────────────────────────────────────────
-    const paidSubs = subs.filter(s => s.status === 'active' && !s.is_beta && PLAN_PRICES[s.plan_id]);
+    // MRR: count all active subs with a paid plan (including beta — they use Pro-level features)
+    const paidSubs = subs.filter(s => s.status === 'active' && PLAN_PRICES[s.plan_id]);
     const mrr = paidSubs.reduce((sum, s) => sum + (PLAN_PRICES[s.plan_id] ?? 0), 0);
+    const mrrPaying = paidSubs.filter(s => !s.is_beta).reduce((sum, s) => sum + (PLAN_PRICES[s.plan_id] ?? 0), 0);
     const trialsActive = realAccounts.filter(a => a.subscription_status === 'trialing' && a.trial_ends_at && new Date(a.trial_ends_at) > now).length;
     const trialToPaidWeek = subs.filter(s => s.status === 'active' && !s.is_beta && s.started_at && new Date(s.started_at) > new Date(sevenDaysAgo)).length;
     const threeDaysFromNow = new Date(Date.now() + 3 * 86400000);
     const atRisk = realAccounts.filter(a => a.subscription_status === 'trialing' && a.trial_ends_at && new Date(a.trial_ends_at) < threeDaysFromNow && new Date(a.trial_ends_at) > now).length;
 
-    const merchants = { mrr, trialsActive, trialToPaidWeek, atRisk, total: realAccounts.length };
+    const merchants = { mrr, mrrPaying, trialsActive, trialToPaidWeek, atRisk, total: realAccounts.length };
 
     // ── SECTION 3: OUTREACH CRM FUNNEL ──────────────────────────────────
     const statusCounts: Record<string, number> = { new: 0, draft: 0, contacted: 0, installed: 0, converted: 0, bounced: 0 };

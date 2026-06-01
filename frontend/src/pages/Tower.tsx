@@ -6,7 +6,7 @@ import api from '../lib/api';
 interface CommandData {
   timestamp: string;
   sistema: { activeWorkflows: number; lastRun: string | null; errorsToday: number; tokensToday: number };
-  merchants: { mrr: number; trialsActive: number; trialToPaidWeek: number; atRisk: number; total: number };
+  merchants: { mrr: number; mrrPaying: number; trialsActive: number; trialToPaidWeek: number; atRisk: number; total: number };
   funnel: { nuevo: number; contactado: number; instalado: number; convertido: number; perdido: number };
   leadsTable: Array<{
     id: string; shopName: string; shopDomain: string; category: string | null;
@@ -107,7 +107,7 @@ export default function Tower() {
         {/* ── SECTION 2: MERCHANTS ──────────────────────────────────── */}
         <p style={S.sectionTitle}>Merchants</p>
         <div style={S.grid4}>
-          <MetricCard label="MRR" value={`$${merchants.mrr}`} color="#2D6A4F" />
+          <MetricCard label="MRR (total)" value={`$${merchants.mrr}`} color="#2D6A4F" sub={merchants.mrrPaying < merchants.mrr ? `$${merchants.mrrPaying} paying` : undefined} />
           <MetricCard label="Trials activos" value={String(merchants.trialsActive)} />
           <MetricCard label="Trial → Paid (7d)" value={String(merchants.trialToPaidWeek)} color={merchants.trialToPaidWeek > 0 ? '#2D6A4F' : undefined} />
           <MetricCard label="En riesgo" value={String(merchants.atRisk)} color={merchants.atRisk > 0 ? '#DC2626' : undefined} />
@@ -251,11 +251,12 @@ export default function Tower() {
 
 // ── Primitives ──────────────────────────────────────────────────────────────
 
-function MetricCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function MetricCard({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
     <div style={S.card}>
       <p style={S.label}>{label}</p>
       <p style={{ ...S.bigNum, color: color ?? '#1F2937' }}>{value}</p>
+      {sub && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>{sub}</p>}
     </div>
   );
 }
