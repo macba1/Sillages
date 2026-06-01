@@ -9,6 +9,8 @@ import { runBriefWorkflow } from '../workflows/brief.js';
 import { runRecoveryWorkflow } from '../workflows/recovery.js';
 import { runHealthWorkflow } from '../workflows/health.js';
 import { runLeadsWorkflow } from '../workflows/leads.js';
+import { runOutreachWorkflow } from '../workflows/outreach.js';
+import { runNurtureWorkflow } from '../workflows/nurture.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -114,6 +116,26 @@ export function startScheduler(): void {
       console.log('[scheduler] USE_DYNAMIC_LEADS=true — running leads workflow');
       runLeadsWorkflow().catch(err => {
         console.error('[scheduler] Leads workflow error:', err);
+      });
+    });
+  }
+
+  // Outreach workflow: daily at 09:00 UTC
+  if (env.USE_DYNAMIC_OUTREACH) {
+    cron.schedule('0 9 * * *', () => {
+      console.log('[scheduler] USE_DYNAMIC_OUTREACH=true — running outreach workflow');
+      runOutreachWorkflow().catch(err => {
+        console.error('[scheduler] Outreach workflow error:', err);
+      });
+    });
+  }
+
+  // Nurture workflow: daily at 10:00 UTC
+  if (env.USE_DYNAMIC_NURTURE) {
+    cron.schedule('0 10 * * *', () => {
+      console.log('[scheduler] USE_DYNAMIC_NURTURE=true — running nurture workflow');
+      runNurtureWorkflow().catch(err => {
+        console.error('[scheduler] Nurture workflow error:', err);
       });
     });
   }

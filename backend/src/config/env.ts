@@ -43,6 +43,9 @@ const envSchema = z.object({
   USE_DYNAMIC_RECOVERY: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_HEALTH: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_LEADS: z.string().optional().transform(v => v === 'true'),
+  USE_DYNAMIC_OUTREACH: z.string().optional().transform(v => v === 'true'),
+  USE_DYNAMIC_NURTURE: z.string().optional().transform(v => v === 'true'),
+  OUTREACH_DAILY_CAP: z.coerce.number().default(20),
 
   // Tavily Search API (free tier: 1,000 searches/month)
   TAVILY_API_KEY: z.string().min(1).optional(),
