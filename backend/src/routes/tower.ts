@@ -418,4 +418,80 @@ router.patch('/agency/:id', requireAuth, requireAdmin, async (req: Request, res:
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LEADS MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+// POST /api/tower/leads/import — Bulk import leads from domain list
+router.post('/leads/import', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { domains, category, source } = req.body as { domains?: string[]; category?: string; source?: string };
+    if (!domains || !Array.isArray(domains) || domains.length === 0) {
+      throw new AppError(400, 'domains array required');
+    }
+
+    const { importLeads } = await import('../workflows/leads.js');
+    const result = await importLeads(domains, category ?? 'unknown', source ?? 'manual');
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/tower/leads/analyze — Run pain analysis on new leads now
+router.post('/leads/analyze', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { runLeadsWorkflow } = await import('../workflows/leads.js');
+    const result = await runLeadsWorkflow();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/tower/leads — List all leads with optional status filter
+router.get('/leads', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = req.query.status as string | undefined;
+    let query = supabase
+      .from('leads')
+      .select('*')
+      .order('pain_score', { ascending: false });
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query.limit(100);
+    if (error) throw new AppError(500, error.message);
+
+    res.json({ leads: data ?? [], count: data?.length ?? 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/tower/leads/:id — Update lead status (contacted, installed, converted)
+router.patch('/leads/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updates: Record<string, unknown> = {};
+    if (req.body.status) {
+      updates.status = req.body.status;
+      if (req.body.status === 'contacted') {
+        updates.contacted_at = new Date().toISOString();
+      }
+    }
+    if (req.body.contact_email) updates.contact_email = req.body.contact_email;
+    if (req.body.contact_linkedin) updates.contact_linkedin = req.body.contact_linkedin;
+    if (req.body.category) updates.category = req.body.category;
+    if (req.body.outreach_message !== undefined) updates.outreach_message = req.body.outreach_message;
+
+    const { error } = await supabase.from('leads').update(updates).eq('id', req.params.id);
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

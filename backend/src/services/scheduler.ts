@@ -8,6 +8,7 @@ import { sendBriefEmail } from './emailSender.js';
 import { runBriefWorkflow } from '../workflows/brief.js';
 import { runRecoveryWorkflow } from '../workflows/recovery.js';
 import { runHealthWorkflow } from '../workflows/health.js';
+import { runLeadsWorkflow } from '../workflows/leads.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -106,6 +107,16 @@ export function startScheduler(): void {
       console.error('[scheduler] Trial reminders error:', err);
     });
   });
+
+  // Leads workflow: daily at 06:00 UTC
+  if (env.USE_DYNAMIC_LEADS) {
+    cron.schedule('0 6 * * *', () => {
+      console.log('[scheduler] USE_DYNAMIC_LEADS=true — running leads workflow');
+      runLeadsWorkflow().catch(err => {
+        console.error('[scheduler] Leads workflow error:', err);
+      });
+    });
+  }
 
   // Webhook verification: once daily at 03:15 UTC
   cron.schedule('15 3 * * *', () => {
