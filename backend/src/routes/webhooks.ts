@@ -704,4 +704,50 @@ function mapStripeStatus(
   }
 }
 
+// ── POST /api/webhooks/email-inbound — Resend inbound email webhook ──────────
+// Resend POSTs here when email arrives at info@sillages.app
+router.post(
+  '/email-inbound',
+  async (req: Request, res: Response) => {
+    try {
+      const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
+      const payload = JSON.parse(rawBody) as {
+        from?: string;
+        to?: string;
+        subject?: string;
+        text?: string;
+        html?: string;
+        date?: string;
+        headers?: Record<string, string>;
+      };
+
+      const fromRaw = payload.from ?? '';
+      const fromMatch = fromRaw.match(/<([^>]+)>/);
+      const fromEmail = fromMatch ? fromMatch[1] : fromRaw.replace(/.*<|>.*/g, '').trim();
+      const fromName = fromRaw.replace(/<[^>]+>/, '').trim().replace(/^"|"$/g, '');
+
+      console.log(`[webhooks/email-inbound] From: ${fromName} <${fromEmail}> Subject: ${payload.subject}`);
+
+      const { error } = await supabase.from('inbox').insert({
+        from_email: fromEmail,
+        from_name: fromName || null,
+        subject: payload.subject || null,
+        body_text: payload.text || null,
+        body_html: payload.html || null,
+        status: 'unread',
+        received_at: payload.date ? new Date(payload.date).toISOString() : new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error(`[webhooks/email-inbound] Insert failed: ${error.message}`);
+      }
+
+      res.json({ received: true });
+    } catch (err) {
+      console.error(`[webhooks/email-inbound] Error: ${(err as Error).message}`);
+      res.status(200).json({ received: true }); // Always 200 to prevent Resend retries
+    }
+  },
+);
+
 export default router;

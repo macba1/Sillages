@@ -640,4 +640,91 @@ router.patch('/leads/:id', requireAuth, requireAdmin, async (req: Request, res: 
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INBOX
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /api/tower/inbox — List inbox emails
+router.get('/inbox', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const status = req.query.status as string | undefined;
+    let query = supabase
+      .from('inbox')
+      .select('id, from_email, from_name, subject, category, status, ai_summary, received_at')
+      .order('received_at', { ascending: false })
+      .limit(100);
+
+    if (status && status !== 'all') query = query.eq('status', status);
+
+    const { data, error } = await query;
+    if (error) throw new AppError(500, error.message);
+
+    const unreadCount = (data ?? []).filter(e => e.status === 'unread').length;
+    res.json({ emails: data ?? [], unreadCount });
+  } catch (err) { next(err); }
+});
+
+// GET /api/tower/inbox/:id — Single email detail
+router.get('/inbox/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { data, error } = await supabase
+      .from('inbox')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw new AppError(404, 'Email not found');
+
+    // Mark as read
+    if (data.status === 'unread') {
+      await supabase.from('inbox').update({ status: 'read' }).eq('id', req.params.id);
+    }
+
+    res.json({ email: data });
+  } catch (err) { next(err); }
+});
+
+// POST /api/tower/inbox/:id/reply — Send reply
+router.post('/inbox/:id/reply', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { message } = req.body as { message?: string };
+    if (!message) throw new AppError(400, 'message required');
+
+    const { data: email, error } = await supabase
+      .from('inbox')
+      .select('from_email, from_name, subject')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !email) throw new AppError(404, 'Email not found');
+
+    const { resend } = await import('../lib/resend.js');
+    await resend.emails.send({
+      from: 'Tony <tony@sillages.app>',
+      to: email.from_email,
+      reply_to: 'tony@sillages.app',
+      subject: `Re: ${email.subject ?? ''}`,
+      html: `<div style="font-family:Georgia,serif;font-size:15px;color:#2A1F14;line-height:1.7;max-width:560px;">${message.replace(/\n/g, '<br>')}</div>`,
+    });
+
+    await supabase.from('inbox').update({ status: 'replied' }).eq('id', req.params.id);
+
+    console.log(`[tower/inbox] Replied to ${email.from_email}`);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/tower/inbox/:id — Update status (archive, mark as lead)
+router.patch('/inbox/:id', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const updates: Record<string, unknown> = {};
+    if (req.body.status) updates.status = req.body.status;
+    if (req.body.category) updates.category = req.body.category;
+
+    const { error } = await supabase.from('inbox').update(updates).eq('id', req.params.id);
+    if (error) throw new AppError(500, error.message);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 export default router;

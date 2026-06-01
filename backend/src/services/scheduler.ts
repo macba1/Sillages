@@ -11,6 +11,7 @@ import { runHealthWorkflow } from '../workflows/health.js';
 import { runLeadsWorkflow } from '../workflows/leads.js';
 import { runOutreachWorkflow } from '../workflows/outreach.js';
 import { runNurtureWorkflow } from '../workflows/nurture.js';
+import { runInboxWorkflow } from '../workflows/inbox.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -136,6 +137,15 @@ export function startScheduler(): void {
       console.log('[scheduler] USE_DYNAMIC_NURTURE=true — running nurture workflow');
       runNurtureWorkflow().catch(err => {
         console.error('[scheduler] Nurture workflow error:', err);
+      });
+    });
+  }
+
+  // Inbox workflow: every 15 minutes
+  if (env.USE_DYNAMIC_INBOX) {
+    cron.schedule('*/15 * * * *', () => {
+      runInboxWorkflow().catch(err => {
+        console.error('[scheduler] Inbox workflow error:', err);
       });
     });
   }

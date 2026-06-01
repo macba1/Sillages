@@ -243,9 +243,157 @@ export default function Tower() {
           </>
         )}
 
+        {/* ── SECTION 6: INBOX ─────────────────────────────────────── */}
+        <InboxSection />
+
         <div style={{ height: 48 }} />
       </div>
     </div>
+  );
+}
+
+// ── Inbox Section ──────────────────────────────────────────────────────────
+
+interface InboxEmail {
+  id: string; from_email: string; from_name: string | null; subject: string | null;
+  category: string | null; status: string; ai_summary: string | null; received_at: string;
+}
+
+interface InboxDetail extends InboxEmail {
+  body_text: string | null; body_html: string | null; ai_draft_reply: string | null;
+}
+
+const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
+  lead: { bg: '#DBEAFE', color: '#1D4ED8' },
+  merchant: { bg: '#D1FAE5', color: '#065F46' },
+  support: { bg: '#FEF3C7', color: '#92400E' },
+  spam: { bg: '#F3F4F6', color: '#9CA3AF' },
+};
+
+function InboxSection() {
+  const [emails, setEmails] = useState<InboxEmail[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [selected, setSelected] = useState<InboxDetail | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState('all');
+
+  const loadInbox = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/tower/inbox');
+      setEmails(data.emails ?? []);
+      setUnread(data.unreadCount ?? 0);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void loadInbox(); }, [loadInbox]);
+
+  async function selectEmail(id: string) {
+    try {
+      const { data } = await api.get(`/api/tower/inbox/${id}`);
+      setSelected(data.email);
+      setReplyText(data.email.ai_draft_reply ?? '');
+      void loadInbox(); // refresh unread count
+    } catch { /* ignore */ }
+  }
+
+  async function sendReply() {
+    if (!selected || !replyText.trim()) return;
+    setSending(true);
+    try {
+      await api.post(`/api/tower/inbox/${selected.id}/reply`, { message: replyText });
+      setSelected(null);
+      void loadInbox();
+    } catch { /* ignore */ }
+    setSending(false);
+  }
+
+  async function archiveEmail() {
+    if (!selected) return;
+    await api.patch(`/api/tower/inbox/${selected.id}`, { status: 'archived' });
+    setSelected(null);
+    void loadInbox();
+  }
+
+  const filtered = inboxFilter === 'all' ? emails : emails.filter(e => e.status === inboxFilter || e.category === inboxFilter);
+
+  return (
+    <>
+      <p style={S.sectionTitle}>
+        Inbox {unread > 0 && <span style={{ background: '#DC2626', color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700, marginLeft: 8 }}>{unread}</span>}
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '380px 1fr' : '1fr', gap: 16 }}>
+        {/* Left: email list */}
+        <div style={{ ...S.card, padding: 0, maxHeight: 500, overflowY: 'auto' }}>
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #F3F4F6', display: 'flex', gap: 4 }}>
+            {['all', 'unread', 'lead', 'merchant', 'support'].map(f => (
+              <FilterBtn key={f} label={f} active={inboxFilter === f} onClick={() => setInboxFilter(f)} />
+            ))}
+          </div>
+          {filtered.length === 0 && <p style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>No emails</p>}
+          {filtered.map(e => (
+            <div key={e.id} onClick={() => selectEmail(e.id)} style={{
+              padding: '12px 16px', borderBottom: '1px solid #F3F4F6', cursor: 'pointer',
+              background: selected?.id === e.id ? '#F9FAFB' : e.status === 'unread' ? '#FAFBFF' : '#FFFFFF',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: e.status === 'unread' ? 700 : 500, color: '#1F2937' }}>
+                  {e.from_name ?? e.from_email}
+                </span>
+                <span style={{ fontSize: 10, color: '#9CA3AF' }}>{timeAgo(e.received_at)}</span>
+              </div>
+              <p style={{ margin: 0, fontSize: 12, color: '#1F2937', fontWeight: e.status === 'unread' ? 600 : 400 }}>{e.subject ?? '(no subject)'}</p>
+              <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                {e.category && <span style={{ ...S.tag, ...(CATEGORY_COLORS[e.category] ?? { bg: '#F3F4F6', color: '#9CA3AF' }) }}>{e.category}</span>}
+                {e.ai_summary && <span style={{ fontSize: 11, color: '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ai_summary}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right: detail panel */}
+        {selected && (
+          <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 500, overflowY: 'auto' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9CA3AF' }}>From</p>
+              <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 600, color: '#1F2937' }}>{selected.from_name ?? selected.from_email} <span style={{ fontWeight: 400, color: '#9CA3AF' }}>&lt;{selected.from_email}&gt;</span></p>
+            </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9CA3AF' }}>Subject</p>
+              <p style={{ margin: '2px 0 0', fontSize: 14, color: '#1F2937' }}>{selected.subject ?? '(no subject)'}</p>
+            </div>
+            {selected.ai_summary && (
+              <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #C9964A' }}>
+                <p style={{ margin: 0, fontSize: 12, color: '#6B7280' }}><strong>AI:</strong> {selected.ai_summary}</p>
+              </div>
+            )}
+            <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap', borderTop: '1px solid #F3F4F6', paddingTop: 12 }}>
+              {selected.body_text ?? '(empty)'}
+            </div>
+
+            {/* Reply */}
+            <div style={{ borderTop: '1px solid #F3F4F6', paddingTop: 12 }}>
+              <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#9CA3AF' }}>Reply</p>
+              <textarea
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                rows={5}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', boxSizing: 'border-box', color: '#1F2937' }}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={sendReply} disabled={sending} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#1F2937', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  {sending ? 'Sending...' : 'Send reply'}
+                </button>
+                <button onClick={archiveEmail} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', color: '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Archive
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
