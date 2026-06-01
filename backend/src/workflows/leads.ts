@@ -16,10 +16,11 @@ import { env } from '../config/env.js';
 
 const LOG = '[workflow:leads]';
 
-// ── Bing Search Discovery ──────────────────────────────────────────────────
-// Azure Cognitive Services — Bing Search v7
-// Free tier: 1,000 calls/month → 10 queries/day × 30 days = 300 calls
+// ── Tavily Search Discovery ────────────────────────────────────────────────
+// Tavily API — AI-optimized search
+// Free tier: 1,000 searches/month → 10 queries/day × 30 days = 300 searches
 // We run 10 queries/day (2 per category) = ~300/month, well within free tier.
+// include_domains: ['myshopify.com'] focuses results on Shopify stores.
 
 const DISCOVERY_QUERIES: { query: string; category: string }[] = [
   { query: 'site:myshopify.com food artisan bakery', category: 'food' },
@@ -86,13 +87,13 @@ export async function runLeadsWorkflow(): Promise<LeadsWorkflowResult> {
   let errors = 0;
 
   // ── SubAgent A: discover new leads via Bing Search ──────────────────────
-  if (env.BING_SEARCH_API_KEY) {
-    console.log(`${LOG} SubAgent A: Bing discovery enabled — running ${DISCOVERY_QUERIES.length} queries`);
-    const discovered = await discoverLeadsViaBing();
+  if (env.TAVILY_API_KEY) {
+    console.log(`${LOG} SubAgent A: Tavily discovery enabled — running ${DISCOVERY_QUERIES.length} queries`);
+    const discovered = await discoverLeadsViaTavily();
     imported += discovered;
-    console.log(`${LOG} SubAgent A: ${discovered} new leads discovered via Bing`);
+    console.log(`${LOG} SubAgent A: ${discovered} new leads discovered via Tavily`);
   } else {
-    console.log(`${LOG} SubAgent A: Bing discovery disabled (no BING_SEARCH_API_KEY) — manual import only`);
+    console.log(`${LOG} SubAgent A: Tavily discovery disabled (no TAVILY_API_KEY) — manual import only`);
   }
 
   // Load all new leads that need analysis (both discovered + manually imported)
@@ -442,62 +443,51 @@ export async function importLeads(
   return { imported, skipped };
 }
 
-// ── SubAgent A: Bing Search Discovery ─────────────────────────────────────
+// ── SubAgent A: Tavily Search Discovery ───────────────────────────────────
 
-interface BingSearchResult {
-  name: string;
+interface TavilyResult {
+  title: string;
   url: string;
-  snippet: string;
+  content: string;
 }
 
 /**
- * Discover new Shopify stores via Bing Search API.
+ * Discover new Shopify stores via Tavily Search API.
  * Runs 10 queries (2 per category), extracts myshopify.com domains,
  * deduplicates against existing leads, inserts new ones.
- * Free tier: 1,000 calls/month → 10 queries/day = 300/month.
+ * Free tier: 1,000 searches/month → 10 queries/day = 300/month.
  */
-async function discoverLeadsViaBing(): Promise<number> {
-  const apiKey = env.BING_SEARCH_API_KEY;
+async function discoverLeadsViaTavily(): Promise<number> {
+  const apiKey = env.TAVILY_API_KEY;
   if (!apiKey) return 0;
 
   let totalDiscovered = 0;
 
   for (const { query, category } of DISCOVERY_QUERIES) {
     try {
-      // Add random offset to get different results each day
-      const offset = Math.floor(Math.random() * 40); // 0-39
+      const { data } = await axios.post('https://api.tavily.com/search', {
+        api_key: apiKey,
+        query,
+        search_depth: 'basic',
+        max_results: 10,
+        include_domains: ['myshopify.com'],
+      }, { timeout: 15000 });
 
-      const { data } = await axios.get('https://api.bing.microsoft.com/v7.0/search', {
-        params: {
-          q: query,
-          count: 10,      // 10 results per query
-          offset,
-          mkt: 'en-US',
-          responseFilter: 'Webpages',
-        },
-        headers: {
-          'Ocp-Apim-Subscription-Key': apiKey,
-        },
-        timeout: 10000,
-      });
+      const results = (data.results ?? []) as TavilyResult[];
 
-      const webPages = data.webPages?.value as BingSearchResult[] ?? [];
-
-      for (const result of webPages) {
+      for (const result of results) {
         const domain = extractShopifyDomain(result.url);
         if (!domain) continue;
 
-        // Try to extract store name from result title
-        const shopName = extractStoreName(result.name, domain);
+        const shopName = extractStoreName(result.title, domain);
 
-        // Insert (dedup by unique constraint on shop_domain)
         const { error } = await supabase
           .from('leads')
           .insert({
             shop_domain: domain,
             shop_name: shopName,
             category,
-            source: 'bing_discovery',
+            source: 'tavily_discovery',
             status: 'new',
             pain_score: 0,
           });
@@ -508,22 +498,22 @@ async function discoverLeadsViaBing(): Promise<number> {
         // 23505 = duplicate — silently skip
       }
 
-      console.log(`${LOG} Bing: "${query.slice(0, 40)}..." → ${webPages.length} results, category=${category}`);
+      console.log(`${LOG} Tavily: "${query.slice(0, 40)}..." → ${results.length} results, category=${category}`);
 
-      // Small delay between queries to be respectful
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Small delay between queries
+      await new Promise(resolve => setTimeout(resolve, 300));
 
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : null;
-      if (status === 401) {
-        console.error(`${LOG} Bing API key invalid — stopping discovery`);
+      if (status === 401 || status === 403) {
+        console.error(`${LOG} Tavily API key invalid — stopping discovery`);
         break;
       }
       if (status === 429) {
-        console.warn(`${LOG} Bing rate limit hit — stopping for today`);
+        console.warn(`${LOG} Tavily rate limit hit — stopping for today`);
         break;
       }
-      console.warn(`${LOG} Bing query failed: ${(err as Error).message}`);
+      console.warn(`${LOG} Tavily query failed: ${(err as Error).message}`);
     }
   }
 
