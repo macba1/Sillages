@@ -1,12 +1,15 @@
 /**
  * Inbox Workflow — classify, summarize, and draft replies for inbound emails.
  *
+ * Emails arrive via Resend webhook push (email.received event) into the inbox table.
+ * This workflow processes unclassified emails every 15 minutes.
+ *
  * SubAgent A: Classifier (lead/merchant/support/spam)
  * SubAgent B: Summarizer + draft reply via GPT-4o
  * SubAgent C: Auto-actions (archive spam, link to leads/accounts)
  *
  * Feature flag: USE_DYNAMIC_INBOX=true
- * Cron: every 15 minutes
+ * Cron: every 15 minutes (processes emails pushed by webhook)
  */
 
 import { supabase } from '../lib/supabase.js';
