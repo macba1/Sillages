@@ -44,6 +44,9 @@ const envSchema = z.object({
   USE_DYNAMIC_HEALTH: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_LEADS: z.string().optional().transform(v => v === 'true'),
 
+  // Bing Search API (free tier: 1,000 calls/month)
+  BING_SEARCH_API_KEY: z.string().min(1).optional(),
+
   // Resend webhook
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
 

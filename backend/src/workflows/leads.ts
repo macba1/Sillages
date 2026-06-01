@@ -12,15 +12,32 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
 import { openai } from '../lib/openai.js';
+import { env } from '../config/env.js';
 
 const LOG = '[workflow:leads]';
 
-// TODO: USE_SERP_API=true → enable real Google discovery ($50/mo)
-// import { serpApiSearch } from '../lib/serpapi.js';
-// When enabled, SubAgent A would use:
-//   serpApiSearch(`site:myshopify.com ${category} store`)
-//   to discover 50 new stores/day automatically.
-// For now, leads are imported manually or seeded via /api/tower/leads/import.
+// ── Bing Search Discovery ──────────────────────────────────────────────────
+// Azure Cognitive Services — Bing Search v7
+// Free tier: 1,000 calls/month → 10 queries/day × 30 days = 300 calls
+// We run 10 queries/day (2 per category) = ~300/month, well within free tier.
+
+const DISCOVERY_QUERIES: { query: string; category: string }[] = [
+  { query: 'site:myshopify.com food artisan bakery', category: 'food' },
+  { query: 'site:myshopify.com organic gourmet specialty food', category: 'food' },
+  { query: 'site:myshopify.com beauty skincare handmade', category: 'beauty' },
+  { query: 'site:myshopify.com natural cosmetics beauty', category: 'beauty' },
+  { query: 'site:myshopify.com fashion accessories boutique', category: 'fashion' },
+  { query: 'site:myshopify.com handmade jewelry clothing', category: 'fashion' },
+  { query: 'site:myshopify.com wellness supplements health', category: 'wellness' },
+  { query: 'site:myshopify.com yoga fitness wellness', category: 'wellness' },
+  { query: 'site:myshopify.com home decor gifts artisan', category: 'home' },
+  { query: 'site:myshopify.com candles ceramics handmade gifts', category: 'home' },
+];
+
+// TODO: SerpAPI alternative ($50/mo) for Google results instead of Bing
+// When budget allows, switch to:
+//   import { serpApiSearch } from '../lib/serpapi.js';
+//   Results are higher quality for Shopify store discovery.
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -68,9 +85,17 @@ export async function runLeadsWorkflow(): Promise<LeadsWorkflowResult> {
   let drafted = 0;
   let errors = 0;
 
-  // ── SubAgent A: discover/import new leads ────────────────────────────────
-  // Currently: analyze any leads with status='new' and pain_score=0
-  // (leads are imported via /api/tower/leads/import or seeded manually)
+  // ── SubAgent A: discover new leads via Bing Search ──────────────────────
+  if (env.BING_SEARCH_API_KEY) {
+    console.log(`${LOG} SubAgent A: Bing discovery enabled — running ${DISCOVERY_QUERIES.length} queries`);
+    const discovered = await discoverLeadsViaBing();
+    imported += discovered;
+    console.log(`${LOG} SubAgent A: ${discovered} new leads discovered via Bing`);
+  } else {
+    console.log(`${LOG} SubAgent A: Bing discovery disabled (no BING_SEARCH_API_KEY) — manual import only`);
+  }
+
+  // Load all new leads that need analysis (both discovered + manually imported)
   const { data: newLeads } = await supabase
     .from('leads')
     .select('*')
@@ -79,8 +104,9 @@ export async function runLeadsWorkflow(): Promise<LeadsWorkflowResult> {
     .order('created_at', { ascending: true })
     .limit(50);
 
-  imported = newLeads?.length ?? 0;
-  console.log(`${LOG} SubAgent A: ${imported} new leads to analyze`);
+  const toAnalyze = newLeads?.length ?? 0;
+  imported = Math.max(imported, toAnalyze); // include any manual imports
+  console.log(`${LOG} SubAgent A: ${toAnalyze} leads pending analysis`);
 
   // ── SubAgent B: pain scoring (parallel, 5 at a time) ─────────────────────
   if (newLeads && newLeads.length > 0) {
@@ -414,4 +440,143 @@ export async function importLeads(
 
   console.log(`${LOG} Import: ${imported} new, ${skipped} skipped`);
   return { imported, skipped };
+}
+
+// ── SubAgent A: Bing Search Discovery ─────────────────────────────────────
+
+interface BingSearchResult {
+  name: string;
+  url: string;
+  snippet: string;
+}
+
+/**
+ * Discover new Shopify stores via Bing Search API.
+ * Runs 10 queries (2 per category), extracts myshopify.com domains,
+ * deduplicates against existing leads, inserts new ones.
+ * Free tier: 1,000 calls/month → 10 queries/day = 300/month.
+ */
+async function discoverLeadsViaBing(): Promise<number> {
+  const apiKey = env.BING_SEARCH_API_KEY;
+  if (!apiKey) return 0;
+
+  let totalDiscovered = 0;
+
+  for (const { query, category } of DISCOVERY_QUERIES) {
+    try {
+      // Add random offset to get different results each day
+      const offset = Math.floor(Math.random() * 40); // 0-39
+
+      const { data } = await axios.get('https://api.bing.microsoft.com/v7.0/search', {
+        params: {
+          q: query,
+          count: 10,      // 10 results per query
+          offset,
+          mkt: 'en-US',
+          responseFilter: 'Webpages',
+        },
+        headers: {
+          'Ocp-Apim-Subscription-Key': apiKey,
+        },
+        timeout: 10000,
+      });
+
+      const webPages = data.webPages?.value as BingSearchResult[] ?? [];
+
+      for (const result of webPages) {
+        const domain = extractShopifyDomain(result.url);
+        if (!domain) continue;
+
+        // Try to extract store name from result title
+        const shopName = extractStoreName(result.name, domain);
+
+        // Insert (dedup by unique constraint on shop_domain)
+        const { error } = await supabase
+          .from('leads')
+          .insert({
+            shop_domain: domain,
+            shop_name: shopName,
+            category,
+            source: 'bing_discovery',
+            status: 'new',
+            pain_score: 0,
+          });
+
+        if (!error) {
+          totalDiscovered++;
+        }
+        // 23505 = duplicate — silently skip
+      }
+
+      console.log(`${LOG} Bing: "${query.slice(0, 40)}..." → ${webPages.length} results, category=${category}`);
+
+      // Small delay between queries to be respectful
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : null;
+      if (status === 401) {
+        console.error(`${LOG} Bing API key invalid — stopping discovery`);
+        break;
+      }
+      if (status === 429) {
+        console.warn(`${LOG} Bing rate limit hit — stopping for today`);
+        break;
+      }
+      console.warn(`${LOG} Bing query failed: ${(err as Error).message}`);
+    }
+  }
+
+  return totalDiscovered;
+}
+
+/**
+ * Extract myshopify.com domain from any URL.
+ * Handles: https://store-name.myshopify.com/anything
+ *          https://custom-domain.com (with myshopify.com in redirect)
+ */
+function extractShopifyDomain(url: string): string | null {
+  // Direct myshopify.com URL
+  const myshopifyMatch = url.match(/([a-z0-9][a-z0-9-]*\.myshopify\.com)/i);
+  if (myshopifyMatch) {
+    return myshopifyMatch[1].toLowerCase();
+  }
+
+  // Custom domain — we'll store it as-is and resolve later
+  // Only accept if the URL looks like a Shopify store
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    const host = parsed.hostname.toLowerCase();
+    // Skip common non-store domains
+    if (host.includes('shopify.com') && !host.includes('myshopify.com')) return null;
+    if (host.includes('google.') || host.includes('bing.') || host.includes('youtube.')) return null;
+    if (host.includes('facebook.') || host.includes('instagram.') || host.includes('tiktok.')) return null;
+    if (host.includes('reddit.') || host.includes('twitter.') || host.includes('linkedin.')) return null;
+    if (host.includes('amazon.') || host.includes('etsy.') || host.includes('ebay.')) return null;
+    if (host.includes('wikipedia.') || host.includes('pinterest.')) return null;
+
+    // Accept custom domains from Bing results — they may be Shopify stores
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract a clean store name from Bing result title.
+ * "Artisan Bakery – Fresh Bread & Pastries" → "Artisan Bakery"
+ */
+function extractStoreName(title: string, _domain: string): string {
+  // Remove common suffixes
+  let name = title
+    .replace(/\s*[-–—|·]\s*.*(shopify|store|shop|online|home|official).*$/i, '')
+    .replace(/\s*[-–—|·]\s*$/i, '')
+    .trim();
+
+  // If title is just a URL or too long, use first part
+  if (name.length > 50) {
+    name = name.split(/[-–—|·]/)[0].trim();
+  }
+
+  return name || title.slice(0, 50);
 }
