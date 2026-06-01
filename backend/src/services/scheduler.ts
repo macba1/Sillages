@@ -7,6 +7,7 @@ import { generateBrief } from './briefGenerator.js';
 import { sendBriefEmail } from './emailSender.js';
 import { runBriefWorkflow } from '../workflows/brief.js';
 import { runRecoveryWorkflow } from '../workflows/recovery.js';
+import { runHealthWorkflow } from '../workflows/health.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -85,12 +86,18 @@ export function startScheduler(): void {
     });
   });
 
-  // Orchestrator: full system health check every 30 minutes (at :00 and :30)
-  // Replaces Check D — orchestrator does everything Check D did plus more
+  // Orchestrator / Health workflow: every 30 minutes (at :00 and :30)
   cron.schedule('0,30 * * * *', () => {
-    runOrchestrator().catch(err => {
-      console.error('[scheduler] Orchestrator error:', err);
-    });
+    if (env.USE_DYNAMIC_HEALTH) {
+      console.log('[scheduler] USE_DYNAMIC_HEALTH=true — running health workflow');
+      runHealthWorkflow().catch(err => {
+        console.error('[scheduler] Health workflow error:', err);
+      });
+    } else {
+      runOrchestrator().catch(err => {
+        console.error('[scheduler] Orchestrator error:', err);
+      });
+    }
   });
 
   // Trial reminders: once daily at 02:00 UTC

@@ -41,6 +41,7 @@ const envSchema = z.object({
   // Dynamic workflow flags
   USE_DYNAMIC_BRIEF: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_RECOVERY: z.string().optional().transform(v => v === 'true'),
+  USE_DYNAMIC_HEALTH: z.string().optional().transform(v => v === 'true'),
 
   // Resend webhook
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
