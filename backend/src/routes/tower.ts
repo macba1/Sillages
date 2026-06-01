@@ -727,4 +727,76 @@ router.patch('/inbox/:id', requireAuth, requireAdmin, async (req: Request, res: 
   } catch (err) { next(err); }
 });
 
+// POST /api/tower/inbox/backfill — Import historical emails from Resend API
+router.post('/inbox/backfill', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { env: envConfig } = await import('../config/env.js');
+    const axios = (await import('axios')).default;
+
+    let imported = 0;
+    let skipped = 0;
+    const INBOUND_ADDRESSES = ['info@sillages.app', 'support@sillages.app', 'tony@sillages.app'];
+
+    // Resend REST API — no SDK list method, use direct API
+    try {
+      const { data } = await axios.get('https://api.resend.com/emails', {
+        headers: { Authorization: `Bearer ${envConfig.RESEND_API_KEY}` },
+        params: { limit: 100 },
+        timeout: 15000,
+      });
+
+      const emails = data?.data ?? [];
+
+      for (const email of emails) {
+        const to = (email.to ?? []) as string[];
+        const from = (email.from ?? '') as string;
+
+        // Filter: only emails SENT TO our inbound addresses
+        const isInbound = to.some((addr: string) => INBOUND_ADDRESSES.some(ia => addr.toLowerCase().includes(ia)));
+        if (!isInbound) continue;
+
+        const fromRaw = from;
+        const fromMatch = fromRaw.match(/<([^>]+)>/);
+        const fromEmail = fromMatch ? fromMatch[1] : fromRaw.replace(/.*<|>.*/g, '').trim();
+        const fromName = fromRaw.replace(/<[^>]+>/, '').trim().replace(/^"|"$/g, '') || null;
+
+        const createdAt = (email.created_at as string) ?? new Date().toISOString();
+
+        const { error } = await supabase.from('inbox').insert({
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: (email.subject as string) ?? null,
+          body_text: null, // list API doesn't return body
+          body_html: null,
+          status: 'unread',
+          received_at: createdAt,
+        });
+
+        if (error) {
+          skipped++;
+        } else {
+          imported++;
+        }
+      }
+    } catch (fetchErr) {
+      console.warn(`[tower/inbox/backfill] Resend API error: ${(fetchErr as Error).message}`);
+    }
+
+    // Run classifier on newly imported emails
+    let classified = 0;
+    if (imported > 0) {
+      try {
+        const { runInboxWorkflow } = await import('../workflows/inbox.js');
+        const result = await runInboxWorkflow();
+        classified = result.drafted;
+      } catch (err) {
+        console.warn(`[tower/inbox/backfill] Classifier failed: ${(err as Error).message}`);
+      }
+    }
+
+    console.log(`[tower/inbox/backfill] Imported: ${imported}, Skipped: ${skipped}, Classified: ${classified}`);
+    res.json({ ok: true, imported, skipped, classified });
+  } catch (err) { next(err); }
+});
+
 export default router;

@@ -319,9 +319,12 @@ function InboxSection() {
 
   return (
     <>
-      <p style={S.sectionTitle}>
-        Inbox {unread > 0 && <span style={{ background: '#DC2626', color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700, marginLeft: 8 }}>{unread}</span>}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <p style={S.sectionTitle}>
+          Inbox {unread > 0 && <span style={{ background: '#DC2626', color: '#fff', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700, marginLeft: 8 }}>{unread}</span>}
+        </p>
+        <BackfillButton onDone={loadInbox} />
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '380px 1fr' : '1fr', gap: 16 }}>
         {/* Left: email list */}
@@ -394,6 +397,36 @@ function InboxSection() {
         )}
       </div>
     </>
+  );
+}
+
+// ── Backfill Button ─────────────────────────────────────────────────────────
+
+function BackfillButton({ onDone }: { onDone: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ imported: number; classified: number } | null>(null);
+
+  async function handleBackfill() {
+    setLoading(true);
+    setResult(null);
+    try {
+      const { data } = await api.post('/api/tower/inbox/backfill');
+      setResult({ imported: data.imported, classified: data.classified });
+      onDone();
+    } catch { /* ignore */ }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {result && <span style={{ fontSize: 11, color: '#2D6A4F' }}>{result.imported} imported, {result.classified} classified</span>}
+      <button onClick={handleBackfill} disabled={loading} style={{
+        padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: '1px solid #E5E7EB',
+        background: '#fff', color: '#6B7280', cursor: loading ? 'wait' : 'pointer', fontFamily: "'DM Sans', sans-serif",
+      }}>
+        {loading ? 'Importing...' : 'Import history'}
+      </button>
+    </div>
   );
 }
 
