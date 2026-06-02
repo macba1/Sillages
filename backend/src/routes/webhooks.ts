@@ -394,25 +394,39 @@ router.post(
     };
 
     // ── Handle inbound email (email.received) ──────────────────────────────
+    // Webhook payload only has metadata — fetch full body via API
     if (eventType === 'email.received') {
       try {
         const data = payload.data as Record<string, unknown>;
+        const emailId = (data.email_id as string) ?? messageId;
         const fromRaw = (data.from as string) ?? '';
         const fromMatch = fromRaw.match(/<([^>]+)>/);
         const fromEmail = fromMatch ? fromMatch[1] : fromRaw.replace(/.*<|>.*/g, '').trim();
         const fromName = fromRaw.replace(/<[^>]+>/, '').trim().replace(/^"|"$/g, '') || null;
 
+        // Fetch full email body from Resend API
+        let bodyText: string | null = null;
+        let bodyHtml: string | null = null;
+        try {
+          const { resend: resendClient } = await import('../lib/resend.js');
+          const fullEmail = await resendClient.emails.get(emailId);
+          bodyText = (fullEmail.data as Record<string, unknown> | null)?.text as string ?? null;
+          bodyHtml = (fullEmail.data as Record<string, unknown> | null)?.html as string ?? null;
+        } catch (fetchErr) {
+          console.warn(`[webhooks/resend] Could not fetch email body for ${emailId}: ${(fetchErr as Error).message}`);
+        }
+
         await supabase.from('inbox').insert({
           from_email: fromEmail,
           from_name: fromName,
           subject: (data.subject as string) ?? null,
-          body_text: (data.text as string) ?? null,
-          body_html: (data.html as string) ?? null,
+          body_text: bodyText,
+          body_html: bodyHtml,
           status: 'unread',
           received_at: eventTime,
         });
 
-        console.log(`[webhooks/resend] Inbound email from ${fromEmail}: ${data.subject}`);
+        console.log(`[webhooks/resend] Inbound email from ${fromEmail}: ${data.subject} (body: ${bodyText ? 'yes' : 'metadata only'})`);
       } catch (err) {
         console.error(`[webhooks/resend] Inbound insert failed: ${(err as Error).message}`);
       }
