@@ -184,45 +184,7 @@ export default function Tower() {
         </div>
 
         {/* Lead detail panel */}
-        {selectedLead && (() => {
-          const lead = leadsTable.find(l => l.id === selectedLead);
-          if (!lead) return null;
-          return (
-            <div style={{ ...S.card, marginTop: 12, borderLeft: '3px solid #C9964A' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1F2937' }}>{lead.shopName}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>{lead.shopDomain} · {lead.category} · Score {lead.painScore}/100</p>
-                </div>
-                <button onClick={() => setSelectedLead(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9CA3AF', lineHeight: 1 }}>×</button>
-              </div>
-
-              {lead.painTags && lead.painTags.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ ...S.label, marginBottom: 6 }}>Pain points detected</p>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {lead.painTags.map((tag: string) => (
-                      <span key={tag} style={{ ...S.tag, background: '#FEF3C7', color: '#92400E' }}>{tag.replace(/_/g, ' ')}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {lead.outreachFull && (
-                <div>
-                  <p style={{ ...S.label, marginBottom: 6 }}>Outreach message</p>
-                  <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '16px', border: '1px solid #E5E7EB' }}>
-                    <p style={{ margin: 0, fontSize: 14, color: '#1F2937', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{lead.outreachFull}</p>
-                  </div>
-                </div>
-              )}
-
-              {lead.contactEmail && (
-                <p style={{ margin: '12px 0 0', fontSize: 12, color: '#6B7280' }}>Contact: {lead.contactEmail}</p>
-              )}
-            </div>
-          );
-        })()}
+        <LeadDetail lead={leadsTable.find(l => l.id === selectedLead) ?? null} onClose={() => setSelectedLead(null)} />
 
         {/* ── SECTION 4: NURTURE PIPELINE ───────────────────────────── */}
         {nurturePipeline.length > 0 && (
@@ -439,6 +401,62 @@ function InboxSection() {
         )}
       </div>
     </>
+  );
+}
+
+// ── Lead Detail ─────────────────────────────────────────────────────────────
+
+function LeadDetail({ lead, onClose }: { lead: CommandData['leadsTable'][0] | null; onClose: () => void }) {
+  if (!lead) return null;
+
+  return (
+    <div style={{ background: '#FFFFFF', borderRadius: 12, border: '1px solid #E5E7EB', borderLeft: '3px solid #C9964A', padding: 20, marginTop: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1F2937' }}>{lead.shopName}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#9CA3AF' }}>
+            <a href={`https://${lead.shopDomain}`} target="_blank" rel="noopener noreferrer" style={{ color: '#6B7280', textDecoration: 'none' }}>{lead.shopDomain}</a>
+            {' · '}{lead.category ?? 'unknown'}{' · '}Score <strong style={{ color: lead.painScore >= 60 ? '#DC2626' : lead.painScore >= 30 ? '#B45309' : '#6B7280' }}>{lead.painScore}/100</strong>
+          </p>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9CA3AF', lineHeight: 1, padding: '0 4px' }}>×</button>
+      </div>
+
+      {/* Pain tags */}
+      {lead.painTags && lead.painTags.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9CA3AF' }}>Pain points</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {lead.painTags.map((tag: string) => (
+              <span key={tag} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#FEF3C7', color: '#92400E' }}>
+                {tag.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Outreach message */}
+      {lead.outreachFull ? (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9CA3AF' }}>Outreach message</p>
+          <div style={{ background: '#F9FAFB', borderRadius: 10, padding: 20, border: '1px solid #F3F4F6' }}>
+            <p style={{ margin: 0, fontSize: 15, color: '#1F2937', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{lead.outreachFull}</p>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: '#F9FAFB', borderRadius: 10, padding: 16, border: '1px solid #F3F4F6', marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#9CA3AF', fontStyle: 'italic' }}>No outreach message drafted yet. Run the leads workflow to generate one.</p>
+        </div>
+      )}
+
+      {/* Contact + status */}
+      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#6B7280' }}>
+        {lead.contactEmail && <span>Contact: {lead.contactEmail}</span>}
+        <span>Status: <StatusTag status={lead.status} /></span>
+        {lead.contactedAt && <span>Contacted: {timeAgo(lead.contactedAt)}</span>}
+      </div>
+    </div>
   );
 }
 

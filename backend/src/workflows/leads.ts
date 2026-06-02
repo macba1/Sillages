@@ -139,7 +139,7 @@ export async function runLeadsWorkflow(): Promise<LeadsWorkflowResult> {
     .gt('pain_score', 0)
     .is('outreach_message', null)
     .order('pain_score', { ascending: false })
-    .limit(10);
+    .limit(50);
 
   if (topLeads && topLeads.length > 0) {
     const outreachResults = await Promise.all(
