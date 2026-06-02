@@ -65,6 +65,7 @@ interface PainAnalysis {
   avgPrice: number;
   currency: string;
   storeDescription: string;
+  contactEmail: string | null;
 }
 
 export interface LeadsWorkflowResult {
@@ -180,16 +181,16 @@ async function analyzeLead(lead: LeadRow): Promise<PainAnalysis> {
   const analysis = await scrapePublicShopify(domain);
 
   // Update lead in DB
-  await supabase
-    .from('leads')
-    .update({
-      pain_score: analysis.score,
-      pain_tags: analysis.tags,
-      shop_name: analysis.storeDescription || lead.shop_name,
-    })
-    .eq('id', lead.id);
+  const updates: Record<string, unknown> = {
+    pain_score: analysis.score,
+    pain_tags: analysis.tags,
+    shop_name: analysis.storeDescription || lead.shop_name,
+  };
+  if (analysis.contactEmail) updates.contact_email = analysis.contactEmail;
 
-  console.log(`${LOG} [${domain}] pain_score=${analysis.score} tags=[${analysis.tags.join(',')}] products=${analysis.productCount}`);
+  await supabase.from('leads').update(updates).eq('id', lead.id);
+
+  console.log(`${LOG} [${domain}] pain_score=${analysis.score} tags=[${analysis.tags.join(',')}] products=${analysis.productCount} email=${analysis.contactEmail ?? 'none'}`);
 
   return analysis;
 }
@@ -203,6 +204,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
   let avgPrice = 0;
   let currency = 'USD';
   let storeDescription = '';
+  let contactEmail: string | null = null;
 
   // ── 1. Fetch /products.json (public, no auth needed) ──────────────────
   try {
@@ -220,7 +222,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
     productCount = products.length;
     if (productCount === 0) {
       tags.push('no_products');
-      return { score: 10, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription };
+      return { score: 10, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail };
     }
 
     // Store description from first product vendor
@@ -321,6 +323,21 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
       score += 10;
     }
 
+    // Extract contact email from mailto links, footer, contact info
+    const mailtoMatch = htmlStr.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    if (mailtoMatch) {
+      contactEmail = mailtoMatch[1].toLowerCase();
+    } else {
+      // Try to find email in page text (common patterns: info@, hello@, contact@, support@)
+      const emailPattern = /\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/g;
+      const allEmails = [...htmlStr.matchAll(emailPattern)]
+        .map(m => m[1].toLowerCase())
+        .filter(e => !e.includes('example.com') && !e.includes('sentry') && !e.includes('schema.org') && !e.includes('.png') && !e.includes('.jpg'));
+      // Prefer business emails over generic
+      const preferred = allEmails.find(e => /^(info|hello|contact|hi|support|sales|hola)@/.test(e));
+      contactEmail = preferred ?? allEmails[0] ?? null;
+    }
+
   } catch {
     tags.push('homepage_unavailable');
   }
@@ -328,7 +345,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
   // Cap at 100
   score = Math.min(score, 100);
 
-  return { score, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription };
+  return { score, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail };
 }
 
 // ── SubAgent C: Generate personalized outreach ────────────────────────────
