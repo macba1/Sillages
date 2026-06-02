@@ -372,9 +372,12 @@ router.post(
       return;
     }
 
+    // Log EVERY incoming webhook for debugging
+    console.log(`[webhooks/resend] RAW EVENT: type=${JSON.stringify(payload.type)} email_id=${JSON.stringify(payload.data?.email_id)} keys=${Object.keys(payload.data ?? {}).join(',')}`);
+
     const messageId = payload.data?.email_id;
     if (!messageId) {
-      console.warn('[webhooks/resend] No email_id in payload');
+      console.warn('[webhooks/resend] No email_id in payload — full data:', JSON.stringify(payload).slice(0, 500));
       res.json({ received: true });
       return;
     }
