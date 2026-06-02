@@ -511,6 +511,7 @@ router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Res
       status: l.status,
       contactEmail: l.contact_email,
       outreachPreview: l.outreach_message?.slice(0, 100) ?? null,
+      outreachFull: l.outreach_message ?? null,
       contactedAt: l.contacted_at,
       createdAt: l.created_at,
     }));

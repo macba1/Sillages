@@ -11,7 +11,7 @@ interface CommandData {
   leadsTable: Array<{
     id: string; shopName: string; shopDomain: string; category: string | null;
     painScore: number; painTags: string[]; status: string; contactEmail: string | null;
-    outreachPreview: string | null; contactedAt: string | null; createdAt: string;
+    outreachPreview: string | null; outreachFull: string | null; contactedAt: string | null; createdAt: string;
   }>;
   nurturePipeline: Array<{
     accountId: string; email: string; name: string | null; plan: string;
@@ -51,6 +51,7 @@ export default function Tower() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [selectedLead, setSelectedLead] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -157,7 +158,7 @@ export default function Tower() {
             </thead>
             <tbody>
               {filteredLeads.slice(0, 50).map(l => (
-                <tr key={l.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                <tr key={l.id} onClick={() => setSelectedLead(selectedLead === l.id ? null : l.id)} style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: selectedLead === l.id ? '#F9FAFB' : undefined }}>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ fontWeight: 600, color: '#1F2937' }}>{l.shopName}</span>
                     <br /><span style={{ fontSize: 11, color: '#9CA3AF' }}>{l.shopDomain}</span>
@@ -181,6 +182,47 @@ export default function Tower() {
             </tbody>
           </table>
         </div>
+
+        {/* Lead detail panel */}
+        {selectedLead && (() => {
+          const lead = leadsTable.find(l => l.id === selectedLead);
+          if (!lead) return null;
+          return (
+            <div style={{ ...S.card, marginTop: 12, borderLeft: '3px solid #C9964A' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1F2937' }}>{lead.shopName}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>{lead.shopDomain} · {lead.category} · Score {lead.painScore}/100</p>
+                </div>
+                <button onClick={() => setSelectedLead(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#9CA3AF', lineHeight: 1 }}>×</button>
+              </div>
+
+              {lead.painTags && lead.painTags.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ ...S.label, marginBottom: 6 }}>Pain points detected</p>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {lead.painTags.map((tag: string) => (
+                      <span key={tag} style={{ ...S.tag, background: '#FEF3C7', color: '#92400E' }}>{tag.replace(/_/g, ' ')}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {lead.outreachFull && (
+                <div>
+                  <p style={{ ...S.label, marginBottom: 6 }}>Outreach message</p>
+                  <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '16px', border: '1px solid #E5E7EB' }}>
+                    <p style={{ margin: 0, fontSize: 14, color: '#1F2937', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{lead.outreachFull}</p>
+                  </div>
+                </div>
+              )}
+
+              {lead.contactEmail && (
+                <p style={{ margin: '12px 0 0', fontSize: 12, color: '#6B7280' }}>Contact: {lead.contactEmail}</p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── SECTION 4: NURTURE PIPELINE ───────────────────────────── */}
         {nurturePipeline.length > 0 && (
