@@ -167,7 +167,10 @@ async function detectNewFirstBuyers(accountId: string): Promise<DetectedEvent[]>
     .from('shopify_connections')
     .select('shop_domain, access_token')
     .eq('account_id', accountId)
-    .single();
+    .eq('token_status', 'active')
+    .order('last_synced_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
 
   if (!conn) return [];
 
@@ -248,7 +251,10 @@ async function detectNewAbandonedCarts(accountId: string): Promise<DetectedEvent
     .from('shopify_connections')
     .select('shop_domain, access_token')
     .eq('account_id', accountId)
-    .single();
+    .eq('token_status', 'active')
+    .order('last_synced_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
 
   let recentOrderEmails = new Set<string>();
   if (conn) {
@@ -330,7 +336,10 @@ async function detectOverdueCustomers(accountId: string): Promise<DetectedEvent[
     .from('shopify_connections')
     .select('shop_domain, access_token')
     .eq('account_id', accountId)
-    .single();
+    .eq('token_status', 'active')
+    .order('last_synced_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
 
   if (!conn) return [];
 
@@ -351,8 +360,8 @@ async function detectOverdueCustomers(accountId: string): Promise<DetectedEvent[
       allOrders.push(...result.orders);
       pageInfo = result.nextPageInfo;
     } while (pageInfo);
-  } catch {
-    console.warn(`${LOG} Failed to fetch orders for overdue detection`);
+  } catch (err) {
+    console.warn(`${LOG} Failed to fetch orders for overdue detection (${conn.shop_domain}): ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 

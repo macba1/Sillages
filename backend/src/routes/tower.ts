@@ -568,6 +568,38 @@ router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Res
 // LEADS MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MANUAL WORKFLOW TRIGGERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/leads/run-now', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { runLeadsWorkflow } = await import('../workflows/leads.js');
+    const result = await runLeadsWorkflow();
+    res.json({ ok: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/outreach/run-now', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { runOutreachWorkflow } = await import('../workflows/outreach.js');
+    const result = await runOutreachWorkflow();
+    res.json({ ok: true, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/nurture/run-now', requireAuth, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { runNurtureWorkflow } = await import('../workflows/nurture.js');
+    const result = await runNurtureWorkflow();
+    res.json({ ok: true, ...result });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEADS MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
 // POST /api/tower/leads/import — Bulk import leads from domain list
 router.post('/leads/import', requireAuth, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
