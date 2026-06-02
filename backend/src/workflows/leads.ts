@@ -66,6 +66,7 @@ interface PainAnalysis {
   currency: string;
   storeDescription: string;
   contactEmail: string | null;
+  instagramHandle: string | null;
 }
 
 export interface LeadsWorkflowResult {
@@ -187,10 +188,11 @@ async function analyzeLead(lead: LeadRow): Promise<PainAnalysis> {
     shop_name: analysis.storeDescription || lead.shop_name,
   };
   if (analysis.contactEmail) updates.contact_email = analysis.contactEmail;
+  if (analysis.instagramHandle) updates.instagram_handle = analysis.instagramHandle;
 
   await supabase.from('leads').update(updates).eq('id', lead.id);
 
-  console.log(`${LOG} [${domain}] pain_score=${analysis.score} tags=[${analysis.tags.join(',')}] products=${analysis.productCount} email=${analysis.contactEmail ?? 'none'}`);
+  console.log(`${LOG} [${domain}] score=${analysis.score} products=${analysis.productCount} email=${analysis.contactEmail ?? '-'} ig=${analysis.instagramHandle ?? '-'}`);
 
   return analysis;
 }
@@ -205,6 +207,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
   let currency = 'USD';
   let storeDescription = '';
   let contactEmail: string | null = null;
+  let instagramHandle: string | null = null;
 
   // ── 1. Fetch /products.json (public, no auth needed) ──────────────────
   try {
@@ -222,7 +225,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
     productCount = products.length;
     if (productCount === 0) {
       tags.push('no_products');
-      return { score: 10, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail };
+      return { score: 10, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail, instagramHandle };
     }
 
     // Store description from first product vendor
@@ -338,6 +341,12 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
       contactEmail = preferred ?? allEmails[0] ?? null;
     }
 
+    // Extract Instagram handle from links
+    const igMatch = htmlStr.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i);
+    if (igMatch && igMatch[1] !== 'p' && igMatch[1] !== 'reel' && igMatch[1] !== 'stories') {
+      instagramHandle = igMatch[1];
+    }
+
   } catch {
     tags.push('homepage_unavailable');
   }
@@ -345,7 +354,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
   // Cap at 100
   score = Math.min(score, 100);
 
-  return { score, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail };
+  return { score, tags, productCount, hasEmailCapture, hasBundles, avgPrice, currency, storeDescription, contactEmail, instagramHandle };
 }
 
 // ── SubAgent C: Generate personalized outreach ────────────────────────────
