@@ -87,7 +87,7 @@ export async function runLeadsWorkflow(): Promise<LeadsWorkflowResult> {
   let errors = 0;
 
   // ── SubAgent A: discover new leads via Bing Search ──────────────────────
-  if (env.TAVILY_API_KEY) {
+  if ((env.TAVILY_API_KEY || process.env.TAVILY_API_KEY)) {
     console.log(`${LOG} SubAgent A: Tavily discovery enabled — running ${DISCOVERY_QUERIES.length} queries`);
     const discovered = await discoverLeadsViaTavily();
     imported += discovered;
@@ -458,7 +458,7 @@ interface TavilyResult {
  * Free tier: 1,000 searches/month → 10 queries/day = 300/month.
  */
 async function discoverLeadsViaTavily(): Promise<number> {
-  const apiKey = env.TAVILY_API_KEY;
+  const apiKey = (env.TAVILY_API_KEY || process.env.TAVILY_API_KEY);
   if (!apiKey) return 0;
 
   let totalDiscovered = 0;
