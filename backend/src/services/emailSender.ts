@@ -3,6 +3,8 @@ import { es as esLocale } from 'date-fns/locale';
 import { resend } from '../lib/resend.js';
 import { supabase } from '../lib/supabase.js';
 import { env } from '../config/env.js';
+import { logCommunication } from './commLog.js';
+import { canEmailMerchant } from './commsGate.js';
 import type { IntelligenceBrief, Account } from '../types.js';
 import type { BrandConfig } from './emailTemplates.js';
 
@@ -105,7 +107,14 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
     .single();
 
   if (briefErr || !brief) throw new Error(`Brief not found: ${briefErr?.message}`);
-  const b = brief as IntelligenceBrief;
+  const b = brief as IntelligenceBrief & { email_message_id?: string | null };
+
+  // Idempotency: never re-send a brief that already went out (e.g. scheduler retry,
+  // double cron). One brief per account+brief_date is enforced upstream by upsert.
+  if (b.status === 'sent' && b.email_message_id) {
+    console.log(`[emailSender] Brief ${briefId} already sent (msg ${b.email_message_id}) — skipping resend`);
+    return;
+  }
   if (b.status !== 'ready') throw new Error(`Brief ${briefId} is not ready (status: ${b.status})`);
 
   const [{ data: account, error: accErr }, { data: shopConn }, { data: brandProfile }] = await Promise.all([
@@ -116,6 +125,14 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
 
   if (accErr || !account) throw new Error(`Account not found: ${accErr?.message}`);
   const acc = account as Pick<Account, 'email' | 'full_name'> & { language?: string };
+
+  // Respect unsubscribe / blacklist — never email a merchant who opted out.
+  if (!await canEmailMerchant(acc.email)) {
+    console.log(`[emailSender] Skipping brief ${briefId} — ${acc.email} not emailable (unsubscribed/blacklisted)`);
+    await supabase.from('intelligence_briefs').update({ status: 'skipped' }).eq('id', briefId);
+    return;
+  }
+
   const ownerName = acc.full_name?.split(' ')[0] ?? acc.email.split('@')[0];
   const lang: Lang = acc.language === 'es' ? 'es' : 'en';
   const currency: string = (shopConn as { shop_currency: string | null } | null)?.shop_currency ?? 'USD';
@@ -167,15 +184,20 @@ export async function sendBriefEmail(briefId: string): Promise<void> {
   const sentAt = new Date().toISOString();
   await supabase.from('intelligence_briefs').update({ status: 'sent', sent_at: sentAt, email_message_id: sent.id }).eq('id', briefId);
 
-  // Log to email_log for tracking
-  await supabase.from('email_log').insert({
+  // Log to email_log for tracking — error-checked (see commLog.ts). The daily
+  // brief was silently failing to log here for weeks because the raw insert
+  // swallowed a channel CHECK-constraint error.
+  const logged = await logCommunication({
     account_id: b.account_id,
+    brief_id: briefId,
     channel: 'daily_brief',
     recipient_email: acc.email,
     status: 'sent',
-    sent_at: sentAt,
     message_id: sent.id,
-  }); // non-fatal — no await needed
+  });
+  if (!logged) {
+    console.error(`[emailSender] Brief ${briefId} was SENT to ${acc.email} (msg ${sent.id}) but email_log write failed — delivery tracking is blind for this send.`);
+  }
 
   console.log(`[emailSender] Sent brief ${briefId} to ${acc.email}`);
 }

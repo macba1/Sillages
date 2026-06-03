@@ -22,6 +22,7 @@ import { shopifyClient } from '../lib/shopify.js';
 import { generateWeeklyBrief } from './weeklyBriefGenerator.js';
 import { logCommunication } from './commLog.js';
 import { isSendEnabled, gatePush, gateWeeklyEmail } from './commsGate.js';
+import { getEligibleMerchants } from './eligibleMerchants.js';
 import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 import { runOrchestrator } from './orchestrator.js';
@@ -679,28 +680,14 @@ const PAUSED_ACCOUNTS: Set<string> = new Set([
 ]);
 
 async function getEligibleAccounts(): Promise<string[]> {
-  const { data: accounts, error } = await supabase
-    .from('accounts')
-    .select('id, email')
-    .or('subscription_status.in.(active,trialing,beta),subscription_status.is.null');
+  // Single source of truth for "real, installed, non-test, opted-in merchants".
+  // Shared with the health delivery monitor so sender and monitor never disagree.
+  const merchants = await getEligibleMerchants();
 
-  if (error || !accounts) {
-    console.error('[scheduler] Failed to load accounts:', error?.message);
-    return [];
-  }
-
-  // Filter out ghost accounts (Shopify testers/reviewers) + paused accounts
-  const GHOST_DOMAINS = ['@shopify.com'];
-  const GHOST_EMAILS = new Set(['reviewer@sillages.app']);
-  const allIds = accounts
-    .filter(a => {
-      const email = (a as { email?: string }).email ?? '';
-      if (GHOST_EMAILS.has(email)) return false;
-      if (GHOST_DOMAINS.some(d => email.endsWith(d))) return false;
-      return true;
-    })
-    .map(a => a.id)
+  const allIds = merchants
+    .map(m => m.account_id)
     .filter(id => !PAUSED_ACCOUNTS.has(id));
+
   const eligible: string[] = [];
   for (const id of allIds) {
     if (await isSendEnabled(id)) {
@@ -708,8 +695,8 @@ async function getEligibleAccounts(): Promise<string[]> {
     }
   }
 
-  if (eligible.length < accounts.length) {
-    console.log(`[scheduler] ${accounts.length - eligible.length} account(s) filtered out, ${eligible.length} eligible`);
+  if (eligible.length < merchants.length) {
+    console.log(`[scheduler] ${merchants.length - eligible.length} merchant(s) filtered out (paused/send_disabled), ${eligible.length} eligible`);
   }
 
   return eligible;

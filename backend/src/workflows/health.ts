@@ -13,6 +13,8 @@ import { handleTokenFailure, markTokenHealthy } from '../lib/tokenGuard.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
 import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
+import { getEligibleMerchants } from '../services/eligibleMerchants.js';
+import { sendAdminAlertOncePerDay } from '../services/adminAlert.js';
 
 const LOG = '[workflow:health]';
 const REQUIRED_WEBHOOKS = ['orders/create', 'checkouts/create', 'checkouts/update', 'app/uninstalled', 'app_subscriptions/update'];
@@ -66,6 +68,12 @@ export async function runHealthWorkflow(): Promise<HealthWorkflowResult> {
 
   const activeConns = connections ?? [];
 
+  // Brief-delivery monitor (fail-loud) — independent of per-merchant checks.
+  const deliveryResult = await checkBriefDelivery().catch(err => {
+    console.error(`${LOG} [delivery] check failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  });
+
   // Run system health + all merchant checks in parallel
   const [systemResult, ...merchantResults] = await Promise.all([
     runSystemHealth(),
@@ -94,6 +102,7 @@ export async function runHealthWorkflow(): Promise<HealthWorkflowResult> {
       merchants_failed: failed,
       results: {
         system: systemResult,
+        delivery: deliveryResult,
         merchants: merchantResults.map(r => ({
           accountId: r.accountId,
           shopDomain: r.shopDomain,
@@ -118,6 +127,90 @@ export async function runHealthWorkflow(): Promise<HealthWorkflowResult> {
   console.log(`${LOG} Complete: ${succeeded}/${activeConns.length} merchants OK, ${totalDuration}ms`);
 
   return { system: systemResult, merchants: merchantResults, totalDuration_ms: totalDuration, succeeded, failed };
+}
+
+// ── Brief delivery monitor (fail-loud) ─────────────────────────────────────
+// The "24h silent-workflow check": if there are eligible merchants but the
+// daily/weekly brief emails stopped flowing, alert Tony. Catches exactly the
+// failure mode where briefs silently stop being delivered or logged.
+
+interface BriefDeliveryResult {
+  eligibleMerchants: number;
+  dailySent24h: number;
+  weeklyLastSentDaysAgo: number | null;
+  dailyAlert: boolean;
+  weeklyAlert: boolean;
+}
+
+export async function checkBriefDelivery(): Promise<BriefDeliveryResult> {
+  const result: BriefDeliveryResult = {
+    eligibleMerchants: 0,
+    dailySent24h: 0,
+    weeklyLastSentDaysAgo: null,
+    dailyAlert: false,
+    weeklyAlert: false,
+  };
+
+  const merchants = await getEligibleMerchants();
+  result.eligibleMerchants = merchants.length;
+
+  // Nothing to deliver → nothing to alert about.
+  if (merchants.length === 0) {
+    console.log(`${LOG} [delivery] 0 eligible merchants — skipping delivery check`);
+    return result;
+  }
+
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  // ── Daily: a full 24h with zero daily_brief sends while merchants exist ──
+  const { count: dailyCount } = await supabase
+    .from('email_log')
+    .select('*', { count: 'exact', head: true })
+    .eq('channel', 'daily_brief')
+    .eq('status', 'sent')
+    .gte('sent_at', dayAgo);
+  result.dailySent24h = dailyCount ?? 0;
+
+  if (result.dailySent24h === 0) {
+    result.dailyAlert = await sendAdminAlertOncePerDay(
+      'daily_brief_missing',
+      '⚠️ Daily briefs NOT delivered in last 24h',
+      `<p style="color:#2A1F14;font-size:14px;line-height:1.6;">
+        <strong>${merchants.length}</strong> eligible merchant(s) but <strong>0</strong> daily_brief emails logged as sent in the last 24h.
+        Either delivery stopped or logging is broken (check the email_log channel constraint).</p>
+       <p style="color:#7A6A55;font-size:13px;">Merchants: ${merchants.map(m => m.shop).join(', ')}</p>`,
+      { eligible: merchants.length, dailySent24h: 0 },
+    );
+  }
+
+  // ── Weekly: most-recent weekly_email older than 8 days while merchants exist ──
+  const { data: lastWeekly } = await supabase
+    .from('email_log')
+    .select('sent_at')
+    .eq('channel', 'weekly_email')
+    .eq('status', 'sent')
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastWeekly?.sent_at) {
+    const daysAgo = (Date.now() - new Date(lastWeekly.sent_at).getTime()) / 86400000;
+    result.weeklyLastSentDaysAgo = Math.floor(daysAgo);
+    if (daysAgo > 8) {
+      result.weeklyAlert = await sendAdminAlertOncePerDay(
+        'weekly_brief_stale',
+        '⚠️ Weekly briefs appear stalled',
+        `<p style="color:#2A1F14;font-size:14px;line-height:1.6;">
+          Last weekly_email was <strong>${Math.floor(daysAgo)} days ago</strong> (${lastWeekly.sent_at}).
+          Weekly briefs run Mondays — more than 8 days means at least one Monday was missed.</p>
+         <p style="color:#7A6A55;font-size:13px;">Eligible merchants: ${merchants.length}</p>`,
+        { eligible: merchants.length, lastWeekly: lastWeekly.sent_at },
+      );
+    }
+  }
+
+  console.log(`${LOG} [delivery] eligible=${result.eligibleMerchants} daily24h=${result.dailySent24h} weeklyLastDays=${result.weeklyLastSentDaysAgo} alerts=${result.dailyAlert ? 'daily ' : ''}${result.weeklyAlert ? 'weekly' : ''}`);
+  return result;
 }
 
 // ── SubAgent D: System Health (global) ────────────────────────────────────

@@ -31,6 +31,31 @@ export async function isSendEnabled(accountId: string): Promise<boolean> {
 }
 
 /**
+ * Check if we are allowed to email this merchant address.
+ * Blocks unsubscribed (email_unsubscribes) and blacklisted (email_blacklist) addresses.
+ * Fail-closed: if the email is missing, returns false.
+ */
+export async function canEmailMerchant(email: string | null | undefined): Promise<boolean> {
+  const addr = (email ?? '').trim().toLowerCase();
+  if (!addr) return false;
+
+  const [{ data: unsub }, { data: black }] = await Promise.all([
+    supabase.from('email_unsubscribes').select('email').eq('email', addr).maybeSingle(),
+    supabase.from('email_blacklist').select('email').eq('email', addr).maybeSingle(),
+  ]);
+
+  if (unsub) {
+    console.log(`${LOG} BLOCK: ${addr} is unsubscribed`);
+    return false;
+  }
+  if (black) {
+    console.log(`${LOG} BLOCK: ${addr} is blacklisted`);
+    return false;
+  }
+  return true;
+}
+
+/**
  * Check if merchant is within allowed push hours (9:00-20:00 local time).
  */
 async function isWithinPushHours(accountId: string): Promise<boolean> {
