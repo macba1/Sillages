@@ -12,6 +12,7 @@ import { runLeadsWorkflow } from '../workflows/leads.js';
 import { runOutreachWorkflow } from '../workflows/outreach.js';
 import { runNurtureWorkflow } from '../workflows/nurture.js';
 import { runInboxWorkflow } from '../workflows/inbox.js';
+import { runContentEngineWorkflow } from '../workflows/content-engine.js';
 import { env } from '../config/env.js';
 import { executeCartRecovery } from '../routes/actions.js';
 import { syncAbandonedCarts } from './abandonedCartsSync.js';
@@ -147,6 +148,16 @@ export function startScheduler(): void {
     cron.schedule('*/15 * * * *', () => {
       runInboxWorkflow().catch(err => {
         console.error('[scheduler] Inbox workflow error:', err);
+      });
+    });
+  }
+
+  // Content engine: daily at 08:00 UTC (Instagram content + DM drafts)
+  if (env.USE_DYNAMIC_CONTENT) {
+    cron.schedule('0 8 * * *', () => {
+      console.log('[scheduler] USE_DYNAMIC_CONTENT=true — running content engine');
+      runContentEngineWorkflow().catch(err => {
+        console.error('[scheduler] Content engine error:', err);
       });
     });
   }

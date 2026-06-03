@@ -46,7 +46,13 @@ const envSchema = z.object({
   USE_DYNAMIC_OUTREACH: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_NURTURE: z.string().optional().transform(v => v === 'true'),
   USE_DYNAMIC_INBOX: z.string().optional().transform(v => v === 'true'),
+  USE_DYNAMIC_CONTENT: z.string().optional().transform(v => v === 'true'),
   OUTREACH_DAILY_CAP: z.coerce.number().default(20),
+
+  // Postiz (self-hosted social publishing). Optional until deployed.
+  POSTIZ_API_URL: z.string().optional(),            // e.g. https://postiz.sillages.app
+  POSTIZ_API_KEY: z.string().optional(),
+  POSTIZ_INTEGRATION_ID: z.string().optional(),     // Instagram integration id (auto-resolved if absent)
 
   // Tavily Search API (free tier: 1,000 searches/month)
   TAVILY_API_KEY: z.string().min(1).optional(),

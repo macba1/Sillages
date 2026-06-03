@@ -183,6 +183,26 @@ export async function checkBriefDelivery(): Promise<BriefDeliveryResult> {
     );
   }
 
+  // ── Content engine: if enabled, alert when no content_posts in 48h ──
+  if (env.USE_DYNAMIC_CONTENT) {
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { count: contentCount } = await supabase
+      .from('content_posts')
+      .select('*', { count: 'exact', head: true })
+      .neq('status', 'failed')
+      .gte('created_at', twoDaysAgo);
+    if ((contentCount ?? 0) === 0) {
+      await sendAdminAlertOncePerDay(
+        'content_engine_stalled',
+        '⚠️ Content engine produced nothing in 48h',
+        `<p style="color:#2A1F14;font-size:14px;line-height:1.6;">
+          USE_DYNAMIC_CONTENT is on but no content_posts were created in the last 48h.
+          Instagram content pipeline may be broken (check OpenAI / Postiz / sharp).</p>`,
+        { contentPosts48h: 0 },
+      );
+    }
+  }
+
   // ── Weekly: most-recent weekly_email older than 8 days while merchants exist ──
   const { data: lastWeekly } = await supabase
     .from('email_log')
