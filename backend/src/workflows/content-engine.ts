@@ -51,12 +51,29 @@ export async function runContentEngineWorkflow(opts: { dryRun?: boolean } = {}):
   const today = now.toISOString().slice(0, 10);
   console.log(`${LOG} Start ${today} dryRun=${dryRun}`);
 
-  // ── Idempotency: 1 post/day ──
+  // ── Seed gate: while seeded posts are still queued (not yet fired), the
+  // normal 1/day cron stays quiet so we don't exceed 3/day on a new account. ──
   if (!dryRun) {
-    const { data: existing } = await supabase.from('content_posts').select('id, status').eq('post_date', today).maybeSingle();
-    if (existing) {
-      console.log(`${LOG} content_posts already exists for ${today} (status=${existing.status}) — skipping`);
-      return { skipped: 'already_posted_today', status: existing.status };
+    const { count: pendingSeeds } = await supabase
+      .from('content_posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'seeded')
+      .gt('scheduled_for', now.toISOString());
+    if ((pendingSeeds ?? 0) > 0) {
+      console.log(`${LOG} ${pendingSeeds} seeded post(s) still queued — daily cron skipping`);
+      return { skipped: 'seeds_pending' };
+    }
+  }
+
+  // ── Idempotency: 1 post/day (count, since post_date is no longer unique) ──
+  if (!dryRun) {
+    const { count: todayCount } = await supabase
+      .from('content_posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('post_date', today);
+    if ((todayCount ?? 0) > 0) {
+      console.log(`${LOG} content_posts already exists for ${today} — skipping`);
+      return { skipped: 'already_posted_today' };
     }
   }
 

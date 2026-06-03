@@ -99,11 +99,42 @@ describe('isPostizConfigured', () => {
 // ── Content engine idempotency ───────────────────────────────────────────────
 describe('runContentEngineWorkflow', () => {
   it('skips when a post already exists for today', async () => {
-    fixtures.content_posts = { single: { data: { id: 'p1', status: 'scheduled' }, error: null } };
+    // gate (seeded count) → 0 ; idempotency (today count) → 1
+    let call = 0;
+    const { supabase } = await import('../lib/supabase.js');
+    const spy = vi.spyOn(supabase, 'from').mockImplementation(((_t: string) => {
+      const b: any = {
+        select: () => b, eq: () => b, gt: () => b,
+        then: (res: any) => { call++; return res({ count: call === 1 ? 0 : 1, data: null, error: null }); },
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return b;
+    }) as any);
     const { runContentEngineWorkflow } = await import('../workflows/content-engine.js');
     const r = await runContentEngineWorkflow();
     expect(r.skipped).toBe('already_posted_today');
     expect(openaiCreate).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('skips the daily cron while seeded posts are still queued', async () => {
+    // gate query (status=seeded, scheduled_for>now) returns count>0 via head select
+    fixtures.content_posts = { single: { data: null, error: null } };
+    // head:true count path resolves via `then` of the builder; emulate count by stubbing select chain
+    const { supabase } = await import('../lib/supabase.js');
+    const spy = vi.spyOn(supabase, 'from').mockImplementation(((t: string) => {
+      const b: any = {
+        select: () => b, eq: () => b, gt: () => b,
+        then: (res: any) => res({ count: 2, data: null, error: null }),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return b;
+    }) as any);
+    const { runContentEngineWorkflow } = await import('../workflows/content-engine.js');
+    const r = await runContentEngineWorkflow();
+    expect(r.skipped).toBe('seeds_pending');
+    expect(openaiCreate).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it('dry-run generates caption + image without publishing or DB write', async () => {

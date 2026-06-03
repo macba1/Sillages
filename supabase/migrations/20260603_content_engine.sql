@@ -16,15 +16,16 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_handle text;
 -- ── 2. content_posts ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS content_posts (
   id              uuid primary key default gen_random_uuid(),
-  post_date       date not null unique,          -- 1 post/day max (idempotency)
+  post_date       date not null,                 -- 1/day for the cron; seeds put 3/day
+  slot_index      int  not null default 0,       -- 0 for daily; 0..2 for seed slots
   kind            text not null default 'image'  -- 'image' | 'reel'
                     check (kind in ('image','reel')),
   caption         text,
   image_url       text,
   source          text,                          -- 'lead_pattern' | 'evergreen' | 'reel'
   postiz_post_id  text,
-  status          text not null default 'draft'  -- 'draft'|'scheduled'|'published'|'failed'
-                    check (status in ('draft','scheduled','published','failed')),
+  status          text not null default 'draft'  -- 'draft'|'seeded'|'scheduled'|'published'|'failed'
+                    check (status in ('draft','seeded','scheduled','published','failed')),
   scheduled_for   timestamptz,
   error           text,
   created_at      timestamptz not null default now()

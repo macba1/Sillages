@@ -74,8 +74,8 @@ export interface CreatePostInput {
   media: UploadedMedia;
   /** When to publish. Postiz auto-sends at this time; pick a future slot for review. */
   when: Date;
-  /** 'schedule' (default) queues for `when`; 'now' publishes immediately. */
-  mode?: 'schedule' | 'now';
+  /** 'schedule' (default) queues for `when`; 'now' publishes immediately; 'draft' stores for manual review (no auto-send). */
+  mode?: 'schedule' | 'now' | 'draft';
   /** Platform __type — 'instagram' for IG feed posts. */
   platform?: string;
 }

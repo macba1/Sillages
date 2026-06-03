@@ -53,13 +53,16 @@ export interface GenerateCaptionInput {
   painTags?: string[];
   /** Deterministic rotation index (avoids Math.random). */
   rotation?: number;
+  /** Explicit theme override (used by the seed script to vary topics). */
+  customTheme?: string;
 }
 
 export async function generateCaption(input: GenerateCaptionInput): Promise<CaptionResult> {
   const rotation = input.rotation ?? 0;
-  const theme = input.source === 'lead_pattern'
-    ? 'patrón real de tiendas'
-    : EVERGREEN_THEMES[Math.abs(rotation) % EVERGREEN_THEMES.length];
+  const theme = input.customTheme
+    ?? (input.source === 'lead_pattern'
+      ? 'patrón real de tiendas'
+      : EVERGREEN_THEMES[Math.abs(rotation) % EVERGREEN_THEMES.length]);
   const painTags = input.painTags ?? [];
 
   const completion = await openai.chat.completions.create({

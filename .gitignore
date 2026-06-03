@@ -21,3 +21,7 @@ supabase/.temp/
 
 # Claude Code
 .claude/
+
+# Generated content dry-run images
+backend/seed-*.png
+backend/content-dryrun-*.png
