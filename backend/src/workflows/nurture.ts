@@ -62,15 +62,13 @@ const SEQUENCE: SequenceStep[] = [
     body: (ctx) => {
       const revenue = ctx.totalRevenue ? `€${ctx.totalRevenue.toFixed(0)}` : 'tus datos';
       const orders = ctx.totalOrders ?? 0;
-      const carts = ctx.cartsDetected ?? 0;
       return `<p>Hola ${ctx.firstName},</p>
-<p>Ya llevamos 2 días analizando ${ctx.shopName}. Esto es lo que encontramos:</p>
+<p>Ya llevamos 2 días mirando ${ctx.shopName}. Esto es de lo que te habla tu brief cada mañana:</p>
 <ul style="padding-left:20px;line-height:2;">
-  <li>Ingresos recientes: <strong>${revenue}</strong> en ${orders} pedidos</li>
-  ${ctx.topProduct ? `<li>Producto estrella: <strong>${ctx.topProduct}</strong></li>` : ''}
-  ${carts > 0 ? `<li>${carts} carritos abandonados detectados</li>` : ''}
+  <li>Lo que vendiste: <strong>${revenue}</strong> en ${orders} pedidos</li>
+  ${ctx.topProduct ? `<li>Tu producto estrella: <strong>${ctx.topProduct}</strong></li>` : ''}
 </ul>
-<p>Cada mañana recibes un brief con todo esto actualizado + una recomendación concreta.</p>
+<p>Cada mañana, en 2 minutos, sabes qué pasó ayer y una cosa concreta para vender más hoy. En lenguaje llano, sin jerga.</p>
 <p>Si tienes alguna pregunta, solo responde a este email.</p>
 <p>Tony</p>`;
     },
@@ -79,17 +77,10 @@ const SEQUENCE: SequenceStep[] = [
     day: 5,
     subject: () => `5 días con Sillages — esto es lo que hemos visto`,
     body: (ctx) => {
-      const recovered = ctx.cartsRecovered ?? 0;
       return `<p>Hola ${ctx.firstName},</p>
-<p>Ya llevas 5 días con Sillages en ${ctx.shopName}. Un resumen rápido:</p>
-<ul style="padding-left:20px;line-height:2;">
-  <li>5 briefs enviados con análisis de tu tienda</li>
-  <li>${ctx.cartsDetected ?? 0} carritos abandonados detectados</li>
-  ${recovered > 0 ? `<li>${recovered} carritos recuperados</li>` : ''}
-</ul>
-<p>${recovered > 0
-  ? 'Los emails de recuperación están funcionando. Sigue así.'
-  : 'Si activas el plan Crecimiento, Sillages envía emails de recuperación automáticos a los clientes que abandonan el carrito. Son ventas que casi tuviste.'}</p>
+<p>Ya llevas 5 días con Sillages en ${ctx.shopName}. Hasta ahora has recibido 5 briefs: cada mañana, qué pasó ayer y el siguiente paso para vender más hoy.</p>
+<p>La idea es simple: 2 minutos con el café y sabes dónde está tu tienda sin pelearte con datos ni jerga.</p>
+<p>¿Hay algo de tu tienda que te gustaría entender mejor en el brief? Responde a este email y lo miramos.</p>
 <p>Tony</p>`;
     },
   },
@@ -130,8 +121,16 @@ export interface NurtureWorkflowResult {
 
 // ── Main entry ─────────────────────────────────────────────────────────────
 
+// ⏸ PAUSED 2026-06-05 — shares the brief positioning; nurture sending frozen
+// until Tony approves the new copy. Re-enable by setting this to false.
+const NURTURE_PAUSED = true;
+
 export async function runNurtureWorkflow(): Promise<NurtureWorkflowResult> {
   const start = Date.now();
+  if (NURTURE_PAUSED) {
+    console.warn(`${LOG} PAUSED — nurture sending frozen pending copy approval. No emails sent.`);
+    return { checked: 0, sent: 0, skippedPaid: 0, skippedAlreadySent: 0, errors: 0, totalDuration_ms: Date.now() - start };
+  }
   console.log(`${LOG} Starting nurture workflow`);
 
   let checked = 0;

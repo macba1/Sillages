@@ -41,8 +41,17 @@ export interface OutreachWorkflowResult {
 
 // ── Main entry ─────────────────────────────────────────────────────────────
 
+// ⏸ PAUSED 2026-06-05 — copy re-centered on the daily brief; outreach sending is
+// frozen until Tony approves the new copy. Re-enable by setting this to false
+// (and ensure USE_DYNAMIC_OUTREACH is on). Belt-and-suspenders with the env flag.
+const OUTREACH_PAUSED = true;
+
 export async function runOutreachWorkflow(): Promise<OutreachWorkflowResult> {
   const start = Date.now();
+  if (OUTREACH_PAUSED) {
+    console.warn(`${LOG} PAUSED — outreach sending frozen pending copy approval. No emails sent.`);
+    return { sent: 0, skipped: 0, bounced: 0, errors: 0, totalDuration_ms: Date.now() - start };
+  }
   console.log(`${LOG} Starting outreach workflow (cap=${DAILY_CAP})`);
 
   let sent = 0;

@@ -55,6 +55,15 @@ export function invalidatePlanCache(accountId: string): void {
   cache.delete(accountId);
 }
 
+/**
+ * Feature keys that are LIVE for the free (starter) tier — the only things cold
+ * outreach copy is allowed to promise. Sourced from DEFAULT_PLAN so the copy
+ * whitelist tracks the plan definition and never drifts into unbuilt features.
+ */
+export function getLiveFeatureKeys(): string[] {
+  return Object.entries(DEFAULT_PLAN.features).filter(([, on]) => on).map(([k]) => k);
+}
+
 // ── Core functions ────────────────────────────────────────────────────────
 
 /**

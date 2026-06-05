@@ -12,6 +12,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
 import { openai } from '../lib/openai.js';
+import { positioningSystemPrompt, painToBrief } from '../services/copyPositioning.js';
 import { env } from '../config/env.js';
 
 const LOG = '[workflow:leads]';
@@ -361,53 +362,36 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
 
 async function generateOutreach(lead: LeadRow): Promise<string> {
   const painTags = lead.pain_tags ?? [];
-  const painDescription = painTags.map(tag => {
-    const descriptions: Record<string, string> = {
-      no_email_capture: 'no email capture or newsletter signup on your site',
-      no_urgency_pricing: 'no compare-at pricing or urgency mechanics',
-      no_bundles: 'no product bundles or packs to increase order value',
-      weak_descriptions: 'many products with short or missing descriptions',
-      no_reviews: 'no review app for social proof',
-      no_analytics: 'limited analytics tracking',
-      no_product_tags: 'products without tags (hurts discoverability)',
-      high_aov: 'high average order value (great recovery potential)',
-      small_catalog: 'focused catalog (every sale counts)',
-    };
-    return descriptions[tag] ?? tag;
-  }).filter(Boolean);
-
-  const topPains = painDescription.slice(0, 3).join(', ');
+  const briefAngles = painToBrief(painTags);
+  const angleText = briefAngles.length > 0
+    ? briefAngles.map(a => `- ${a}`).join('\n')
+    : '- vas un poco a ciegas con los datos de tu tienda — justo lo que el brief te resume cada mañana';
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     temperature: 0.7,
-    max_tokens: 500,
+    max_tokens: 350,
     messages: [
       {
         role: 'system',
-        content: `You write short, personalized outreach messages for a Shopify app called Sillages.
-Sillages sends store owners a daily AI brief about their store — revenue, top products, customer patterns, and one action to take today. It also recovers abandoned carts with personalized emails.
+        content: `${positioningSystemPrompt()}
 
-Rules:
-- Max 4 sentences
-- Reference the SPECIFIC pain you detected (not generic)
-- Don't be salesy. Be helpful and specific.
-- End with a low-pressure CTA (check it out, might be useful)
-- Sign as "Tony from Sillages"
-- No emojis in the outreach
-- If the store has high AOV, mention cart recovery specifically
-- If they have no email capture, mention the welcome email feature`,
+Formato del email de outreach (primer contacto en frío):
+- Máximo 4 frases. Asunto NO (solo el cuerpo).
+- Empieza por el dolor concreto de SU tienda y conéctalo a lo que vería en el brief de mañana.
+- Termina con un CTA suave: instalar gratis en la App Store o ver un brief de ejemplo.
+- Firma "Tony, Sillages". Sin emojis.
+- Devuelve SOLO el texto del email.`,
       },
       {
         role: 'user',
-        content: `Store: ${lead.shop_name ?? lead.shop_domain}
-Domain: ${lead.shop_domain}
-Category: ${lead.category ?? 'unknown'}
-Pain score: ${lead.pain_score}/100
-Detected issues: ${topPains || 'general small store pain'}
-Product count: ${lead.pain_tags?.includes('small_catalog') ? 'small' : 'normal'}
+        content: `Tienda: ${lead.shop_name ?? lead.shop_domain}
+Dominio: ${lead.shop_domain}
+Categoría: ${lead.category ?? 'desconocida'}
+Lo que detectamos y cómo lo mostraría el brief cada mañana:
+${angleText}
 
-Write a personalized outreach message for this store owner.`,
+Escribe el email de outreach centrado en el brief diario.`,
       },
     ],
   });
