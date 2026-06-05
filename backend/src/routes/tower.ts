@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { supabase } from '../lib/supabase.js';
+import { getEligibleMerchants } from '../services/eligibleMerchants.js';
 
 const router = Router();
 
@@ -551,6 +552,47 @@ router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Res
       .map(([date, data]) => ({ date, ...data }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    // ── SECTION 6: BRIEF DELIVERY (today) ───────────────────────────────
+    // What Tony needs daily: did the daily brief actually get EMAILED, to whom?
+    const todayStr = now.toISOString().slice(0, 10);
+    const midnightUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    const eightDaysAgo = new Date(Date.now() - 8 * 86400000).toISOString();
+
+    const [eligibleMerchants, dailySentResult, lastWeeklyResult] = await Promise.all([
+      getEligibleMerchants(),
+      supabase.from('email_log').select('account_id, status, sent_at, message_id').eq('channel', 'daily_brief').gte('sent_at', midnightUtc),
+      supabase.from('email_log').select('sent_at').eq('channel', 'weekly_email').eq('status', 'sent').order('sent_at', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    const dailySent = dailySentResult.data ?? [];
+    const sentByAccount = new Map(dailySent.map(e => [e.account_id, e]));
+
+    const recipients = eligibleMerchants.map(m => {
+      const row = sentByAccount.get(m.account_id);
+      return {
+        shop: m.shop,
+        email: m.email,
+        sent: !!row && row.status === 'sent',
+        sentAt: row?.sent_at ?? null,
+        messageId: row?.message_id ?? null,
+        status: row?.status ?? 'not_sent',
+      };
+    });
+
+    const sentCount = recipients.filter(r => r.sent).length;
+    const lastWeeklyAt = lastWeeklyResult.data?.sent_at ?? null;
+    const weeklyStale = lastWeeklyAt ? new Date(lastWeeklyAt) < new Date(eightDaysAgo) : eligibleMerchants.length > 0;
+
+    const briefDelivery = {
+      date: todayStr,
+      expected: eligibleMerchants.length,
+      sentCount,
+      allSent: eligibleMerchants.length > 0 && sentCount === eligibleMerchants.length,
+      recipients,
+      lastWeeklyAt,
+      weeklyStale,
+    };
+
     res.json({
       timestamp: now.toISOString(),
       sistema,
@@ -559,6 +601,7 @@ router.get('/command', requireAuth, requireAdmin, async (_req: Request, res: Res
       leadsTable,
       nurturePipeline,
       dailyChart,
+      briefDelivery,
     });
   } catch (err) {
     next(err);

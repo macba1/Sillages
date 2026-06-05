@@ -18,6 +18,15 @@ interface CommandData {
     daysSinceInstall: number; timeline: Array<{ day: number; sent: boolean; current: boolean }>;
   }>;
   dailyChart: Array<{ date: string; leads: number; outreach: number }>;
+  briefDelivery: {
+    date: string;
+    expected: number;
+    sentCount: number;
+    allSent: boolean;
+    recipients: Array<{ shop: string; email: string; sent: boolean; sentAt: string | null; messageId: string | null; status: string }>;
+    lastWeeklyAt: string | null;
+    weeklyStale: boolean;
+  };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -75,7 +84,7 @@ export default function Tower() {
   if (error) return <div style={S.page}><div style={S.maxW}><p style={{ color: '#DC2626', padding: 40 }}>{error}</p></div></div>;
   if (!data) return null;
 
-  const { sistema, merchants, funnel, leadsTable, nurturePipeline, dailyChart } = data;
+  const { sistema, merchants, funnel, leadsTable, nurturePipeline, dailyChart, briefDelivery } = data;
 
   // Filter leads
   let filteredLeads = leadsTable;
@@ -103,6 +112,31 @@ export default function Tower() {
           <MetricCard label="Último run" value={timeAgo(sistema.lastRun)} />
           <MetricCard label="Errores hoy" value={String(sistema.errorsToday)} color={sistema.errorsToday > 0 ? '#DC2626' : undefined} />
           <MetricCard label="Tokens hoy" value={sistema.tokensToday.toLocaleString()} />
+        </div>
+
+        {/* ── BRIEF DELIVERY (today) ────────────────────────────────── */}
+        <p style={S.sectionTitle}>Briefs de hoy · {briefDelivery.date}</p>
+        <div style={{ ...S.card, borderLeft: `4px solid ${briefDelivery.allSent ? '#2D6A4F' : '#DC2626'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: briefDelivery.recipients.length ? 14 : 0 }}>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: briefDelivery.allSent ? '#2D6A4F' : '#DC2626' }}>
+              {briefDelivery.allSent ? '✓' : '⚠'} {briefDelivery.sentCount}/{briefDelivery.expected} briefs enviados
+            </p>
+            <span style={{ fontSize: 11, color: briefDelivery.weeklyStale ? '#DC2626' : '#9CA3AF' }}>
+              Weekly: {briefDelivery.lastWeeklyAt ? timeAgo(briefDelivery.lastWeeklyAt) : 'never'}{briefDelivery.weeklyStale ? ' ⚠' : ''}
+            </span>
+          </div>
+          {briefDelivery.recipients.map(r => (
+            <div key={r.email} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px solid #F3F4F6' }}>
+              <span style={{ fontSize: 13, color: '#1F2937' }}>
+                <span style={{ color: r.sent ? '#2D6A4F' : '#DC2626', fontWeight: 700, marginRight: 8 }}>{r.sent ? '✓' : '✗'}</span>
+                {r.shop} <span style={{ color: '#9CA3AF' }}>· {r.email}</span>
+              </span>
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+                {r.sent ? `${timeAgo(r.sentAt)}${r.messageId ? ' · Resend ✓' : ''}` : 'no enviado'}
+              </span>
+            </div>
+          ))}
+          {briefDelivery.expected === 0 && <p style={{ margin: 0, fontSize: 13, color: '#9CA3AF' }}>Sin merchants elegibles.</p>}
         </div>
 
         {/* ── SECTION 2: MERCHANTS ──────────────────────────────────── */}
