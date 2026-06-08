@@ -123,7 +123,7 @@ async function loadStoreHistory(accountId: string): Promise<StoreHistoryContext 
   // store_history is a single row per account with JSON columns
   const { data: row, error } = await supabase
     .from('store_history')
-    .select('*')
+    .select('first_order_date, last_order_date, total_orders, total_revenue, monthly_revenue, customer_segments, top_products_alltime')
     .eq('account_id', accountId)
     .maybeSingle();
 

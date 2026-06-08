@@ -92,8 +92,8 @@ export function startScheduler(): void {
     });
   });
 
-  // Orchestrator / Health workflow: every 30 minutes (at :00 and :30)
-  cron.schedule('0,30 * * * *', () => {
+  // Orchestrator / Health workflow: every 2 hours (at :00 on even hours)
+  cron.schedule('0 */2 * * *', () => {
     if (env.USE_DYNAMIC_HEALTH) {
       console.log('[scheduler] USE_DYNAMIC_HEALTH=true — running health workflow');
       runHealthWorkflow().catch(err => {
@@ -143,9 +143,9 @@ export function startScheduler(): void {
     });
   }
 
-  // Inbox workflow: every 15 minutes
+  // Inbox workflow: every hour at :45
   if (env.USE_DYNAMIC_INBOX) {
-    cron.schedule('*/15 * * * *', () => {
+    cron.schedule('45 * * * *', () => {
       runInboxWorkflow().catch(err => {
         console.error('[scheduler] Inbox workflow error:', err);
       });

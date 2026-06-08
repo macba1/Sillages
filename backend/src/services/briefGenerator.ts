@@ -43,11 +43,11 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
   try {
     // ── 2. Load account + config + snapshot ───────────────────────────────
     const [accountResult, configResult, snapshotResult] = await Promise.all([
-      supabase.from('accounts').select('*').eq('id', accountId).single(),
-      supabase.from('user_intelligence_config').select('*').eq('account_id', accountId).single(),
+      supabase.from('accounts').select('id, email, full_name, language').eq('id', accountId).single(),
+      supabase.from('user_intelligence_config').select('account_id, timezone, send_hour, send_enabled, focus_areas, brief_tone, store_context, competitor_context, include_market_signal').eq('account_id', accountId).single(),
       supabase
         .from('shopify_daily_snapshots')
-        .select('*')
+        .select('id, account_id, snapshot_date, total_revenue, net_revenue, total_orders, average_order_value, sessions, conversion_rate, returning_customer_rate, new_customers, returning_customers, total_customers, top_products, total_refunds, cancelled_orders, wow_revenue_pct, wow_orders_pct, wow_aov_pct, wow_conversion_pct, wow_new_customers_pct')
         .eq('account_id', accountId)
         .eq('snapshot_date', briefDate)
         .single(),
@@ -90,7 +90,7 @@ export async function generateBrief(input: GenerateBriefInput): Promise<void> {
 
     const { data: historicalSnapshots } = await supabase
       .from('shopify_daily_snapshots')
-      .select('*')
+      .select('id, account_id, snapshot_date, total_revenue, net_revenue, total_orders, average_order_value, sessions, conversion_rate, returning_customer_rate, new_customers, returning_customers, total_customers, top_products, total_refunds, cancelled_orders, wow_revenue_pct, wow_orders_pct, wow_aov_pct, wow_conversion_pct, wow_new_customers_pct')
       .eq('account_id', accountId)
       .gte('snapshot_date', thirtyDaysAgo)
       .lte('snapshot_date', briefDate)

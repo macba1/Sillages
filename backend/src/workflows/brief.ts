@@ -141,12 +141,14 @@ async function runSingleMerchantBrief(input: MerchantBriefInput): Promise<Mercha
     // ── 2. Load all data in parallel ────────────────────────────────────────
     const dataStart = Date.now();
 
+    const SNAP_COLS = 'id, account_id, snapshot_date, total_revenue, net_revenue, total_orders, average_order_value, sessions, conversion_rate, returning_customer_rate, new_customers, returning_customers, total_customers, top_products, total_refunds, cancelled_orders, wow_revenue_pct, wow_orders_pct, wow_aov_pct, wow_conversion_pct, wow_new_customers_pct';
+
     const [accountResult, configResult, snapshotResult, connectionResult, historicalResult, brandProfile, customerIntelligence] = await Promise.all([
-      supabase.from('accounts').select('*').eq('id', accountId).single(),
-      supabase.from('user_intelligence_config').select('*').eq('account_id', accountId).single(),
-      supabase.from('shopify_daily_snapshots').select('*').eq('account_id', accountId).eq('snapshot_date', briefDate).single(),
+      supabase.from('accounts').select('id, email, full_name, language').eq('id', accountId).single(),
+      supabase.from('user_intelligence_config').select('account_id, timezone, send_hour, send_enabled, focus_areas, brief_tone, store_context, competitor_context, include_market_signal').eq('account_id', accountId).single(),
+      supabase.from('shopify_daily_snapshots').select(SNAP_COLS).eq('account_id', accountId).eq('snapshot_date', briefDate).single(),
       supabase.from('shopify_connections').select('shop_name, shop_domain, shop_currency').eq('account_id', accountId).eq('token_status', 'active').order('last_synced_at', { ascending: false, nullsFirst: false }).limit(1).single(),
-      supabase.from('shopify_daily_snapshots').select('*').eq('account_id', accountId).gte('snapshot_date', new Date(new Date(briefDate).getTime() - 30 * 86400000).toISOString().slice(0, 10)).lte('snapshot_date', briefDate).order('snapshot_date', { ascending: true }),
+      supabase.from('shopify_daily_snapshots').select(SNAP_COLS).eq('account_id', accountId).gte('snapshot_date', new Date(new Date(briefDate).getTime() - 30 * 86400000).toISOString().slice(0, 10)).lte('snapshot_date', briefDate).order('snapshot_date', { ascending: true }),
       loadBrandProfile(accountId),
       buildCustomerIntelligence(accountId, briefDate).catch(() => null),
     ]);

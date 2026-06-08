@@ -1,6 +1,4 @@
 import type { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '../config/env.js';
 import { supabase } from '../lib/supabase.js';
 import { AppError } from './errorHandler.js';
 
@@ -15,13 +13,11 @@ declare global {
 }
 
 // Shared helper — verifies a raw JWT and returns the resolved accountId/userId.
-// Used by requireAuth middleware and any route that needs to accept a token
-// from a query parameter (e.g. OAuth initiations triggered by browser navigation).
+// Uses the singleton supabase client (service_role) — NEVER create a new client per request.
 export async function resolveAuthToken(
   token: string,
 ): Promise<{ userId: string; accountId: string }> {
-  const anonClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-  const { data: { user }, error } = await anonClient.auth.getUser(token);
+  const { data: { user }, error } = await supabase.auth.getUser(token);
 
   if (error || !user) {
     throw new AppError(401, 'Invalid or expired token');
