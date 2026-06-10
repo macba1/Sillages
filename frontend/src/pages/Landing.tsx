@@ -149,23 +149,25 @@ function PricingCard({ name, price, period, features, highlighted, cta }: {
 
 // ── Feature card ────────────────────────────────────────────────────────────
 
-function FeatureCard({ icon, title, description }: { icon: string; title: string; description: string }) {
+function FeatureCard({ icon, title, description }: { icon: string; title: string; description?: string }) {
   return (
     <div style={{
       background: '#fff',
       borderRadius: 16,
       padding: '32px 28px',
       border: '1px solid #E8DDD6',
-      flex: '1 1 280px',
-      minWidth: 250,
+      flex: '1 1 240px',
+      minWidth: 220,
     }}>
       <span style={{ fontSize: 32, display: 'block', marginBottom: 16 }}>{icon}</span>
-      <h3 style={{ fontSize: 17, fontWeight: 600, color: '#3A2332', marginBottom: 8, letterSpacing: '-0.01em' }}>
+      <h3 style={{ fontSize: 17, fontWeight: 600, color: '#3A2332', marginBottom: description ? 8 : 0, letterSpacing: '-0.01em', lineHeight: 1.35 }}>
         {title}
       </h3>
-      <p style={{ fontSize: 14, color: '#7A6B63', lineHeight: 1.7, margin: 0 }}>
-        {description}
-      </p>
+      {description && (
+        <p style={{ fontSize: 14, color: '#7A6B63', lineHeight: 1.7, margin: 0 }}>
+          {description}
+        </p>
+      )}
     </div>
   );
 }
@@ -272,21 +274,10 @@ export default function Landing() {
           {t('landing.features.title')}
         </h2>
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <FeatureCard
-            icon="🛒"
-            title={t('landing.feature1.title')}
-            description={t('landing.feature1.desc')}
-          />
-          <FeatureCard
-            icon="👋"
-            title={t('landing.feature2.title')}
-            description={t('landing.feature2.desc')}
-          />
-          <FeatureCard
-            icon="📊"
-            title={t('landing.feature3.title')}
-            description={t('landing.feature3.desc')}
-          />
+          <FeatureCard icon="🧠" title={t('landing.feature1.title')} />
+          <FeatureCard icon="⚡" title={t('landing.feature2.title')} />
+          <FeatureCard icon="👆" title={t('landing.feature3.title')} />
+          <FeatureCard icon="🔄" title={t('landing.feature4.title')} />
         </div>
       </section>
 
