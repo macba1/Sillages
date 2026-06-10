@@ -67,7 +67,7 @@ function BriefCard() {
         {t('landing.card.sectionLabel')}
       </p>
 
-      <p style={{ fontSize: 13, color: 'rgba(245,239,232,0.7)', lineHeight: 1.7, marginBottom: 24 }}>
+      <p style={{ fontSize: 13, color: 'rgba(245,239,232,0.7)', lineHeight: 1.7, marginBottom: 24, whiteSpace: 'pre-line' }}>
         {t('landing.card.action')}
       </p>
 
@@ -265,6 +265,29 @@ export default function Landing() {
         <div className="border-t border-[#E8DDD6]" />
       </div>
 
+      {/* Why not ChatGPT */}
+      <section className="max-w-5xl mx-auto px-6 py-20">
+        <div style={{ maxWidth: 720 }}>
+          <h2 className="text-[#3A2332] text-3xl font-semibold tracking-tight mb-8" style={{ fontFamily: "'DM Serif Display', serif", fontWeight: 400 }}>
+            {t('landing.why.h2')}
+          </h2>
+          <p className="text-[#5A4E47] text-lg leading-relaxed mb-6">
+            {t('landing.why.p1')}
+          </p>
+          <p className="text-[#5A4E47] text-lg leading-relaxed mb-6">
+            {t('landing.why.p2')}
+          </p>
+          <p className="text-[#3A2332] text-xl leading-relaxed" style={{ fontWeight: 600 }}>
+            {t('landing.why.p3')}
+          </p>
+        </div>
+      </section>
+
+      {/* Divider */}
+      <div className="max-w-5xl mx-auto px-6">
+        <div className="border-t border-[#E8DDD6]" />
+      </div>
+
       {/* Features */}
       <section id="features" className="max-w-5xl mx-auto px-6 py-20">
         <p className="text-xs font-semibold uppercase tracking-widest text-[#D8B07A] mb-4">
@@ -274,10 +297,9 @@ export default function Landing() {
           {t('landing.features.title')}
         </h2>
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <FeatureCard icon="🧠" title={t('landing.feature1.title')} />
-          <FeatureCard icon="⚡" title={t('landing.feature2.title')} />
-          <FeatureCard icon="👆" title={t('landing.feature3.title')} />
-          <FeatureCard icon="🔄" title={t('landing.feature4.title')} />
+          <FeatureCard icon="📊" title={t('landing.feature1.title')} description={t('landing.feature1.desc')} />
+          <FeatureCard icon="🧠" title={t('landing.feature2.title')} description={t('landing.feature2.desc')} />
+          <FeatureCard icon="⚡" title={t('landing.feature3.title')} description={t('landing.feature3.desc')} />
         </div>
       </section>
 
