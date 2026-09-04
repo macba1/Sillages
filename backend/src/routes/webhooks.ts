@@ -7,6 +7,7 @@ import { resend } from '../lib/resend.js';
 import { env } from '../config/env.js';
 import { verifyShopifyWebhook, getAllShopifyCredentials } from '../lib/shopify.js';
 import { processShopifyWebhook } from '../services/shopifyWebhooks.js';
+import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
 
@@ -25,6 +26,7 @@ function verifyShopifyWebhookMultiApp(rawBody: Buffer, hmacHeader: string): bool
 // Raw body is provided by express.raw() registered in index.ts for /api/webhooks
 router.post(
   '/stripe',
+  legacyOnly,
   async (req: Request, res: Response, next: NextFunction) => {
     const sig = req.headers['stripe-signature'];
 
@@ -63,6 +65,7 @@ router.post(
 // Configure in Supabase Dashboard → Database → Webhooks → accounts table → INSERT.
 router.post(
   '/supabase',
+  legacyOnly,
   async (req: Request, res: Response) => {
     // Verify optional shared secret
     if (env.SUPABASE_WEBHOOK_SECRET) {
@@ -334,6 +337,7 @@ interface ResendWebhookPayload {
 
 router.post(
   '/resend',
+  legacyOnly,
   async (req: Request, res: Response) => {
     // Verify webhook signature if secret is configured
     if (env.RESEND_WEBHOOK_SECRET) {

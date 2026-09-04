@@ -23,6 +23,7 @@ import { syncFullHistory } from '../services/fullHistorySync.js';
 import { syncAbandonedCarts } from '../services/abandonedCartsSync.js';
 import { generateBrief } from '../services/briefGenerator.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
+import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
 
@@ -471,7 +472,7 @@ router.get(
 );
 
 // ── GET /api/shopify/billing-callback (legacy — redirects to new endpoint) ───
-router.get('/billing-callback', (req: Request, res: Response) => {
+router.get('/billing-callback', legacyOnly, (req: Request, res: Response) => {
   const qs = new URLSearchParams(req.query as Record<string, string>).toString();
   res.redirect(`/api/shopify/billing/callback?${qs}`);
 });
@@ -504,7 +505,7 @@ async function setAutoApproveForPlan(accountId: string, planKey: string): Promis
 // POST /api/shopify/billing/subscribe — Create a Shopify Billing subscription
 // Body: { plan: "starter" | "basico" | "crecimiento" | "pro", account_id?: string }
 // Auth: JWT (logged-in merchant) OR account_id in body (new install from OAuth callback)
-router.post('/billing/subscribe', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/billing/subscribe', legacyOnly, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { plan: planKey, account_id: bodyAccountId } = req.body;
 
@@ -639,7 +640,7 @@ router.post('/billing/subscribe', async (req: Request, res: Response, next: Next
 });
 
 // GET /api/shopify/billing/callback — Shopify redirects here after merchant approves/declines
-router.get('/billing/callback', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/billing/callback', legacyOnly, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const accountId = req.query.account_id as string | undefined;
     const planKey = req.query.plan as string | undefined;
@@ -719,7 +720,7 @@ router.get('/billing/callback', async (req: Request, res: Response, next: NextFu
 });
 
 // GET /api/shopify/billing/status — Current subscription status
-router.get('/billing/status', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/billing/status', legacyOnly, requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const accountId = req.accountId!;
 

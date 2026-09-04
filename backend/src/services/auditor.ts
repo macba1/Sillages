@@ -7,6 +7,7 @@ import { syncYesterdayForAccount } from './shopifySync.js';
 import { handleTokenFailure, markTokenHealthy, shouldRetryNow } from '../lib/tokenGuard.js';
 import { ensureTokenFresh } from '../lib/shopify.js';
 import { isSendEnabled } from './commsGate.js';
+import { legacyProcessesDisabled } from '../config/productMode.js';
 
 const ADMIN_EMAIL = 'tony@richmondpartner.com';
 const LOG = '[auditor]';
@@ -57,6 +58,12 @@ async function shouldSendAlert(alert: CriticalAlert): Promise<boolean> {
 // ── Start auditor (runs every 6 hours) ──────────────────────────────────────
 
 export function startAuditor(): void {
+  // Legacy product only. In `social_gallery` no legacy cron may be registered.
+  if (legacyProcessesDisabled()) {
+    console.log(`${LOG} Skipped: PRODUCT_MODE is not legacy`);
+    return;
+  }
+
   // Full audit every 6 hours
   cron.schedule('30 */6 * * *', () => {
     runAudit().catch(err => {

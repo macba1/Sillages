@@ -29,6 +29,7 @@ import { ensureTokenFresh } from '../lib/shopify.js';
 import { runOrchestrator } from './orchestrator.js';
 import { verifyAllWebhooks } from './shopifyWebhooks.js';
 import { runTrialReminders } from './trialReminders.js';
+import { legacyProcessesDisabled } from '../config/productMode.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EVENT-DRIVEN SCHEDULER
@@ -78,6 +79,12 @@ async function releaseSchedulerLock(lockName: string): Promise<void> {
 }
 
 export function startScheduler(): void {
+  // Legacy product only. In `social_gallery` no legacy cron may be registered.
+  if (legacyProcessesDisabled()) {
+    console.log('[scheduler] Skipped: PRODUCT_MODE is not legacy');
+    return;
+  }
+
   // Event detection: every hour at :10
   cron.schedule('10 * * * *', () => {
     runEventLoop().catch(err => {
