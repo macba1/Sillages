@@ -23,6 +23,7 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error('no db in tests'); } } }));
 
+import { createServer, type Server } from 'node:http';
 import { safeFetch, UnsafeUrlError, __testing } from '../services/preview/safeFetch.js';
 import { detectStore, normaliseStoreUrl, StoreDetectionError } from '../services/preview/storeDetector.js';
 import { buildProposals, newPublicToken } from '../services/preview/previewGenerator.js';
@@ -196,6 +197,63 @@ describe('E9: the generator cannot reach a private network', () => {
       resolvePublicAddresses('rebind.example', { lookup: async () => ['93.184.216.34', '169.254.169.254'] }),
     ).rejects.toBeInstanceOf(UnsafeUrlError);
   });
+
+  it('the real request path — no injected transport — connects through the pinned resolver', async () => {
+    // Everything else in this file injects a transport, which means none of it
+    // exercises the code that actually runs in production. Node's `fetch` is
+    // undici and silently IGNORES an `agent`, so an earlier version of this
+    // defence was present in the source and never called. This test uses the
+    // real path against a real socket.
+    const server: Server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ products: [] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      // `allowLoopback` is the only reason 127.0.0.1 is permitted at all; the
+      // guard is otherwise identical to production.
+      const response = await safeFetch(`http://127.0.0.1:${port}/products.json`, { allowLoopback: true });
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ products: [] });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
+
+  it('the real request path refuses a private address without a transport to hide behind', async () => {
+    // Same path, no loopback exemption: the guard must stop it before a socket
+    // is opened.
+    await expect(safeFetch('http://127.0.0.1:1/products.json')).rejects.toBeInstanceOf(UnsafeUrlError);
+    await expect(safeFetch('https://169.254.169.254/latest/meta-data/')).rejects.toBeInstanceOf(UnsafeUrlError);
+  }, 20_000);
+
+  it('the real request path caps a body that never ends', async () => {
+    // A chunked response with no content-length. Before the rewrite the read
+    // was unbounded and the deadline had already been cleared.
+    const server: Server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      const pump = () => {
+        if (!res.writableEnded) {
+          res.write('x'.repeat(64 * 1024));
+          setTimeout(pump, 1);
+        }
+      };
+      pump();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      await expect(
+        safeFetch(`http://127.0.0.1:${port}/`, { allowLoopback: true, maxBytes: 200 * 1024 }),
+      ).rejects.toThrow(/too much data/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
 
   it('refuses a response larger than the cap', async () => {
     const transport = async () => new Response('x'.repeat(5000), { status: 200 });

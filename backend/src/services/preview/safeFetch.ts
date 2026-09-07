@@ -61,8 +61,6 @@ function isPrivateAddress(address: string): boolean {
 export interface SafeFetchOptions {
   /** Injected in tests so no DNS lookup or network call happens. */
   lookup?: (hostname: string) => Promise<string[]>;
-  /** Escape hatch for tests that need the guard without the pinning agent. */
-  skipPinning?: boolean;
   transport?: (
     url: string,
     init: { redirect: 'manual'; signal: AbortSignal; headers: Record<string, string> },
@@ -111,45 +109,96 @@ async function resolvePublicAddresses(hostname: string, options: SafeFetchOption
   return addresses;
 }
 
-/**
- * An agent that connects only to the addresses we already validated, and
- * re-checks each one at connect time.
- *
- * This is what closes the rebinding window: the socket cannot reach an address
- * the check never saw, whatever DNS says by then. TLS still verifies the
- * certificate against the original hostname, so pinning the address does not
- * weaken it.
- */
-function pinnedAgent(protocol: string, hostname: string, allowed: string[]): http.Agent | https.Agent {
-  const createConnection = (
-    options: Record<string, unknown>,
-    onCreate: (err: Error | null, socket?: net.Socket) => void,
-  ) => {
-    const target = allowed[0];
-    const connectOptions = {
-      ...options,
-      host: target,
-      // Keeps SNI and certificate verification on the real hostname.
-      servername: hostname,
-      lookup: pinnedLookup(allowed),
-    };
-
-    const socket = protocol === 'https:'
-      ? https.globalAgent.createConnection!(connectOptions as never, onCreate as never)
-      : http.globalAgent.createConnection!(connectOptions as never, onCreate as never);
-    return socket;
-  };
-
-  const Agent = protocol === 'https:' ? https.Agent : http.Agent;
-  const agent = new Agent({ keepAlive: false });
-  (agent as unknown as { createConnection: typeof createConnection }).createConnection = createConnection;
-  return agent;
-}
-
 export function assertAllowedScheme(url: URL, options: SafeFetchOptions): void {
   if (url.protocol === 'https:') return;
   if (options.allowLoopback && url.protocol === 'http:') return;
   throw new UnsafeUrlError('Only https addresses are supported.');
+}
+
+/**
+ * Performs one request with Node's own HTTP client.
+ *
+ * `fetch` cannot be used here. It is undici, which silently **ignores** the
+ * `agent` option — a pinned agent passed to `fetch` is never called, so the
+ * rebinding defence would look present and do nothing. Node's client accepts a
+ * `lookup`, which is the only way to guarantee the socket connects to the
+ * address we validated.
+ */
+function nodeRequest(
+  url: URL,
+  init: { headers: Record<string, string>; lookup: ReturnType<typeof pinnedLookup>; maxBytes: number; timeoutMs: number },
+): Promise<{ status: number; headers: Headers; body: string; location: string | null }> {
+  const client = url.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const request = client.request(
+      {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: Number(url.port || (url.protocol === 'https:' ? 443 : 80)),
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: init.headers,
+        // The whole point: the socket resolves through us, not through DNS.
+        lookup: init.lookup as never,
+        // Keeps SNI and certificate verification on the real hostname.
+        servername: url.hostname,
+        timeout: init.timeoutMs,
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(response.headers)) {
+          if (typeof value === 'string') headers.set(key, value);
+          else if (Array.isArray(value)) headers.set(key, value.join(', '));
+        }
+
+        // Redirects are re-checked by the caller, never followed here.
+        if (status >= 300 && status < 400) {
+          response.resume();
+          resolve({ status, headers, body: '', location: response.headers.location ?? null });
+          return;
+        }
+
+        const declared = Number(response.headers['content-length'] ?? '0');
+        if (declared > init.maxBytes) {
+          response.destroy();
+          reject(new UnsafeUrlError('That store returned too much data.'));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let total = 0;
+
+        response.on('data', (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > init.maxBytes) {
+            // A chunked response with no content-length would otherwise stream
+            // unbounded data into memory on an unauthenticated endpoint.
+            response.destroy();
+            request.destroy();
+            reject(new UnsafeUrlError('That store returned too much data.'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.on('end', () => {
+          resolve({ status, headers, body: Buffer.concat(chunks).toString('utf8'), location: null });
+        });
+        response.on('error', () => reject(new UnsafeUrlError('We could not reach that store.')));
+      },
+    );
+
+    // The deadline covers the whole exchange, not only the handshake.
+    request.setTimeout(init.timeoutMs, () => {
+      request.destroy();
+      reject(new UnsafeUrlError('That store took too long to answer.'));
+    });
+    request.on('error', (err) => {
+      reject(err instanceof UnsafeUrlError ? err : new UnsafeUrlError('We could not reach that store.'));
+    });
+    request.end();
+  });
 }
 
 export interface SafeResponse {
@@ -176,51 +225,53 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
     if (current.username || current.password) throw new UnsafeUrlError('That address is not supported.');
     const addresses = await resolvePublicAddresses(current.hostname, options);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    try {
-      const transport = options.transport ?? ((url, init) => fetch(url, init));
-      let response: Response;
+    // Tests inject a transport; production takes the pinned Node path.
+    if (options.transport) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
       try {
-        response = await transport(current.toString(), {
-          redirect: 'manual', // every hop is re-checked, never followed blindly
-          signal: controller.signal,
-          headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
-          // Connect only to the address we validated. Without this the OS
-          // resolves the hostname again at connect time, and a record that
-          // answered publicly for the check can answer privately for the
-          // connection.
-          ...(options.transport || options.skipPinning
-            ? {}
-            : { agent: pinnedAgent(current.protocol, current.hostname, addresses) }),
-        } as never);
-      } catch {
-        throw new UnsafeUrlError('We could not reach that store.');
+        let response: Response;
+        try {
+          response = await options.transport(current.toString(), {
+            redirect: 'manual',
+            signal: controller.signal,
+            headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
+          });
+        } catch {
+          throw new UnsafeUrlError('We could not reach that store.');
+        }
+
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          if (!location) throw new UnsafeUrlError('We could not reach that store.');
+          current = new URL(location, current);
+          continue;
+        }
+
+        const declared = Number(response.headers.get('content-length') ?? '0');
+        if (declared > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
+
+        const body = await readCapped(response, maxBytes);
+        return { url: current.toString(), status: response.status, headers: response.headers, body };
+      } finally {
+        clearTimeout(timer);
       }
-
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location) throw new UnsafeUrlError('We could not reach that store.');
-        current = new URL(location, current);
-        continue;
-      }
-
-      const declared = Number(response.headers.get('content-length') ?? '0');
-      if (declared > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
-
-      // Read with a real cap. A host that answers chunked with no
-      // content-length would otherwise stream unbounded data into memory: the
-      // declared length is 0, so the check above passes, and this endpoint is
-      // unauthenticated.
-      const body = await readCapped(response, maxBytes);
-
-      return { url: current.toString(), status: response.status, headers: response.headers, body };
-    } finally {
-      // Only once the body is read. Clearing it after the headers arrived left
-      // the rest of the transfer with no deadline at all.
-      clearTimeout(timer);
     }
+
+    const result = await nodeRequest(current, {
+      headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
+      lookup: pinnedLookup(addresses),
+      maxBytes,
+      timeoutMs: TIMEOUT_MS,
+    });
+
+    if (result.status >= 300 && result.status < 400) {
+      if (!result.location) throw new UnsafeUrlError('We could not reach that store.');
+      current = new URL(result.location, current);
+      continue;
+    }
+
+    return { url: current.toString(), status: result.status, headers: result.headers, body: result.body };
   }
 
   throw new UnsafeUrlError('That address redirects too many times.');
@@ -276,14 +327,16 @@ export function pinnedLookup(allowed: string[]) {
   return (
     _hostname: string,
     _options: unknown,
-    callback: (err: Error | null, address?: string, family?: number) => void,
+    // Node types the address as required here; the error path passes an error
+    // and nothing else, which the runtime accepts.
+    callback: (err: Error | null, address: string, family: number) => void,
   ): void => {
     const target = allowed[0];
     // Belt and braces: the address must still be in the validated set, and
     // must still be public. A private address can never leave this function
     // even if the set were somehow polluted.
     if (!target || !permitted.has(target) || isPrivateAddress(target)) {
-      callback(new UnsafeUrlError('That address is not reachable.'));
+      (callback as (err: Error | null) => void)(new UnsafeUrlError('That address is not reachable.'));
       return;
     }
     callback(null, target, net.isIPv6(target) ? 6 : 4);
@@ -291,4 +344,4 @@ export function pinnedLookup(allowed: string[]) {
 }
 
 /** Exported for the tests that pin the private-range rules. */
-export const __testing = { isPrivateAddress, resolvePublicAddresses, pinnedAgent, pinnedLookup };
+export const __testing = { isPrivateAddress, resolvePublicAddresses, pinnedLookup, nodeRequest };
