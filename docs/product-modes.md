@@ -64,6 +64,14 @@ that does not belong to the active mode is not mounted; its prefix answers
 | `/api/public` (unauthenticated storefront API, event ingestion and the before/after generator) | **no** | yes |
 | `/api/performance` (aggregate gallery metrics) | **no** | yes |
 | `/api/subscription` (Shopify Billing — see `docs/billing-and-launch.md`) | **no** | yes |
+
+### Background jobs in `social_gallery`
+
+| Job | When |
+|---|---|
+| Measurement retention | 03:10 |
+| Expired preview cleanup | 03:50 |
+| Catalogue reconciliation | 04:20 |
 | `/api/briefs`, `/api/billing`, `/api/alerts`, `/api/admin`, `/api/chat`, `/api/push`, `/api/actions`, `/api/unsubscribe`, `/api/tower` | yes | **no** |
 
 Three endpoints live inside routers that stay mounted in both modes, so they are

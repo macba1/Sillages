@@ -31,6 +31,27 @@ approval. **It has not been made.**
 
 If Shopify is unreachable the screen says so instead of showing a blank plan.
 
+## Plan enforcement
+
+Publishing is the paid feature, and losing a plan takes it away.
+
+- `shop_subscriptions` mirrors Shopify's subscription per shop: status, plan,
+  whether it is a test charge, and the period end. Shopify stays the source of
+  truth; this is what the storefront can consult without a round trip.
+- `app_subscriptions/update` is registered. A cancellation, a declined payment,
+  a freeze for non-payment or an expiry disables a published gallery.
+- `composePublicGallery` re-checks the entitlement before serving, so a gallery
+  stops being served even if that webhook never arrives. Closed by default
+  rather than dependent on a delivery.
+- Opening the Plan screen reads the subscription from Shopify and writes what it
+  reads, so a merchant whose approval webhook was missed is repaired rather than
+  left paying with no access.
+- A Shopify **test** charge unlocks features while `SHOPIFY_BILLING_LIVE` is
+  unset, because that is how the flow is exercised before launch, and unlocks
+  nothing once it is `true`.
+- Choosing a plan is step 4 of the five-step onboarding, so it is part of the
+  journey rather than a wall discovered at the end of it.
+
 ## Uninstall, reinstall and erasure
 
 - **Uninstall** disables the gallery first, so the storefront stops serving it
@@ -127,10 +148,11 @@ publish.
 **Privacy answers.** No customer personal data is collected. Mandatory privacy
 webhooks implemented, with erasure verified against a real database.
 
-**Scopes — not yet reduced.** The new product needs `read_products`,
-`read_inventory` and, for checkout measurement, `write_pixels`. The app still
-requests the twelve legacy scopes in `shopify.app.toml`, including
-`read_all_orders`, `read_customers` and `write_products`, which it no longer
-uses. Trimming that list, and adding `write_pixels`, is a deliberate change to
-the public app that has not been made — and until `write_pixels` is granted the
-Web Pixel cannot be activated at all.
+**Scopes.** The development app (`shopify.app.dev.toml`, see
+`docs/dev-shopify-app.md`) requests exactly `read_products`, `read_inventory`
+and `write_pixels`. The **public** app still requests the twelve legacy scopes,
+including `read_all_orders`, `read_customers` and `write_products`, which the
+new product no longer uses. Reducing that list, and adding `write_pixels`, is a
+deliberate change to the public listing that has not been made — and until
+`write_pixels` is granted there, the Web Pixel cannot be activated on a
+production store and checkout is not measured.
