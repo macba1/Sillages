@@ -10,7 +10,7 @@ import { T } from '../../components/gallery/styleTokens';
  */
 export default function Collections() {
   const g = useGallery();
-  const progress = onboardingProgress(g.catalog, g.config, g.preview);
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
   const selected = g.config?.collectionId ?? null;
 
   return (

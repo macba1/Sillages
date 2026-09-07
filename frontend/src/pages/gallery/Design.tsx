@@ -11,7 +11,7 @@ import { GALLERY_STYLES, STYLE_LABELS, type GalleryStyle } from '../../types/gal
  */
 export default function Design() {
   const g = useGallery();
-  const progress = onboardingProgress(g.catalog, g.config, g.preview);
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
 
   const [heading, setHeading] = useState('');
   const [headingDirty, setHeadingDirty] = useState(false);

@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase.js';
 import { isSocialGalleryPlanId, type SocialGalleryPlanId } from '../../config/socialGalleryPlans.js';
 
-const LOG = '[entitlements'.concat(']');
+const LOG = '[entitlements]';
 
 /**
  * What a shop is allowed to do, derived from its subscription.

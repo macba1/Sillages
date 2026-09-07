@@ -167,8 +167,10 @@ export interface OnboardingProgress {
   catalogueReady: boolean;
   collectionChosen: boolean;
   stylePreviewed: boolean;
+  /** Publishing is a paid feature, so a plan is part of the journey. */
+  planChosen: boolean;
   published: boolean;
-  currentStep: 1 | 2 | 3 | 4;
+  currentStep: 1 | 2 | 3 | 4 | 5;
   complete: boolean;
 }
 
@@ -176,21 +178,34 @@ export function onboardingProgress(
   catalog: CatalogStatus | null,
   config: GalleryConfig | null,
   preview: GalleryPreview | null,
+  entitlements: Entitlements | null = null,
 ): OnboardingProgress {
   const catalogueReady = Boolean(catalog?.connected && catalog.productCount > 0);
   // "All products" is a deliberate choice too, so a saved gallery counts.
   const collectionChosen = catalogueReady && Boolean(config);
   const stylePreviewed = collectionChosen && Boolean(preview && preview.posts.length > 0);
   const published = config?.status === 'published';
+  // Unknown entitlements are not treated as a missing plan: a failed lookup
+  // should not tell a paying merchant to go and pay again.
+  const planChosen = entitlements === null || entitlements.canPublish;
 
-  const currentStep = !catalogueReady ? 1 : !stylePreviewed ? 2 : !published ? 3 : 4;
+  const currentStep = !catalogueReady
+    ? 1
+    : !stylePreviewed
+      ? 2
+      : !planChosen
+        ? 4
+        : !published
+          ? 3
+          : 5;
 
   return {
     catalogueReady,
     collectionChosen,
     stylePreviewed,
+    planChosen,
     published,
-    currentStep: currentStep as 1 | 2 | 3 | 4,
-    complete: published,
+    currentStep: currentStep as 1 | 2 | 3 | 4 | 5,
+    complete: published && planChosen,
   };
 }

@@ -9,6 +9,7 @@ import {
   readSubscription,
   startSubscription,
 } from '../services/billing/shopifyBilling.js';
+import { supabaseSubscriptionStore } from '../services/billing/entitlements.js';
 import { getAvailableSocialGalleryPlans } from '../config/socialGalleryPlans.js';
 
 const router = Router();
@@ -34,6 +35,21 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     let unreachable = false;
     try {
       subscription = await readSubscription(shop.shopDomain, shop.accessToken);
+
+      // Shopify is the source of truth, so persist what it says. Without this
+      // the local mirror is only ever written by a webhook, and a merchant
+      // whose approval webhook was missed would keep paying while the product
+      // told them they had no plan.
+      await supabaseSubscriptionStore.upsert({
+        connectionId: shop.connectionId,
+        accountId: shop.accountId,
+        shopifyGid: subscription?.id ?? null,
+        planId: subscription?.planId ?? null,
+        status: (subscription?.status?.toLowerCase() as never) ?? 'none',
+        isTest: subscription?.test ?? true,
+        trialEndsAt: null,
+        currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+      });
     } catch {
       // Shopify being unreachable must not blank the screen; say so instead.
       unreachable = true;

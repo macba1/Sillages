@@ -10,7 +10,7 @@ import { STYLE_LABELS } from '../../types/gallery';
  */
 export default function Preview() {
   const g = useGallery();
-  const progress = onboardingProgress(g.catalog, g.config, g.preview);
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
   const source = g.config?.collectionId
     ? g.collections.find((c) => c.id === g.config?.collectionId)?.title ?? 'A collection'
     : 'Every product';

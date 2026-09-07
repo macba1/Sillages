@@ -133,23 +133,45 @@ beforeEach(() => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('C5: the four onboarding steps track real progress', () => {
+  const PAYING = {
+    canPublish: true, canUseMultipleGalleries: true, canUseAttribution: true,
+    planId: 'growth' as const, status: 'active' as const, isTest: false, reason: null,
+  };
+  const NO_PLAN = { ...PAYING, canPublish: false, canUseAttribution: false, planId: null, status: 'none' as const, reason: 'Choose a plan to publish your gallery.' };
+
   it('walks from a fresh install to a published gallery', () => {
-    expect(onboardingProgress(null, null, null).currentStep).toBe(1);
+    expect(onboardingProgress(null, null, null, PAYING).currentStep).toBe(1);
 
     const empty = { ...CATALOG, productCount: 0 };
-    expect(onboardingProgress(empty, null, null).catalogueReady).toBe(false);
+    expect(onboardingProgress(empty, null, null, PAYING).catalogueReady).toBe(false);
 
-    const synced = onboardingProgress(CATALOG, CONFIG, { ...PREVIEW, posts: [] });
+    const synced = onboardingProgress(CATALOG, CONFIG, { ...PREVIEW, posts: [] }, PAYING);
     expect(synced.catalogueReady).toBe(true);
     expect(synced.currentStep).toBe(2); // nothing to preview yet
 
-    const previewable = onboardingProgress(CATALOG, CONFIG, PREVIEW);
+    const previewable = onboardingProgress(CATALOG, CONFIG, PREVIEW, PAYING);
     expect(previewable.stylePreviewed).toBe(true);
     expect(previewable.currentStep).toBe(3);
 
-    const live = onboardingProgress(CATALOG, { ...CONFIG, status: 'published', version: 1 }, PREVIEW);
+    const live = onboardingProgress(CATALOG, { ...CONFIG, status: 'published', version: 1 }, PREVIEW, PAYING);
     expect(live.published).toBe(true);
     expect(live.complete).toBe(true);
+  });
+
+  it('sends a merchant to the plan before they hit the wall at publish', () => {
+    // Publishing is a paid feature. Walking someone through four steps and then
+    // refusing at the last one is how a setup gets abandoned.
+    const ready = onboardingProgress(CATALOG, CONFIG, PREVIEW, NO_PLAN);
+    expect(ready.planChosen).toBe(false);
+    expect(ready.currentStep).toBe(4);
+    expect(ready.complete).toBe(false);
+  });
+
+  it('does not tell a paying merchant to pay again when the plan cannot be read', () => {
+    // Unknown is not the same as absent.
+    const unknown = onboardingProgress(CATALOG, CONFIG, PREVIEW, null);
+    expect(unknown.planChosen).toBe(true);
+    expect(unknown.currentStep).toBe(3);
   });
 });
 

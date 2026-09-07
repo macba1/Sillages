@@ -13,7 +13,7 @@ import { STYLE_LABELS } from '../../types/gallery';
  */
 export default function Publish() {
   const g = useGallery();
-  const progress = onboardingProgress(g.catalog, g.config, g.preview);
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
   const config = g.config;
   const status = config?.status ?? 'draft';
   const nothingToShow = (g.preview?.posts.length ?? 0) === 0;

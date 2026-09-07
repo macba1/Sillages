@@ -7,7 +7,10 @@ const STEPS = [
   { n: 1, label: 'Catalogue synced', to: '/collections' },
   { n: 2, label: 'Choose a collection and a look', to: '/design' },
   { n: 3, label: 'Preview', to: '/preview' },
-  { n: 4, label: 'Publish', to: '/publish' },
+  // Publishing is a paid feature, so the plan is part of the journey rather
+  // than a wall a merchant discovers at the end of it.
+  { n: 4, label: 'Choose a plan', to: '/plan' },
+  { n: 5, label: 'Publish', to: '/publish' },
 ] as const;
 
 /**
@@ -19,7 +22,8 @@ export function OnboardingSteps({ progress }: { progress: OnboardingProgress }) 
     (n === 1 && progress.catalogueReady) ||
     (n === 2 && progress.stylePreviewed) ||
     (n === 3 && progress.stylePreviewed) ||
-    (n === 4 && progress.published);
+    (n === 4 && progress.planChosen) ||
+    (n === 5 && progress.published);
 
   if (progress.complete) return null;
 

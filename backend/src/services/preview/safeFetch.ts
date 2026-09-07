@@ -260,7 +260,7 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
 
     const result = await nodeRequest(current, {
       headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
-      lookup: pinnedLookup(addresses),
+      lookup: pinnedLookup(addresses, options.allowLoopback === true),
       maxBytes,
       timeoutMs: TIMEOUT_MS,
     });
@@ -321,7 +321,7 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
  * This is the whole rebinding defence in one function, which is why it is
  * exported and tested directly rather than only through a socket.
  */
-export function pinnedLookup(allowed: string[]) {
+export function pinnedLookup(allowed: string[], allowLoopback = false) {
   const permitted = new Set(allowed);
 
   return (
@@ -335,7 +335,12 @@ export function pinnedLookup(allowed: string[]) {
     // Belt and braces: the address must still be in the validated set, and
     // must still be public. A private address can never leave this function
     // even if the set were somehow polluted.
-    if (!target || !permitted.has(target) || isPrivateAddress(target)) {
+    // Loopback is refused unless explicitly permitted, which only the local
+    // test harness does. Node happens to skip the lookup for an IP literal, so
+    // without this the loopback path would work by accident rather than by
+    // decision — and would break the day Node stopped doing that.
+    const privateAndNotPermitted = isPrivateAddress(target) && !allowLoopback;
+    if (!target || !permitted.has(target) || privateAndNotPermitted) {
       (callback as (err: Error | null) => void)(new UnsafeUrlError('That address is not reachable.'));
       return;
     }

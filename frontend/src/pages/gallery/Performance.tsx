@@ -20,7 +20,7 @@ const RANGES = [
  */
 export default function Performance() {
   const g = useGallery();
-  const progress = onboardingProgress(g.catalog, g.config, g.preview);
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
 
   const [range, setRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [data, setData] = useState<PerformanceResponse | null>(null);
