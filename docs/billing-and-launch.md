@@ -112,8 +112,16 @@ has a fixed aspect ratio precisely to keep it at zero.
 
 ### Billing
 
+> **Do this before testing the gallery itself.** Publishing is gated on a live
+> plan, so a store with no subscription serves nothing and the storefront will
+> look broken when it is behaving correctly. The backend logs
+> `not served — none` in that case. A test charge grants full access while
+> `SHOPIFY_BILLING_LIVE` is unset.
+
 With `SHOPIFY_BILLING_LIVE` unset, subscribe to Basic and to Growth, confirm
-Shopify shows a **test** charge and a 14-day trial, then cancel.
+Shopify shows a **test** charge and a 14-day trial. Then cancel and confirm the
+opposite: the gallery stops being served, the Publish screen explains why, and
+re-subscribing brings it back.
 
 ## App Store listing — prepared, not submitted
 
