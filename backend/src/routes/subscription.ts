@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
-import { resolveShopByAccount, resolveShopByDomain } from '../services/catalog/catalogContext.js';
+import { resolveShopByAccount } from '../services/catalog/catalogContext.js';
 import {
   isLiveBilling,
   readSubscription,
@@ -77,26 +77,14 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
 });
 
 // GET /api/subscription/callback — where Shopify returns after approval
-router.get('/callback', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const shopDomain = String(req.query.shop ?? '');
-    const shop = shopDomain ? await resolveShopByDomain(shopDomain) : null;
-
-    // The approval itself lives in Shopify; we only read it back so the UI shows
-    // the truth rather than what we hoped happened.
-    if (shop) {
-      try {
-        const subscription = await readSubscription(shop.shopDomain, shop.accessToken);
-        console.log(`[billing] ${shopDomain}: returned from approval — ${subscription?.status ?? 'no subscription'}`);
-      } catch {
-        console.warn(`[billing] ${shopDomain}: could not read the subscription after approval`);
-      }
-    }
-
-    res.redirect(`${env.FRONTEND_URL.replace(/\/+$/, '')}/plan?billing=done`);
-  } catch (err) {
-    next(err);
-  }
+//
+// A pure redirect. It is unauthenticated, because Shopify sends the merchant
+// here in their browser, so it deliberately does no work: it used to read the
+// subscription back, which meant anyone could make us call Shopify on a
+// merchant's behalf simply by guessing a shop domain. The Plan screen reads the
+// subscription itself, with the merchant's own session, when it loads.
+router.get('/callback', (_req: Request, res: Response) => {
+  res.redirect(`${env.FRONTEND_URL.replace(/\/+$/, '')}/plan?billing=done`);
 });
 
 export default router;
