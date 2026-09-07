@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../lib/api';
-import { GalleryPlaceholder } from './Placeholder';
+import { GalleryPage, Card } from '../../components/gallery/GalleryPage';
+import { T } from '../../components/gallery/styleTokens';
 
 interface Plan {
   id: string;
@@ -9,6 +10,7 @@ interface Plan {
   currency: string;
   interval: string;
   status: 'available' | 'coming_soon';
+  features: string[];
 }
 
 interface PlansResponse {
@@ -17,11 +19,27 @@ interface PlansResponse {
   upcomingPlans: Plan[];
 }
 
+const FEATURE_LABELS: Record<string, string> = {
+  one_gallery: 'One gallery',
+  three_styles: 'Three looks',
+  automatic_catalog_sync: 'Automatic catalogue sync',
+  shoppable_variants: 'Shoppable variants',
+  save_and_share: 'Save and share',
+  essential_metrics: 'Essential metrics',
+  multiple_galleries: 'Several galleries',
+  revenue_attribution: 'Revenue attribution',
+  automatic_reordering: 'Automatic reordering',
+  design_experiments: 'Design experiments',
+  higher_volume: 'Higher volume',
+  multiple_storefronts: 'Several storefronts',
+  advanced_rules: 'Advanced rules',
+  priority_support: 'Priority support',
+};
+
 /**
- * Sprint 0: read-only. Plan data comes from the backend
- * (`GET /api/plans` → `config/socialGalleryPlans.ts`) so pricing has exactly one
- * source of truth. Subscribing is wired up with Shopify Billing in Sprint 6 —
- * there is deliberately no checkout button here, and no Stripe.
+ * Read-only. Plan data comes from the backend so pricing has exactly one source
+ * of truth. Subscribing arrives with Shopify Billing in Sprint 6, which is why
+ * there is deliberately no checkout button here and no Stripe anywhere.
  */
 export default function Plan() {
   const [data, setData] = useState<PlansResponse | null>(null);
@@ -31,63 +49,58 @@ export default function Plan() {
     api
       .get<PlansResponse>('/api/plans')
       .then((res) => setData(res.data))
-      .catch(() => setError('Could not load plans.'));
+      .catch(() => setError('We could not load the plans. Reload the page to try again.'));
   }, []);
 
+  const all = data ? [...data.plans, ...data.upcomingPlans] : [];
+
   return (
-    <GalleryPlaceholder
+    <GalleryPage
       title="Plan"
-      description="Basic and Growth are the launch plans. Billing runs through Shopify Billing."
-      sprint="Sprint 6 (billing)"
+      intro="Basic and Growth are the launch plans. Billing runs through Shopify, so it appears on your Shopify invoice."
+      error={error}
+      loading={!data && !error}
     >
-      <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {error && <p style={{ color: '#8A2E2E', fontSize: 14 }}>{error}</p>}
-        {!data && !error && <p style={{ color: '#5C4B38', fontSize: 14 }}>Loading plans…</p>}
-        {data &&
-          [...data.plans, ...data.upcomingPlans].map((plan) => (
-            <div
-              key={plan.id}
-              style={{
-                border: '1px solid rgba(42,31,20,0.12)',
-                borderRadius: 12,
-                padding: '16px 18px',
-                display: 'flex',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-                background: '#FFFDFA',
-              }}
-            >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+        {all.map((plan) => (
+          <Card key={plan.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontFamily: T.font, fontWeight: 700, fontSize: 17, color: T.ink }}>{plan.name}</span>
+              {plan.priceUsd !== null && (
+                <span style={{ fontSize: 14, color: T.body }}>
+                  ${plan.priceUsd}/{plan.interval}
+                </span>
+              )}
+            </div>
+
+            {plan.status === 'coming_soon' && (
               <span
                 style={{
-                  fontFamily: "'DM Sans', sans-serif",
+                  alignSelf: 'flex-start',
+                  padding: '2px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(42,31,20,0.08)',
+                  fontSize: 11,
                   fontWeight: 600,
-                  fontSize: 15,
-                  color: '#2A1F14',
+                  color: T.body,
                 }}
               >
-                {plan.name}
+                Coming soon
               </span>
-              <span style={{ fontSize: 14, color: '#5C4B38' }}>
-                {plan.priceUsd !== null && `$${plan.priceUsd}/${plan.interval}`}
-                {plan.status === 'coming_soon' && (
-                  <span
-                    style={{
-                      marginLeft: plan.priceUsd !== null ? 8 : 0,
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      background: 'rgba(42,31,20,0.08)',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#5C4B38',
-                    }}
-                  >
-                    Coming soon
-                  </span>
-                )}
-              </span>
-            </div>
-          ))}
+            )}
+
+            <ul style={{ margin: 0, paddingLeft: 18, color: T.body, fontSize: 13, lineHeight: 1.7 }}>
+              {plan.features.map((feature) => (
+                <li key={feature}>{FEATURE_LABELS[feature] ?? feature}</li>
+              ))}
+            </ul>
+          </Card>
+        ))}
       </div>
-    </GalleryPlaceholder>
+
+      <p style={{ marginTop: 20, fontSize: 13, color: T.muted }}>
+        Changing plan is not available yet. It arrives with billing.
+      </p>
+    </GalleryPage>
   );
 }
