@@ -1,0 +1,27 @@
+# Sillages — Web Pixel extension.
+#
+# Measures what happens after a shopper leaves the gallery: adding to cart,
+# starting checkout and completing an order. It runs in Shopify's sandbox and
+# only ever reports aggregate, non-personal facts.
+api_version = "2026-01"
+
+[[extensions]]
+name = "social-gallery-pixel"
+handle = "social-gallery-pixel"
+type = "web_pixel_extension"
+runtime_context = "strict"
+
+  [extensions.customer_privacy]
+  analytics = true
+  marketing = false
+  preferences = false
+  sale_of_data = "disabled"
+
+  [extensions.settings]
+  type = "object"
+
+    [extensions.settings.fields.apiBase]
+    name = "Sillages API"
+    description = "Where measurement is sent. Only change this if Sillages support asks you to."
+    type = "single_line_text_field"
+    validations = [{ name = "min", value = "8" }]

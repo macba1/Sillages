@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { validateShopDomain } from '../lib/shopify.js';
 import { composePublicGallery } from '../services/gallery/galleryService.js';
 import { inactiveGallery } from '../services/gallery/galleryTypes.js';
+import { ingestEventBatch, ingestPurchase } from '../services/events/eventIngestion.js';
 
 const router = Router();
 
@@ -36,7 +37,25 @@ function publicCors(_req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+/**
+ * Measurement has its own budget, separate from both the admin limiter and the
+ * gallery read limiter: a browsing session sends batches, not page loads, and
+ * throttling reads because of writes (or the reverse) would be wrong.
+ */
+const eventsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many events' },
+});
+
 router.options('/gallery/:shopDomain', publicCors, (_req, res) => {
+  res.status(204).end();
+});
+
+router.options(['/events', '/purchase'], publicCors, (_req, res) => {
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.status(204).end();
 });
 
@@ -69,6 +88,48 @@ router.get(
           : 'public, max-age=30',
       );
       res.json(gallery);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/public/events — batched storefront measurement
+router.post(
+  '/events',
+  publicCors,
+  eventsLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await ingestEventBatch(req.body);
+
+      if (!result.ok) {
+        // Deliberately terse: this endpoint tells an anonymous caller nothing
+        // about which shops exist or why exactly a batch was refused.
+        res.status(result.status).json({ error: result.reason });
+        return;
+      }
+
+      res.status(202).json({ accepted: result.accepted, stored: result.stored });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/public/purchase — reported by the Web Pixel after checkout
+router.post(
+  '/purchase',
+  publicCors,
+  eventsLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await ingestPurchase(req.body);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.reason });
+        return;
+      }
+      res.status(202).json({ attributed: result.outcome.attributed });
     } catch (err) {
       next(err);
     }

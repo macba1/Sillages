@@ -123,3 +123,28 @@ export const STYLE_LABELS: Record<GalleryStyle, { name: string; description: str
   warm: { name: 'Warm', description: 'A gently warmer, richer tone.' },
   film: { name: 'Film', description: 'Soft contrast on a printed white frame.' },
 };
+
+// ── Performance (Sprint 4) ──────────────────────────────────────────────────
+
+export interface PerformanceTotals {
+  galleryViews: number;
+  postOpens: number;
+  variantSelects: number;
+  saves: number;
+  shares: number;
+  addToCarts: number;
+  purchases: number;
+  attributedOrders: number;
+  attributedRevenue: number;
+  currency: string | null;
+  sessions: number;
+}
+
+export interface PerformanceResponse {
+  connected: boolean;
+  range: '7d' | '30d' | '90d';
+  measuring: boolean;
+  totals: PerformanceTotals;
+  funnel: { step: string; count: number }[];
+  topProducts: { productId: number; opens: number; addToCarts: number }[];
+}

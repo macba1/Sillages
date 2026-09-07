@@ -1,5 +1,6 @@
 import type { ShopContext } from '../catalog/catalogStore.js';
 import { supabaseGalleryStore, type GalleryStore } from './galleryStore.js';
+import { issueIngestToken } from '../events/ingestToken.js';
 import {
   inactiveGallery,
   isGalleryStyle,
@@ -149,6 +150,7 @@ export async function composePublicGallery(
     shop: shopDomain,
     active: true,
     version: config.version,
+    ingestToken: issueIngestToken(shopDomain),
     style: config.style,
     heading: config.heading,
     showStories: config.showStories,

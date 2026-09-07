@@ -13,7 +13,13 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
 vi.mock('../config/env.js', () => ({
-  env: { NODE_ENV: 'test', PRODUCT_MODE: 'social_gallery', SHOPIFY_APP_URL: 'https://example.test' },
+  env: {
+    NODE_ENV: 'test',
+    PRODUCT_MODE: 'social_gallery',
+    SHOPIFY_APP_URL: 'https://example.test',
+    // A published gallery now issues a signed ingest token for the storefront.
+    SHOPIFY_API_SECRET: 'test-shopify-secret',
+  },
 }));
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error('no db in tests'); } } }));
 
@@ -49,6 +55,8 @@ describe('B7: publish, disable and revert', () => {
     expect(gallery.active).toBe(false);
     expect(gallery.posts).toEqual([]);
     expect(gallery.stories).toEqual([]);
+    // An unpublished shop hands out no ingest token.
+    expect(gallery.ingestToken).toBeNull();
   });
 
   it('publishing makes the gallery live and bumps the version', async () => {
@@ -60,6 +68,7 @@ describe('B7: publish, disable and revert', () => {
 
     const live = await composePublicGallery(SHOP_A.shopDomain, deps());
     expect(live.active).toBe(true);
+    expect(live.ingestToken).toBeTruthy();
     expect(live.style).toBe('warm');
     expect(live.heading).toBe('Shop the look');
     expect(live.posts.length).toBe(5);
@@ -145,6 +154,7 @@ describe('B3 + B4: styles, posts and stories', () => {
     const live = await composePublicGallery(SHOP_A.shopDomain, deps());
 
     const serialised = JSON.stringify(live);
+    expect(serialised).not.toContain('test-shopify-secret');
     expect(serialised).not.toContain(SHOP_A.accountId);
     expect(serialised).not.toContain(SHOP_A.connectionId);
     expect(serialised).not.toMatch(/access_token|accountId|connectionId/i);

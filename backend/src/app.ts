@@ -28,6 +28,7 @@ import plansRoutes from './routes/plans.js';
 import catalogRoutes from './routes/catalog.js';
 import galleryRoutes from './routes/gallery.js';
 import publicGalleryRoutes from './routes/publicGallery.js';
+import performanceRoutes from './routes/performance.js';
 
 /**
  * Declarative map of every mounted router and the product modes it belongs to.
@@ -59,7 +60,8 @@ export const ROUTE_MANIFEST: readonly RouteMount[] = [
   { prefix: '/api/plans', router: plansRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Single source of truth for the new product plans' },
   { prefix: '/api/catalog', router: catalogRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Live Shopify catalogue: status, collections, manual sync' },
   { prefix: '/api/gallery', router: galleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Gallery settings, preview, publish, disable, revert' },
-  { prefix: '/api/public', router: publicGalleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated storefront API consumed by the theme app extension' },
+  { prefix: '/api/performance', router: performanceRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Aggregate gallery performance and attributed revenue' },
+  { prefix: '/api/public', router: publicGalleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated storefront API: gallery reads and event ingestion' },
 
   // ── Legacy product only — retired in social_gallery, never deleted ───────
   { prefix: '/api/briefs', router: briefsRoutes, modes: LEGACY_ONLY, reason: 'Legacy briefs' },

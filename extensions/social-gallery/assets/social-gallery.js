@@ -9,17 +9,29 @@
 import {
   buildApiUrl,
   cartPayload,
+  createEventQueue,
   defaultSelection,
   makeMoneyFormatter,
   optionGroups,
   priceLabel,
+  readSaved,
+  readSession,
   renderablePosts,
   selectVariant,
+  shareLinks,
   styleClass,
+  toggleSaved,
 } from './gallery-core.js';
 
 const ROOT_SELECTOR = '[data-sillages-gallery]';
 const SKELETON_COUNT = 6;
+const SESSION_ATTRIBUTE = '_sillages_sid';
+
+/** Set once the gallery boots, so handlers can reach measurement and saves. */
+let track = { push: () => Promise.resolve(), flush: () => Promise.resolve() };
+let saved = new Set();
+let shopDomain = '';
+let sessionId = '';
 
 function h(tag, attrs = {}, children = []) {
   const el = document.createElement(tag);
@@ -71,6 +83,82 @@ function renderStories(gallery) {
   return rail;
 }
 
+/** Local favourite. No account, no sign-in, stored on this device only. */
+function saveButton(post) {
+  const button = h('button', {
+    class: `sg-save${saved.has(post.id) ? ' sg-save--on' : ''}`,
+    type: 'button',
+    'aria-pressed': saved.has(post.id) ? 'true' : 'false',
+    'aria-label': saved.has(post.id) ? `Remove ${post.title} from saved` : `Save ${post.title}`,
+    text: '♥',
+  });
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const result = toggleSaved(window.localStorage, shopDomain, post.id);
+    saved = new Set(result.list);
+    button.classList.toggle('sg-save--on', result.saved);
+    button.setAttribute('aria-pressed', result.saved ? 'true' : 'false');
+    button.setAttribute('aria-label', result.saved ? `Remove ${post.title} from saved` : `Save ${post.title}`);
+    void track.push(result.saved ? 'save' : 'unsave', { productId: post.id });
+  });
+
+  return button;
+}
+
+/** Link, WhatsApp, and the device's own share sheet when it has one. */
+function shareControls(post) {
+  const links = shareLinks(post, window.location.origin, typeof navigator.share === 'function');
+  const row = h('div', { class: 'sg-share', role: 'group', 'aria-label': 'Share' });
+
+  row.appendChild(
+    h('button', {
+      class: 'sg-share__btn',
+      type: 'button',
+      text: 'Copy link',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(links.link);
+          void track.push('share', { productId: post.id, meta: { channel: 'link' } });
+        } catch {
+          window.prompt('Copy this link', links.link);
+        }
+      },
+    }),
+  );
+
+  row.appendChild(
+    h('a', {
+      class: 'sg-share__btn',
+      href: links.whatsapp,
+      target: '_blank',
+      rel: 'noopener',
+      text: 'WhatsApp',
+      onclick: () => void track.push('share', { productId: post.id, meta: { channel: 'whatsapp' } }),
+    }),
+  );
+
+  if (links.native) {
+    row.appendChild(
+      h('button', {
+        class: 'sg-share__btn',
+        type: 'button',
+        text: 'Share',
+        onclick: async () => {
+          try {
+            await navigator.share(links.native);
+            void track.push('share', { productId: post.id, meta: { channel: 'native' } });
+          } catch {
+            // The shopper dismissed the sheet. Nothing to report.
+          }
+        },
+      }),
+    );
+  }
+
+  return row;
+}
+
 function renderCard(post, format, onOpen) {
   const image = post.image;
   const img = h('img', {
@@ -84,12 +172,15 @@ function renderCard(post, format, onOpen) {
   });
 
   const card = h('article', { class: 'sg-card' }, [
-    h('button', {
-      class: 'sg-card__media',
-      type: 'button',
-      'aria-label': post.title,
-      onclick: () => onOpen(post),
-    }, [img]),
+    h('div', { class: 'sg-card__frame' }, [
+      h('button', {
+        class: 'sg-card__media',
+        type: 'button',
+        'aria-label': post.title,
+        onclick: () => onOpen(post),
+      }, [img]),
+      saveButton(post),
+    ]),
     h('div', { class: 'sg-card__body' }, [
       h('a', { class: 'sg-card__title', href: post.url, text: post.title }),
       h('span', { class: 'sg-card__price', text: priceLabel(post, format) }),
@@ -102,6 +193,7 @@ function renderCard(post, format, onOpen) {
 /** Bottom sheet with the variant selector and quick buy. */
 function openSheet(post, gallery, format) {
   const chosen = defaultSelection(post);
+  void track.push('post_open', { productId: post.id });
   let sheet;
 
   function close() {
@@ -137,6 +229,11 @@ function openSheet(post, gallery, format) {
               'aria-pressed': chosen[group.name] === value ? 'true' : 'false',
               onclick: () => {
                 chosen[group.name] = value;
+                const picked = selectVariant(post, chosen);
+                void track.push('variant_select', {
+                  productId: post.id,
+                  variantId: picked ? picked.id : undefined,
+                });
                 update();
               },
             }),
@@ -170,6 +267,7 @@ function openSheet(post, gallery, format) {
         }),
         ...selectors,
         gallery.showQuickBuy ? buy : null,
+        shareControls(post),
         h('a', { class: 'sg-sheet__link', href: post.url, text: 'View full details' }),
         h('p', { class: 'sg-sheet__status', role: 'status', 'aria-live': 'polite' }),
       ]),
@@ -217,6 +315,11 @@ async function addToCart(variant, button, post) {
 
     button.textContent = 'Added';
     if (status) status.textContent = `${post.title} added to your cart.`;
+    void track.push('add_to_cart', { productId: post.id, variantId: variant.id });
+    void track.flush();
+    // Carries the gallery session into the checkout, which is what lets the
+    // Web Pixel credit the resulting order to the gallery rather than guess.
+    void markCartSession();
     // Themes listen for this to refresh their cart drawer and count.
     document.dispatchEvent(new CustomEvent('sillages:cart:added', { detail: { variantId: variant.id } }));
     setTimeout(() => {
@@ -230,19 +333,33 @@ async function addToCart(variant, button, post) {
   }
 }
 
+async function markCartSession() {
+  if (!sessionId) return;
+  try {
+    await fetch(`${window.Shopify?.routes?.root || '/'}cart/update.js`.replace('//', '/'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attributes: { [SESSION_ATTRIBUTE]: sessionId } }),
+    });
+  } catch {
+    // Attribution falls back to variant matching. Never block the purchase.
+  }
+}
+
 async function boot(root) {
-  const shopDomain = root.dataset.shop;
+  const shop = root.dataset.shop;
   const apiBase = root.dataset.api;
-  if (!shopDomain || !apiBase) {
+  if (!shop || !apiBase) {
     root.remove();
     return;
   }
+  shopDomain = shop;
 
   const skeleton = renderSkeleton(root);
 
   let gallery;
   try {
-    const response = await fetch(buildApiUrl(apiBase, shopDomain), {
+    const response = await fetch(buildApiUrl(apiBase, shop), {
       headers: { Accept: 'application/json' },
       credentials: 'omit',
     });
@@ -265,6 +382,26 @@ async function boot(root) {
     document.documentElement.lang,
   );
 
+  // ── Session, saves and measurement ────────────────────────
+  sessionId = readSession(window.localStorage);
+  saved = new Set(readSaved(window.localStorage, shop));
+
+  if (gallery.ingestToken) {
+    track = createEventQueue({
+      send: (events) =>
+        fetch(`${apiBase.replace(/\/+$/, '')}/api/public/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'omit',
+          keepalive: true,
+          body: JSON.stringify({ token: gallery.ingestToken, sessionId, events }),
+        }),
+    });
+    void track.push('gallery_view', { meta: { style: gallery.style } });
+    // Anything still queued when the shopper leaves is sent with keepalive.
+    window.addEventListener('pagehide', () => void track.flush(), { once: true });
+  }
+
   root.classList.add(styleClass(gallery.style));
 
   const fragment = document.createDocumentFragment();
@@ -283,6 +420,31 @@ async function boot(root) {
   skeleton.remove();
   root.appendChild(fragment);
   root.dataset.ready = 'true';
+  observeViews(grid, posts);
+}
+
+/** Counts a product as seen only once it is actually on screen. */
+function observeViews(grid, posts) {
+  if (typeof IntersectionObserver !== 'function') return;
+
+  const cards = [...grid.children];
+  const seen = new Set();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const index = cards.indexOf(entry.target);
+        const post = posts[index];
+        if (!post || seen.has(post.id)) continue;
+        seen.add(post.id);
+        void track.push('post_view', { productId: post.id, meta: { position: index } });
+        observer.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.5 },
+  );
+
+  for (const card of cards) observer.observe(card);
 }
 
 function init() {

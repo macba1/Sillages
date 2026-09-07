@@ -79,6 +79,11 @@ export interface PublicGallery {
   shop: string;
   active: boolean;
   version: number;
+  /**
+   * Short-lived token the storefront returns with its event batches. Null when
+   * there is nothing published, so an inactive shop hands out nothing.
+   */
+  ingestToken: string | null;
   style: GalleryStyle;
   heading: string | null;
   showStories: boolean;
@@ -93,6 +98,7 @@ export function inactiveGallery(shop: string): PublicGallery {
     shop,
     active: false,
     version: 0,
+    ingestToken: null,
     style: 'original',
     heading: null,
     showStories: false,
