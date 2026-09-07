@@ -61,3 +61,17 @@ about not having them rather than pretending they failed for an unknown reason.
 
 They are skipped **by name**. A migration failing for any other reason stops the
 run.
+
+## Validating the branch
+
+`./scripts/validate.sh` runs everything CI runs, in the same order, plus the
+integration suite against a real database:
+
+```
+Backend    lint · type check · unit tests · build
+Frontend   lint · type check · tests · build in both product modes
+Integration  local database up, migrations applied · 25 tests
+```
+
+It refuses to report success if the integration suite skipped. `--quick` omits
+it and says, in as many words, that the branch is therefore not validated.

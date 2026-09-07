@@ -33,6 +33,42 @@ function isLocal(url: string): boolean {
 
 const enabled = Boolean(TEST_URL && TEST_KEY && isLocal(TEST_URL));
 
+/**
+ * A skipped suite is invisible in a test summary, which is how these 25 tests —
+ * cross-shop isolation, row level security, erasure, the metric aggregates,
+ * retention — sat unrun for a week while everything reported green.
+ *
+ * So when they are skipped, say so, once, and say exactly how to run them.
+ * `npm test` prints this; CI treats a skip as a failure.
+ */
+if (!enabled) {
+  const why = !TEST_URL
+    ? 'SUPABASE_TEST_URL is not set'
+    : !TEST_KEY
+      ? 'SUPABASE_TEST_SERVICE_KEY is not set'
+      : `SUPABASE_TEST_URL (${TEST_URL}) is not localhost, and this suite writes data`;
+
+  console.warn(
+    [
+      '',
+      '  ┌─ integration suite SKIPPED ──────────────────────────────────────┐',
+      `  │ ${why.padEnd(64)}│`,
+      '  │                                                                  │',
+      '  │ These are the only tests that exercise the real database:        │',
+      '  │   cross-shop isolation, row level security, GDPR erasure,        │',
+      '  │   the metric aggregates and retention.                           │',
+      '  │                                                                  │',
+      '  │ Run them with:                                                   │',
+      '  │   ./scripts/dev-supabase.sh start                                │',
+      '  │   ./scripts/dev-supabase.sh test                                 │',
+      '  │                                                                  │',
+      '  │ CI runs them on every branch and fails if they are skipped.      │',
+      '  └──────────────────────────────────────────────────────────────────┘',
+      '',
+    ].join('\n'),
+  );
+}
+
 let db: SupabaseClient;
 let store: CatalogStore;
 let runCatalogSync: typeof import('../services/catalog/catalogSync.js')['runCatalogSync'];
