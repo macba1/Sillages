@@ -107,3 +107,28 @@ Events are queued and flushed in batches of 20, or on `pagehide` with
 `keepalive`. A failed send is dropped rather than retried, because a lost
 measurement is better than a stuck queue on someone's storefront. Saves are
 local-first: no account, no sign-in, no request needed to favourite something.
+
+## Retention
+
+Measurement is not kept forever. `gallery_events` has no natural ceiling — a
+busy storefront emits a `post_view` per product per shopper — and keeping raw
+per-shopper rows indefinitely would contradict a privacy policy that says
+measurement is aggregate.
+
+| Data | Kept for | Why |
+|---|---|---|
+| `gallery_events` | 90 days | covers the longest window the panel offers |
+| `gallery_attribution` | 400 days | revenue is what a merchant looks back at across a year |
+| `shopify_webhook_events` | 30 days | well past any Shopify retry |
+| `saved_products` | while the shop is installed | state, not history |
+
+`applyRetention()` runs nightly at 03:10 and deletes in bounded batches of
+50,000, repeating until a batch removes nothing or a cap of 20 batches is
+reached — so a database with years of backlog is drained over several nights
+rather than locking the table for minutes in one go. A run that hits the cap
+says so and the next one continues.
+
+Verified against a real Postgres: rows at 200 days go, rows at 10 and at **89**
+days stay (the boundary is not eaten), attribution past 400 days goes while
+attribution at 100 days stays, the batch limit is respected, and a second run on
+a clean database deletes nothing.

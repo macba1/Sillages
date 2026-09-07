@@ -723,3 +723,139 @@ describe.skipIf(!enabled)('gallery totals are accurate and shop-scoped', () => {
     void accountA;
   });
 });
+
+/**
+ * Retention, against a real Postgres.
+ *
+ * The purge is a database function operating on real timestamps and real
+ * batching; asserting it against a fake would prove nothing about either.
+ */
+describe.skipIf(!enabled)('retention removes expired measurement', () => {
+  let admin: SupabaseClient;
+  const users: string[] = [];
+  let connectionId: string;
+
+  beforeAll(async () => {
+    admin = createClient(TEST_URL!, TEST_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+
+    const email = `retention-${Date.now()}@dev.local`;
+    const { data: user, error } = await admin.auth.admin.createUser({
+      email, password: 'dev-only-password', email_confirm: true,
+    });
+    if (error) throw new Error(error.message);
+    users.push(user.user.id);
+
+    const { data: account } = await admin
+      .from('accounts').upsert({ user_id: user.user.id, email }, { onConflict: 'user_id' })
+      .select('id').single();
+    const { data: connection } = await admin
+      .from('shopify_connections')
+      .insert({
+        account_id: account!.id,
+        shop_domain: `retention-${Date.now()}.myshopify.com`,
+        access_token: 'dev-only-token',
+        scopes: 'read_products',
+      })
+      .select('id').single();
+    connectionId = connection!.id;
+
+    const day = 86400000;
+    const rows = [
+      // Old enough to go.
+      ...Array.from({ length: 30 }, (_, i) => ({
+        connection_id: connectionId, session_id: `sess-old-${i}0000000`, event_type: 'post_view',
+        occurred_at: new Date(Date.now() - 200 * day).toISOString(), dedupe_key: `ret-old-${i}`,
+      })),
+      // Inside the window, must survive.
+      ...Array.from({ length: 12 }, (_, i) => ({
+        connection_id: connectionId, session_id: `sess-new-${i}0000000`, event_type: 'gallery_view',
+        occurred_at: new Date(Date.now() - 10 * day).toISOString(), dedupe_key: `ret-new-${i}`,
+      })),
+      // Just inside 90 days: the boundary must not be eaten.
+      {
+        connection_id: connectionId, session_id: 'sess-edge-00000000', event_type: 'post_open',
+        occurred_at: new Date(Date.now() - 89 * day).toISOString(), dedupe_key: 'ret-edge',
+      },
+    ];
+    const { error: insertError } = await admin.from('gallery_events').insert(rows);
+    if (insertError) throw new Error(`seeding events failed: ${insertError.message}`);
+
+    await admin.from('gallery_attribution').insert([
+      { connection_id: connectionId, order_shopify_id: 810001, match: 'variant', amount: 10, currency: 'EUR',
+        occurred_at: new Date(Date.now() - 500 * day).toISOString() },
+      { connection_id: connectionId, order_shopify_id: 810002, match: 'variant', amount: 20, currency: 'EUR',
+        occurred_at: new Date(Date.now() - 100 * day).toISOString() },
+    ]);
+
+    await admin.from('shopify_webhook_events').insert([
+      { webhook_id: `ret-old-${Date.now()}`, topic: 'products/update', shop_domain: 'x',
+        processed_at: new Date(Date.now() - 60 * day).toISOString() },
+      { webhook_id: `ret-new-${Date.now()}`, topic: 'products/update', shop_domain: 'x',
+        processed_at: new Date().toISOString() },
+    ]);
+  }, 60_000);
+
+  afterAll(async () => {
+    for (const id of users) await admin.auth.admin.deleteUser(id);
+  });
+
+  async function countEvents(): Promise<number> {
+    const { count } = await admin
+      .from('gallery_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('connection_id', connectionId);
+    return count ?? 0;
+  }
+
+  it('deletes what expired and keeps what is inside the window', async () => {
+    expect(await countEvents()).toBe(43);
+
+    const { data, error } = await admin
+      .rpc('purge_gallery_events', { p_event_days: 90, p_attribution_days: 400, p_limit: 50000 })
+      .single();
+
+    expect(error).toBeNull();
+    const row = data as { events_deleted: number; attribution_deleted: number };
+    expect(Number(row.events_deleted)).toBe(30);
+    expect(Number(row.attribution_deleted)).toBe(1);
+
+    // The 12 recent rows and the one at 89 days survive.
+    expect(await countEvents()).toBe(13);
+
+    const { count: attribution } = await admin
+      .from('gallery_attribution')
+      .select('id', { count: 'exact', head: true })
+      .eq('connection_id', connectionId);
+    expect(attribution).toBe(1);
+  }, 60_000);
+
+  it('respects its batch limit, so one run cannot lock the table', async () => {
+    const day = 86400000;
+    await admin.from('gallery_events').insert(
+      Array.from({ length: 10 }, (_, i) => ({
+        connection_id: connectionId, session_id: `sess-batch-${i}0000000`, event_type: 'post_view',
+        occurred_at: new Date(Date.now() - 300 * day).toISOString(), dedupe_key: `ret-batch-${i}`,
+      })),
+    );
+
+    const { data } = await admin
+      .rpc('purge_gallery_events', { p_event_days: 90, p_attribution_days: 400, p_limit: 4 })
+      .single();
+
+    expect(Number((data as { events_deleted: number }).events_deleted)).toBe(4);
+  }, 60_000);
+
+  it('removes webhook keys past their retention', async () => {
+    const { data, error } = await admin.rpc('purge_webhook_events', { p_days: 30 });
+    expect(error).toBeNull();
+    expect(Number(data)).toBeGreaterThanOrEqual(1);
+  }, 60_000);
+
+  it('is a no-op on a database with nothing expired', async () => {
+    await admin.rpc('purge_gallery_events', { p_event_days: 90, p_attribution_days: 400, p_limit: 50000 });
+    const { data } = await admin
+      .rpc('purge_gallery_events', { p_event_days: 90, p_attribution_days: 400, p_limit: 50000 })
+      .single();
+    expect(Number((data as { events_deleted: number }).events_deleted)).toBe(0);
+  }, 60_000);
+});

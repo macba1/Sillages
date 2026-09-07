@@ -4,6 +4,7 @@ import { listActiveShops } from './catalogContext.js';
 import { runCatalogSync } from './catalogSync.js';
 import { supabaseCatalogStore } from './supabaseCatalogStore.js';
 import { supabasePreviewStore } from '../preview/previewStore.js';
+import { applyRetention } from '../events/retention.js';
 
 const LOG = '[catalogScheduler]';
 
@@ -18,6 +19,9 @@ const RECONCILIATION_CRON = '20 4 * * *'; // 04:20 server time, off-peak
 
 /** Unclaimed before/after demos are temporary and clean themselves up. */
 const PREVIEW_CLEANUP_CRON = '50 3 * * *';
+
+/** Measurement retention. Off-peak, and before the catalogue work. */
+const RETENTION_CRON = '10 3 * * *';
 
 /** Space out shops so a nightly run does not hit Shopify in one burst. */
 const SHOP_DELAY_MS = 2_000;
@@ -40,7 +44,15 @@ export function startCatalogScheduler(): void {
     });
   });
 
-  console.log(`${LOG} Started — preview cleanup at 03:50, catalogue reconciliation at 04:20`);
+  cron.schedule(RETENTION_CRON, () => {
+    applyRetention().catch((err) => {
+      console.error(`${LOG} Retention error:`, err);
+    });
+  });
+
+  console.log(
+    `${LOG} Started — retention at 03:10, preview cleanup at 03:50, catalogue reconciliation at 04:20`,
+  );
 }
 
 export async function runNightlyReconciliation(

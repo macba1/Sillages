@@ -305,9 +305,9 @@ describe('Test 5: legacy background jobs', () => {
     const sgCatalog = await import('../services/catalog/catalogScheduler.js');
     sgCatalog.startCatalogScheduler();
 
-    // Nightly catalogue reconciliation and expired-preview cleanup.
+    // Nightly catalogue reconciliation, expired-preview cleanup and retention.
     const schedules = sg.schedule.mock.calls.map((call) => call[0]);
-    expect(schedules).toEqual(['20 4 * * *', '50 3 * * *']);
+    expect(schedules).toEqual(['20 4 * * *', '50 3 * * *', '10 3 * * *']);
 
     const legacy = await loadScheduler('legacy');
     const legacyCatalog = await import('../services/catalog/catalogScheduler.js');
