@@ -23,6 +23,8 @@ import type { CatalogStore, ShopContext } from '../services/catalog/catalogStore
 
 const TEST_URL = process.env.SUPABASE_TEST_URL;
 const TEST_KEY = process.env.SUPABASE_TEST_SERVICE_KEY;
+/** Needed to prove RLS from a merchant's point of view, not the backend's. */
+const TEST_ANON_KEY = process.env.SUPABASE_TEST_ANON_KEY;
 
 /** Hard stop: this suite writes data, so it may only ever talk to localhost. */
 function isLocal(url: string): boolean {
@@ -229,6 +231,40 @@ describe.skipIf(!enabled)('supabaseCatalogStore against a real Supabase', () => 
    * reasoned about: seed every table the new product writes, delete the
    * connection the way the redact handler does, and count what survives.
    */
+  /**
+   * The reclaim added after the review, verified against the real partial
+   * unique index rather than against the in-memory mirror of it.
+   */
+  it('reclaims a run whose process died, against the real unique index', async () => {
+    const abandoned = await store.startSyncRun(ctx, 'manual');
+    expect(abandoned).not.toBeNull();
+
+    // Exactly what a killed process leaves behind: still 'running', heartbeat
+    // frozen in the past.
+    await db
+      .from('catalog_sync_runs')
+      .update({ heartbeat_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .eq('id', abandoned!.id);
+
+    // Before the fix this returned null forever and the shop was frozen.
+    const fresh = await store.startSyncRun(ctx, 'reconciliation');
+    expect(fresh).not.toBeNull();
+
+    const { data: reclaimed } = await db
+      .from('catalog_sync_runs')
+      .select('status, error')
+      .eq('id', abandoned!.id)
+      .single();
+    expect(reclaimed!.status).toBe('failed');
+    expect(reclaimed!.error).toMatch(/stopped responding/i);
+
+    await store.finishSyncRun(fresh!.id, {
+      productsSeen: 0, productsUpserted: 0, productsDeleted: 0, variantsUpserted: 0,
+      imagesUpserted: 0, collectionsSeen: 0, collectionsUpserted: 0, collectionsDeleted: 0,
+      collectionLinksUpserted: 0,
+    });
+  }, 60_000);
+
   it('deleting the connection removes every trace of the shop', async () => {
     // The 137-product fixture has no collections, so seed one plus a membership
     // row: the point of this test is that *every* table is reached.
@@ -334,4 +370,177 @@ describe.skipIf(!enabled)('supabaseCatalogStore against a real Supabase', () => 
       .eq('shop_domain', ctx.shopDomain);
     expect(previews, 'previews are not cascaded, so they must be deleted explicitly').toBe(0);
   }, 60_000);
+});
+
+/**
+ * Cross-shop isolation, proved from a merchant's point of view.
+ *
+ * The service-role client the backend uses bypasses RLS, so the other suites
+ * can only show that our *queries* are scoped. This one signs in as two real
+ * merchants with the anon key and asserts the database itself refuses to hand
+ * one shop the other's rows — which is the guarantee that survives a future
+ * query written without a `.eq('connection_id', ...)`.
+ */
+describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops apart', () => {
+  let admin: SupabaseClient;
+  const created: string[] = [];
+
+  interface Merchant {
+    userId: string;
+    accountId: string;
+    connectionId: string;
+    email: string;
+    password: string;
+  }
+
+  async function makeMerchant(label: string): Promise<Merchant> {
+    const email = `rls-${label}-${Date.now()}@dev.local`;
+    const password = 'dev-only-password';
+
+    const { data: user, error: userError } = await admin.auth.admin.createUser({
+      email, password, email_confirm: true,
+    });
+    if (userError) throw new Error(`seed user failed: ${userError.message}`);
+    created.push(user.user.id);
+
+    const { data: account, error: accountError } = await admin
+      .from('accounts').upsert({ user_id: user.user.id, email }, { onConflict: 'user_id' })
+      .select('id').single();
+    if (accountError) throw new Error(`seed account failed: ${accountError.message}`);
+
+    const { data: connection, error: connectionError } = await admin
+      .from('shopify_connections')
+      .insert({
+        account_id: account.id,
+        shop_domain: `rls-${label}-${Date.now()}.myshopify.com`,
+        access_token: 'dev-only-token',
+        scopes: 'read_products',
+      })
+      .select('id').single();
+    if (connectionError) throw new Error(`seed connection failed: ${connectionError.message}`);
+
+    // One row in every table a merchant can read.
+    await admin.from('catalog_products').insert({
+      account_id: account.id, connection_id: connection.id,
+      shopify_id: `gid://shopify/Product/${label}`, handle: `${label}-product`, title: `${label} product`,
+    });
+    await admin.from('catalog_collections').insert({
+      account_id: account.id, connection_id: connection.id,
+      shopify_id: `gid://shopify/Collection/${label}`, handle: `${label}-collection`, title: `${label} collection`,
+    });
+    await admin.from('gallery_configs').insert({
+      account_id: account.id, connection_id: connection.id, style: 'warm',
+    });
+    await admin.from('gallery_events').insert({
+      connection_id: connection.id, session_id: `sess-${label}-12345678`,
+      event_type: 'gallery_view', occurred_at: new Date().toISOString(), dedupe_key: `rls-${label}`,
+    });
+    await admin.from('gallery_attribution').insert({
+      connection_id: connection.id, order_shopify_id: Math.floor(Math.random() * 1e9),
+      match: 'variant', amount: 10, currency: 'EUR', occurred_at: new Date().toISOString(),
+    });
+    await admin.from('saved_products').insert({
+      connection_id: connection.id, session_id: `sess-${label}-12345678`, product_shopify_id: 1,
+    });
+
+    return { userId: user.user.id, accountId: account.id, connectionId: connection.id, email, password };
+  }
+
+  /** A client authenticated as that merchant, with the anon key, so RLS applies. */
+  async function clientFor(merchant: Merchant): Promise<SupabaseClient> {
+    const client = createClient(TEST_URL!, TEST_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error } = await client.auth.signInWithPassword({
+      email: merchant.email, password: merchant.password,
+    });
+    if (error) throw new Error(`sign-in failed: ${error.message}`);
+    return client;
+  }
+
+  let alpha: Merchant;
+  let beta: Merchant;
+  let asAlpha: SupabaseClient;
+
+  beforeAll(async () => {
+    admin = createClient(TEST_URL!, TEST_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+    alpha = await makeMerchant('alpha');
+    beta = await makeMerchant('beta');
+    asAlpha = await clientFor(alpha);
+  }, 60_000);
+
+  afterAll(async () => {
+    for (const id of created) await admin.auth.admin.deleteUser(id);
+  });
+
+  const TABLES = [
+    'catalog_products',
+    'catalog_collections',
+    'gallery_configs',
+    'gallery_events',
+    'gallery_attribution',
+    'saved_products',
+  ] as const;
+
+  it('a merchant sees their own rows in every table', async () => {
+    for (const table of TABLES) {
+      const { data, error } = await asAlpha.from(table).select('*');
+      expect(error, `${table} should be readable by its owner`).toBeNull();
+      expect(data?.length ?? 0, `${table} should return the owner's row`).toBeGreaterThan(0);
+    }
+  });
+
+  it('a merchant sees none of the other shop\'s rows, in any table', async () => {
+    for (const table of TABLES) {
+      const { data, error } = await asAlpha.from(table).select('*').eq('connection_id', beta.connectionId);
+      expect(error, table).toBeNull();
+      // RLS filters rather than errors, so an empty result is the guarantee.
+      expect(data, `${table} leaked another shop's rows`).toEqual([]);
+    }
+  });
+
+  it('a merchant cannot write at all, to their own rows or to anyone else', async () => {
+    // Only the backend's service role writes. The policies grant select only,
+    // so an anon-key client is read-only even on its own data.
+    const own = await asAlpha.from('gallery_configs').update({ style: 'film' }).eq('account_id', alpha.accountId).select('id');
+    expect(own.data ?? []).toEqual([]);
+
+    const other = await asAlpha.from('gallery_configs').update({ style: 'film' }).eq('account_id', beta.accountId).select('id');
+    expect(other.data ?? []).toEqual([]);
+
+    const inserted = await asAlpha.from('gallery_events').insert({
+      connection_id: beta.connectionId, session_id: 'sess-forged-12345678',
+      event_type: 'purchase', occurred_at: new Date().toISOString(), dedupe_key: 'forged-1',
+    });
+    expect(inserted.error, 'an anon client must not be able to write events').not.toBeNull();
+  });
+
+  it('previews and claim tokens are not readable by anyone but the backend', async () => {
+    await admin.from('preview_projects').insert({
+      shop_domain: 'rls-preview.myshopify.com',
+      source_url: 'https://rls-preview.myshopify.com',
+      public_token: `rls-${Date.now()}`,
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    // RLS is enabled with no select policy, so these are invisible to every
+    // client except the service role.
+    for (const table of ['preview_projects', 'preview_claim_tokens', 'shopify_webhook_events'] as const) {
+      const { data } = await asAlpha.from(table).select('*');
+      expect(data ?? [], `${table} must not be readable by a merchant`).toEqual([]);
+    }
+
+    await admin.from('preview_projects').delete().eq('shop_domain', 'rls-preview.myshopify.com');
+  });
+
+  it('an anonymous visitor sees nothing at all', async () => {
+    const anonymous = createClient(TEST_URL!, TEST_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    for (const table of TABLES) {
+      const { data } = await anonymous.from(table).select('*');
+      expect(data ?? [], `${table} is readable without signing in`).toEqual([]);
+    }
+  });
 });

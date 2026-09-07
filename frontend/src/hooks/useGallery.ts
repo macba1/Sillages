@@ -24,11 +24,18 @@ function messageFor(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Whether the storefront has actually rendered the gallery since publishing. */
+export interface StorefrontStatus {
+  seen: boolean;
+  lastSeenAt: string | null;
+}
+
 export interface GalleryState {
   loading: boolean;
   error: string | null;
   config: GalleryConfig | null;
   versions: GalleryVersion[];
+  storefront: StorefrontStatus | null;
   collections: Collection[];
   catalog: CatalogStatus | null;
   preview: GalleryPreview | null;
@@ -48,6 +55,7 @@ export function useGallery(): GalleryState {
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<GalleryConfig | null>(null);
   const [versions, setVersions] = useState<GalleryVersion[]>([]);
+  const [storefront, setStorefront] = useState<StorefrontStatus | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null);
   const [preview, setPreview] = useState<GalleryPreview | null>(null);
@@ -55,13 +63,16 @@ export function useGallery(): GalleryState {
   const reload = useCallback(async () => {
     try {
       const [galleryRes, collectionsRes, catalogRes, previewRes] = await Promise.all([
-        api.get<{ gallery: GalleryConfig; versions: GalleryVersion[] }>('/api/gallery'),
+        api.get<{ gallery: GalleryConfig; versions: GalleryVersion[]; storefront: StorefrontStatus | null }>(
+          '/api/gallery',
+        ),
         api.get<{ collections: Collection[] }>('/api/catalog/collections'),
         api.get<CatalogStatus>('/api/catalog/status'),
         api.get<GalleryPreview>('/api/gallery/preview'),
       ]);
       setConfig(galleryRes.data.gallery);
       setVersions(galleryRes.data.versions);
+      setStorefront(galleryRes.data.storefront ?? null);
       setCollections(collectionsRes.data.collections);
       setCatalog(catalogRes.data);
       setPreview(previewRes.data);
@@ -127,6 +138,7 @@ export function useGallery(): GalleryState {
     error,
     config,
     versions,
+    storefront,
     collections,
     catalog,
     preview,

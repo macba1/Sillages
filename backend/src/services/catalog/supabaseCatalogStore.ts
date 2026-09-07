@@ -1,5 +1,12 @@
 import { supabase } from '../../lib/supabase.js';
-import type { CatalogStore, ShopContext, StoredVariantRef, SyncRun } from './catalogStore.js';
+import {
+  RUN_STALE_AFTER_MS,
+  STALE_RUN_ERROR,
+  type CatalogStore,
+  type ShopContext,
+  type StoredVariantRef,
+  type SyncRun,
+} from './catalogStore.js';
 import type { CatalogCollection, CatalogProduct, SyncCounts, SyncTrigger } from './catalogTypes.js';
 import { emptyCounts } from './catalogTypes.js';
 
@@ -18,6 +25,22 @@ function toNumeric(value: string | null): number | null {
 
 export const supabaseCatalogStore: CatalogStore = {
   async startSyncRun(ctx: ShopContext, trigger: SyncTrigger): Promise<SyncRun | null> {
+    // Reclaim any run whose process died before inserting a new one. The unique
+    // index means a single abandoned row would otherwise freeze this shop's
+    // catalogue permanently.
+    const staleCutoff = new Date(Date.now() - RUN_STALE_AFTER_MS).toISOString();
+    const { data: reclaimed } = await supabase
+      .from('catalog_sync_runs')
+      .update({ status: 'failed', finished_at: new Date().toISOString(), error: STALE_RUN_ERROR })
+      .eq('connection_id', ctx.connectionId)
+      .eq('status', 'running')
+      .lt('heartbeat_at', staleCutoff)
+      .select('id');
+
+    if (reclaimed && reclaimed.length > 0) {
+      console.warn(`[catalogSync] ${ctx.shopDomain}: reclaimed ${reclaimed.length} abandoned sync run(s)`);
+    }
+
     const { data, error } = await supabase
       .from('catalog_sync_runs')
       .insert({
@@ -77,13 +100,19 @@ export const supabaseCatalogStore: CatalogStore = {
 
     if (error || !data) return null;
 
+    const status = data.status as 'running' | 'completed' | 'failed';
+    const heartbeatAt = Date.parse((data.heartbeat_at as string) ?? (data.started_at as string));
+
     return {
       id: data.id as string,
       trigger: data.trigger as SyncTrigger,
-      status: data.status as 'running' | 'completed' | 'failed',
+      status,
       startedAt: data.started_at as string,
       finishedAt: (data.finished_at as string | null) ?? null,
       error: (data.error as string | null) ?? null,
+      // A run that says "running" but stopped reporting is stopped, and the
+      // interface must not claim otherwise.
+      stale: status === 'running' && Number.isFinite(heartbeatAt) && heartbeatAt < Date.now() - RUN_STALE_AFTER_MS,
       counts: {
         ...emptyCounts(),
         productsSeen: (data.products_seen as number) ?? 0,

@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 vi.mock('../config/env.js', () => ({
@@ -437,5 +438,58 @@ describe('D1-D3: saving, sharing and the event queue in the browser', () => {
 
     await expect(queue.push('gallery_view')).resolves.toBeUndefined();
     await expect(queue.flush()).resolves.toBeUndefined();
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// D5 — the Web Pixel. It runs in Shopify's sandbox and cannot be executed here,
+// so its contract is pinned against the source: what it subscribes to, what it
+// refuses to send, and that nothing leaves before consent.
+describe('D5: the Web Pixel contract', () => {
+  const source = readFileSync(
+    resolve(__dirname, '../../../extensions/social-gallery-pixel/src/index.js'),
+    'utf8',
+  );
+
+  it('subscribes only to consent, checkout started and checkout completed', () => {
+    const topics = [...source.matchAll(/analytics\.subscribe\('([^']+)'/g)].map((m) => m[1]);
+    expect(topics.sort()).toEqual(['checkout_completed', 'checkout_started', 'visitor_consent_collected']);
+  });
+
+  it('does not report add-to-cart, which the gallery already reports with the real session', () => {
+    // Shopify's add-to-cart event carries no cart attributes, so the pixel
+    // cannot know the gallery session. Reporting anyway would double-count
+    // every add and inflate the shopper count with invented sessions.
+    expect(source).not.toContain("subscribe('product_added_to_cart'");
+    expect(source).toContain('Deliberately NOT subscribing');
+  });
+
+  it('sends nothing until Shopify allows analytics, and re-checks on consent change', () => {
+    expect(source).toMatch(/analyticsProcessingAllowed/);
+    expect(source).toMatch(/if \(!allowed\) return/);
+    // Consent is re-read when the shopper changes it, not just once at load.
+    const consentHandler = source.slice(source.indexOf("subscribe('visitor_consent_collected'"));
+    expect(consentHandler).toMatch(/allowed = Boolean/);
+  });
+
+  it('reads the gallery session from the cart attribute rather than inventing one', () => {
+    expect(source).toContain("SESSION_ATTRIBUTE = '_sillages_sid'");
+    // The value is validated before being sent, so a tampered cart attribute
+    // cannot become an arbitrary session id.
+    expect(source).toMatch(/\^\[A-Za-z0-9_-\]\{8,64\}\$/);
+  });
+
+  it('never sends anything person-shaped', () => {
+    for (const field of ['email', 'phone', 'customerId', 'firstName', 'lastName', 'address']) {
+      expect(source.toLowerCase(), field).not.toContain(`${field.toLowerCase()}:`);
+    }
+  });
+
+  it('never lets measurement interfere with a purchase', () => {
+    // Every send is fire-and-forget with a catch, so a failing endpoint cannot
+    // break somebody's checkout.
+    expect(source).toMatch(/\.catch\(\(\) => \{/);
+    expect(source).toContain('keepalive: true');
   });
 });

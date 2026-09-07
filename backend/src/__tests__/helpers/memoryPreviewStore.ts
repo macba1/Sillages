@@ -72,6 +72,11 @@ export class MemoryPreviewStore implements PreviewStore {
     project.status = 'claimed';
   }
 
+  async recordProposalChoice(id: string, proposal: string): Promise<void> {
+    const project = this.projects.find((p) => p.id === id);
+    if (project && project.claimedByConnectionId === null) project.claimedProposal = proposal;
+  }
+
   async createClaimToken(previewId: string, proposal: string, expiresAt: string): Promise<string> {
     const token = crypto.randomBytes(24).toString('base64url');
     this.claims.push({ token, previewId, proposal, usedAt: null, expiresAt });

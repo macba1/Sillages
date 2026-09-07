@@ -39,6 +39,11 @@ export interface PreviewStore {
   /** The most recent unclaimed preview for a shop, used when it installs. */
   findUnclaimedForShop(shopDomain: string): Promise<PreviewProject | null>;
   markClaimed(id: string, connectionId: string, proposal: string): Promise<void>;
+  /**
+   * Records which design the merchant picked, before they leave for Shopify.
+   * The preview stays unclaimed — only the choice is remembered.
+   */
+  recordProposalChoice(id: string, proposal: string): Promise<void>;
   createClaimToken(previewId: string, proposal: string, expiresAt: string): Promise<string>;
   consumeClaimToken(token: string): Promise<{ previewId: string; proposal: string } | null>;
   deleteExpired(now: string): Promise<number>;
@@ -121,6 +126,15 @@ export const supabasePreviewStore: PreviewStore = {
       })
       .eq('id', id);
     if (error) throw new Error(`claiming the preview failed: ${error.message}`);
+  },
+
+  async recordProposalChoice(id: string, proposal: string): Promise<void> {
+    const { error } = await supabase
+      .from('preview_projects')
+      .update({ claimed_proposal: proposal })
+      .eq('id', id)
+      .is('claimed_by_connection_id', null);
+    if (error) throw new Error(`recording the choice failed: ${error.message}`);
   },
 
   async createClaimToken(previewId: string, proposal: string, expiresAt: string) {

@@ -138,8 +138,13 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function describeSync(lastSync: { status: string; startedAt: string; finishedAt: string | null } | null): string {
+function describeSync(
+  lastSync: { status: string; stale?: boolean; startedAt: string; finishedAt: string | null } | null,
+): string {
   if (!lastSync) return 'Never';
+  // "In progress" is only ever shown for a run that is genuinely still
+  // reporting. One that stopped is reported as stopped.
+  if (lastSync.stale) return 'Stopped';
   if (lastSync.status === 'running') return 'In progress';
   if (lastSync.status === 'failed') return 'Failed';
   return new Date(lastSync.finishedAt ?? lastSync.startedAt).toLocaleString();

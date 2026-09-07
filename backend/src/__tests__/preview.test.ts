@@ -26,7 +26,13 @@ vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error
 import { safeFetch, UnsafeUrlError, __testing } from '../services/preview/safeFetch.js';
 import { detectStore, normaliseStoreUrl, StoreDetectionError } from '../services/preview/storeDetector.js';
 import { buildProposals, newPublicToken } from '../services/preview/previewGenerator.js';
-import { claimPreview, createPreview, publicPreviewPayload, startClaim } from '../services/preview/previewService.js';
+import {
+  claimPreview,
+  createPreview,
+  publicPreviewPayload,
+  recordPreviewChoice,
+  startClaim,
+} from '../services/preview/previewService.js';
 import { MemoryPreviewStore } from './helpers/memoryPreviewStore.js';
 
 function product(i: number, images = 2) {
@@ -309,6 +315,22 @@ describe('E6 + E7: install from the demo and get the same design', () => {
 
     await claimPreview(claim.claimToken, 'shop.myshopify.com', 'conn-1', { store });
     expect(await claimPreview(claim.claimToken, 'shop.myshopify.com', 'conn-2', { store })).toBeNull();
+  });
+
+  it('recovers the design the merchant actually chose, not the first one', async () => {
+    // The install link goes through our own /auth, but Shopify's authorize URL
+    // carries only client_id, scope, redirect_uri and state — our claim token
+    // does not survive the round trip. The choice therefore has to be recorded
+    // before the redirect, or a merchant who picks Film gets Original.
+    const project = await seedPreview();
+    const claim = await startClaim(project.publicToken, 'film', { store });
+    if (!claim.ok) throw new Error('claim failed');
+
+    await recordPreviewChoice(claim.claimToken, { store });
+
+    const claimed = await claimPreview(undefined, 'shop.myshopify.com', 'conn-1', { store });
+
+    expect(claimed?.proposal).toBe('film');
   });
 
   it('still recovers the demo when the merchant installs from the App Store instead', async () => {

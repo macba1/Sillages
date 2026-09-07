@@ -12,6 +12,7 @@ import {
   saveGallery,
 } from '../services/gallery/galleryService.js';
 import { supabaseGalleryStore } from '../services/gallery/galleryStore.js';
+import { supabaseEventStore } from '../services/events/eventStore.js';
 
 const router = Router();
 
@@ -31,7 +32,18 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     const shop = await requireShop(req);
     const config = await getGallery(shop);
     const versions = await supabaseGalleryStore.listVersions(config.id);
-    res.json({ gallery: config, versions });
+
+    // "Published" and "actually on the storefront" are different things: the
+    // gallery only renders once the merchant has added the block to their
+    // theme. Reporting the first as if it were the second would leave someone
+    // staring at a live badge and zero traffic with no idea why.
+    let storefront: { seen: boolean; lastSeenAt: string | null } | null = null;
+    if (config.status === 'published' && config.publishedAt) {
+      const lastSeenAt = await supabaseEventStore.lastGalleryViewSince(shop.connectionId, config.publishedAt);
+      storefront = { seen: lastSeenAt !== null, lastSeenAt };
+    }
+
+    res.json({ gallery: config, versions, storefront });
   } catch (err) {
     next(err);
   }

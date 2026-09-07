@@ -101,27 +101,16 @@ register(({ analytics, browser, init, settings }) => {
     return `${prefix}-${suffix}`.slice(0, 64);
   }
 
-  analytics.subscribe('product_added_to_cart', (event) => {
-    const line = event?.data?.cartLine;
-    const variantId = Number(line?.merchandise?.id?.toString().replace(/\D/g, ''));
-    const sessionId = sessionFrom(event?.data?.cartLine?.cost ? null : null);
-    if (!Number.isSafeInteger(variantId) || !variantId) return;
-
-    // Without a gallery session this is still useful as a shop-level signal,
-    // but it is only attributed later if the variant matches a gallery
-    // interaction, so a plain product-page add is not miscredited.
-    void send('/api/public/events', {
-      sessionId: sessionId || `pixel${event.id}`.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64).padEnd(8, '0'),
-      events: [
-        {
-          type: 'add_to_cart',
-          id: eventId('atc', event.id),
-          occurredAt: new Date(event.timestamp || Date.now()).toISOString(),
-          variantId,
-        },
-      ],
-    });
-  });
+  // Deliberately NOT subscribing to `product_added_to_cart`.
+  //
+  // Shopify's add-to-cart event does not expose cart attributes, so the pixel
+  // cannot know which gallery session an add belongs to. Reporting it anyway
+  // would mean inventing a session id per pixel event, which would double-count
+  // every add the gallery already reports with the real session and inflate the
+  // shopper count with sessions that are not shoppers.
+  //
+  // The gallery reports its own adds, with the correct session. The pixel's job
+  // is the two things the gallery cannot see: checkout and the completed order.
 
   analytics.subscribe('checkout_started', (event) => {
     const checkout = event?.data?.checkout;

@@ -49,11 +49,17 @@ router.get('/status', requireAuth, async (req: Request, res: Response, next: Nex
       lastSync: lastSync
         ? {
             trigger: lastSync.trigger,
-            status: lastSync.status,
+            // A run whose heartbeat stopped is reported as stopped, not as
+            // still running: the interface must never show a state with no
+            // live process behind it.
+            status: lastSync.stale ? ('failed' as const) : lastSync.status,
+            stale: lastSync.stale,
             startedAt: lastSync.startedAt,
             finishedAt: lastSync.finishedAt,
             counts: lastSync.counts,
-            error: lastSync.error,
+            error: lastSync.stale && !lastSync.error
+              ? 'The last sync stopped responding. Run it again.'
+              : lastSync.error,
           }
         : null,
     });

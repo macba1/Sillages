@@ -1,6 +1,7 @@
 import type { CatalogStore, ShopContext, StoredVariantRef, SyncRun } from '../../services/catalog/catalogStore.js';
 import type { CatalogCollection, CatalogProduct, SyncCounts, SyncTrigger } from '../../services/catalog/catalogTypes.js';
 import { emptyCounts } from '../../services/catalog/catalogTypes.js';
+import { RUN_STALE_AFTER_MS, STALE_RUN_ERROR } from '../../services/catalog/catalogStore.js';
 
 /**
  * In-memory `CatalogStore` that mirrors the SQL semantics of
@@ -73,6 +74,7 @@ interface RunRow {
   startedAt: string;
   finishedAt: string | null;
   heartbeats: number;
+  heartbeatAt: number;
   counts: SyncCounts;
   error: string | null;
 }
@@ -94,6 +96,17 @@ export class MemoryCatalogStore implements CatalogStore {
   // ── Sync runs ─────────────────────────────────────────────
 
   async startSyncRun(ctx: ShopContext, trigger: SyncTrigger): Promise<SyncRun | null> {
+    // Mirrors the store: a run whose heartbeat stopped is reclaimed first, so a
+    // process that died mid-sync cannot block this shop forever.
+    const cutoff = Date.now() - RUN_STALE_AFTER_MS;
+    for (const run of this.runs) {
+      if (run.connectionId === ctx.connectionId && run.status === 'running' && run.heartbeatAt < cutoff) {
+        run.status = 'failed';
+        run.finishedAt = new Date().toISOString();
+        run.error = STALE_RUN_ERROR;
+      }
+    }
+
     // Mirrors the partial unique index: one running row per connection.
     if (this.runs.some((r) => r.connectionId === ctx.connectionId && r.status === 'running')) {
       return null;
@@ -106,6 +119,7 @@ export class MemoryCatalogStore implements CatalogStore {
       startedAt: new Date().toISOString(),
       finishedAt: null,
       heartbeats: 0,
+      heartbeatAt: Date.now(),
       counts: emptyCounts(),
       error: null,
     };
@@ -115,7 +129,16 @@ export class MemoryCatalogStore implements CatalogStore {
 
   async heartbeatSyncRun(runId: string): Promise<void> {
     const run = this.runs.find((r) => r.id === runId);
-    if (run) run.heartbeats += 1;
+    if (!run) return;
+    run.heartbeats += 1;
+    run.heartbeatAt = Date.now();
+  }
+
+  /** Simulates a process that died mid-sync: the row stays 'running', the
+   *  heartbeat stops. */
+  stallRun(runId: string, ageMs = RUN_STALE_AFTER_MS + 60_000): void {
+    const run = this.runs.find((r) => r.id === runId);
+    if (run) run.heartbeatAt = Date.now() - ageMs;
   }
 
   async finishSyncRun(runId: string, counts: SyncCounts, error?: string): Promise<void> {
@@ -139,6 +162,7 @@ export class MemoryCatalogStore implements CatalogStore {
       finishedAt: run.finishedAt,
       counts: run.counts,
       error: run.error,
+      stale: run.status === 'running' && run.heartbeatAt < Date.now() - RUN_STALE_AFTER_MS,
     };
   }
 

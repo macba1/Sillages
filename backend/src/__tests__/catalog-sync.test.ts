@@ -175,7 +175,36 @@ describe('A4: syncing twice is idempotent', () => {
     }
   });
 
-  it('refuses to start a second sync while one is already running', async () => {
+  it('reclaims a run whose process died, instead of blocking the shop forever', async () => {
+    const shop = makeDevStore(5);
+
+    // A sync starts and the process is killed: the row stays 'running' and the
+    // heartbeat stops. Without recovery the partial unique index would block
+    // every future sync for this shop, and the merchant would be told a sync is
+    // "in progress" indefinitely.
+    const abandoned = await store.startSyncRun(CTX, 'install');
+    store.stallRun(abandoned!.id);
+
+    const outcome = await runCatalogSync(CTX, 'dev-token', 'reconciliation', depsFor(shop, store));
+
+    expect(outcome.status).toBe('completed');
+    expect(await store.countProducts(CTX.connectionId)).toBe(5);
+
+    const reclaimed = store.runs.find((r) => r.id === abandoned!.id);
+    expect(reclaimed?.status).toBe('failed');
+    expect(reclaimed?.error).toMatch(/stopped responding/i);
+  });
+
+  it('reports a stalled run as stopped, never as still in progress', async () => {
+    const abandoned = await store.startSyncRun(CTX, 'manual');
+    expect((await store.getLastSyncRun(CTX.connectionId))?.stale).toBe(false);
+
+    store.stallRun(abandoned!.id);
+
+    expect((await store.getLastSyncRun(CTX.connectionId))?.stale).toBe(true);
+  });
+
+  it('refuses to start a second sync while one is genuinely still running', async () => {
     const shop = makeDevStore(5);
     await store.startSyncRun(CTX, 'manual'); // simulate a run in flight
 

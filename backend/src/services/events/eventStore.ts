@@ -62,6 +62,13 @@ export interface EventStore {
   upsertAttribution(row: AttributionRow): Promise<boolean>;
   totals(connectionId: string, since: string): Promise<PerformanceTotals>;
   topProducts(connectionId: string, since: string, limit: number): Promise<TopProduct[]>;
+  /**
+   * When the storefront last rendered the gallery, or null if it never has.
+   * This is how "published" is told apart from "published and actually on the
+   * storefront": publishing alone does nothing until the merchant adds the
+   * block to their theme.
+   */
+  lastGalleryViewSince(connectionId: string, since: string): Promise<string | null>;
   recentJourney(connectionId: string, limit: number): Promise<
     { sessionId: string; steps: { type: GalleryEventType; occurredAt: string; productId: number | null }[] }[]
   >;
@@ -218,6 +225,21 @@ export const supabaseEventStore: EventStore = {
     return [...byProduct.values()]
       .sort((a, b) => b.addToCarts - a.addToCarts || b.opens - a.opens)
       .slice(0, limit);
+  },
+
+  async lastGalleryViewSince(connectionId: string, since: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('gallery_events')
+      .select('occurred_at')
+      .eq('connection_id', connectionId)
+      .eq('event_type', 'gallery_view')
+      .gte('occurred_at', since)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data.occurred_at as string;
   },
 
   async recentJourney(connectionId: string, limit: number) {

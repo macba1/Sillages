@@ -86,11 +86,14 @@ SQL
 cmd_test() {
   require supabase
   cd "$WORKDIR"
-  local key
-  key="$(supabase status --output json | python3 -c 'import json,sys; print(json.load(sys.stdin)["SERVICE_ROLE_KEY"])')"
+  local status key anon
+  status="$(supabase status --output json)"
+  key="$(printf '%s' "$status" | python3 -c 'import json,sys; print(json.load(sys.stdin)["SERVICE_ROLE_KEY"])')"
+  anon="$(printf '%s' "$status" | python3 -c 'import json,sys; print(json.load(sys.stdin)["ANON_KEY"])')"
   cd "$REPO_ROOT/backend"
   SUPABASE_TEST_URL=http://127.0.0.1:54321 \
   SUPABASE_TEST_SERVICE_KEY="$key" \
+  SUPABASE_TEST_ANON_KEY="$anon" \
     npx vitest run src/__tests__/catalog-store.integration.test.ts
 }
 

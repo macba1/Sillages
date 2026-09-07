@@ -24,6 +24,7 @@ import { syncAbandonedCarts } from '../services/abandonedCartsSync.js';
 import { generateBrief } from '../services/briefGenerator.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
 import { onShopifyConnected, shouldRegisterLegacyWebhookTopics } from '../services/catalog/catalogInstall.js';
+import { recordPreviewChoice } from '../services/preview/previewService.js';
 import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
@@ -81,6 +82,12 @@ router.get('/auth', async (req: Request, res: Response, next: NextFunction) => {
       // The callback handles this case by looking up shop_domain or redirecting to signup.
       console.log(`[shopify/auth] Shopify-initiated install for ${shop} — no auth token, skipping state storage`);
     }
+
+    // A merchant arriving from a before/after demo carries the design they
+    // chose. Shopify's authorize URL cannot carry it onward, so remember it now.
+    await recordPreviewChoice(
+      typeof req.query.preview === 'string' ? req.query.preview : undefined,
+    );
 
     const installUrl = buildInstallUrl(shop, state, credentials);
     res.redirect(installUrl);
@@ -276,7 +283,7 @@ router.get(
             } catch { /* non-fatal */ }
 
             // social_gallery: register catalogue topics and run the first import.
-            await onShopifyConnected(shop, tokenData.access_token, req.query.preview as string | undefined);
+            await onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
 
             // Assign Starter plan
             await supabase
@@ -421,7 +428,7 @@ router.get(
       }
 
       // social_gallery: register catalogue topics and run the first import.
-      await onShopifyConnected(shop, tokenData.access_token, req.query.preview as string | undefined);
+      await onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
 
       // Check if this is a reconnection (existing account with subscription)
       const { data: existingAccount } = await supabase

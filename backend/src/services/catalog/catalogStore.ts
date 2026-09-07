@@ -8,6 +8,20 @@ import type { CatalogCollection, CatalogProduct, SyncCounts, SyncTrigger } from 
  * tests instead of a mocked query builder.
  */
 
+/**
+ * A sync whose heartbeat stopped for this long is treated as dead.
+ *
+ * A process can be killed mid-sync — a deploy, an out-of-memory kill, a
+ * container restart — and it has no chance to mark its own run failed. Without
+ * a reclaim the row stays 'running' forever, the partial unique index blocks
+ * every future sync for that shop, and the merchant is told a sync is in
+ * progress indefinitely. Long enough not to interrupt a genuinely slow import
+ * of a large catalogue; short enough that a shop is not stuck for a day.
+ */
+export const RUN_STALE_AFTER_MS = 15 * 60 * 1000;
+
+export const STALE_RUN_ERROR = 'The sync stopped responding and was cancelled automatically.';
+
 export interface ShopContext {
   accountId: string;
   connectionId: string;
@@ -41,6 +55,8 @@ export interface CatalogStore {
     finishedAt: string | null;
     counts: SyncCounts;
     error: string | null;
+    /** True when the run says 'running' but its heartbeat stopped. */
+    stale: boolean;
   } | null>;
 
   // ── Products ──────────────────────────────────────────────

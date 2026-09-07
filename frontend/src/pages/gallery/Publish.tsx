@@ -16,6 +16,9 @@ export default function Publish() {
   const config = g.config;
   const status = config?.status ?? 'draft';
   const nothingToShow = (g.preview?.posts.length ?? 0) === 0;
+  // Published is not the same as visible: the block still has to be in the
+  // theme. Until we have seen the storefront load it, say so.
+  const publishedButUnseen = status === 'published' && g.storefront !== null && !g.storefront.seen;
 
   return (
     <GalleryPage
@@ -28,11 +31,13 @@ export default function Publish() {
     >
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} unseen={publishedButUnseen} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontFamily: T.font, fontWeight: 600, fontSize: 15, color: T.ink }}>
               {status === 'published'
-                ? `Live on your store — version ${config?.version}`
+                ? publishedButUnseen
+                  ? `Published — version ${config?.version}, not seen on your storefront yet`
+                  : `Live on your store — version ${config?.version}`
                 : status === 'disabled'
                   ? 'Turned off'
                   : 'Not published yet'}
@@ -66,6 +71,14 @@ export default function Publish() {
         {nothingToShow && (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: T.danger }}>
             There is nothing to publish yet. Sync your catalogue, or pick a collection that has products.
+          </p>
+        )}
+
+        {publishedButUnseen && (
+          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#8A6520', lineHeight: 1.6 }}>
+            Your gallery is published, but we have not seen it load on your storefront yet. That almost always means
+            the block has not been added to your theme — the one-time step below. If you have just added it, open
+            your storefront once and this will update.
           </p>
         )}
       </Card>
@@ -117,10 +130,12 @@ export default function Publish() {
   );
 }
 
-function StatusBadge({ status }: { status: 'draft' | 'published' | 'disabled' }) {
+function StatusBadge({ status, unseen }: { status: 'draft' | 'published' | 'disabled'; unseen?: boolean }) {
   const palette =
     status === 'published'
-      ? { bg: 'rgba(46,122,74,0.14)', fg: '#2E7A4A', label: 'Live' }
+      ? unseen
+        ? { bg: 'rgba(201,150,74,0.20)', fg: '#8A6520', label: 'Published' }
+        : { bg: 'rgba(46,122,74,0.14)', fg: '#2E7A4A', label: 'Live' }
       : status === 'disabled'
         ? { bg: 'rgba(138,46,46,0.12)', fg: T.danger, label: 'Off' }
         : { bg: 'rgba(42,31,20,0.08)', fg: T.muted, label: 'Draft' };

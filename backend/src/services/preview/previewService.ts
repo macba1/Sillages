@@ -126,6 +126,36 @@ export async function startClaim(
   return { ok: true, installUrl, claimToken };
 }
 
+/**
+ * Remembers the chosen design at the moment the merchant leaves for Shopify.
+ *
+ * Shopify's authorize URL carries only client_id, scope, redirect_uri and
+ * state, so our claim token does not survive the round trip and the callback
+ * never sees it. Recording the choice here is what makes "install and get
+ * exactly the design you were shown" true rather than aspirational.
+ *
+ * Never throws: a failure here costs the merchant their chosen style, not their
+ * installation.
+ */
+export async function recordPreviewChoice(
+  claimToken: string | undefined,
+  deps: PreviewDeps = {},
+): Promise<boolean> {
+  if (!claimToken) return false;
+  const store = deps.store ?? supabasePreviewStore;
+
+  try {
+    const consumed = await store.consumeClaimToken(claimToken);
+    if (!consumed) return false;
+    await store.recordProposalChoice(consumed.previewId, consumed.proposal);
+    console.log(`${LOG} recorded the "${consumed.proposal}" choice before the install`);
+    return true;
+  } catch (err) {
+    console.warn(`${LOG} could not record the preview choice: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 export interface ClaimedPreview {
   proposal: GalleryStyle;
   projectId: string;
@@ -160,7 +190,10 @@ export async function claimPreview(
   const project = await store.findUnclaimedForShop(shopDomain);
   if (!project) return null;
 
-  const proposal = project.proposals[0]?.style;
+  // The design the merchant actually picked, recorded before they left for
+  // Shopify. Falling back to the first proposal would silently hand someone who
+  // chose Film the Original design instead.
+  const proposal = project.claimedProposal ?? project.proposals[0]?.style;
   if (!isGalleryStyle(proposal)) return null;
 
   await store.markClaimed(project.id, connectionId, proposal);

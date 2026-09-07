@@ -111,6 +111,8 @@ export interface CatalogStatus {
   lastSync: {
     trigger: string;
     status: 'running' | 'completed' | 'failed';
+    /** True when the run claims to be running but stopped reporting. */
+    stale?: boolean;
     startedAt: string;
     finishedAt: string | null;
     counts: SyncCounts;

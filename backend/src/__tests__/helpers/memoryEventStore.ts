@@ -119,6 +119,19 @@ export class MemoryEventStore implements EventStore {
       .slice(0, limit);
   }
 
+  async lastGalleryViewSince(connectionId: string, since: string): Promise<string | null> {
+    const cutoff = Date.parse(since);
+    const views = this.events
+      .filter(
+        (e) =>
+          e.connectionId === connectionId &&
+          e.type === 'gallery_view' &&
+          Date.parse(e.occurredAt) >= cutoff,
+      )
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    return views[0]?.occurredAt ?? null;
+  }
+
   async recentJourney(connectionId: string, limit: number) {
     const bySession = new Map<string, { type: GalleryEventType; occurredAt: string; productId: number | null }[]>();
     for (const event of this.events.filter((e) => e.connectionId === connectionId)) {

@@ -98,10 +98,19 @@ function mockApi(overrides: {
   versions?: unknown[];
   preview?: Partial<GalleryPreview>;
   catalog?: Partial<CatalogStatus>;
+  storefront?: { seen: boolean; lastSeenAt: string | null } | null;
 } = {}) {
   const config = { ...CONFIG, ...overrides.config };
   get.mockImplementation(async (url: string) => {
-    if (url === '/api/gallery') return { data: { gallery: config, versions: overrides.versions ?? [] } };
+    if (url === '/api/gallery') {
+      return {
+        data: {
+          gallery: config,
+          versions: overrides.versions ?? [],
+          storefront: overrides.storefront ?? null,
+        },
+      };
+    }
     if (url === '/api/catalog/collections') return { data: { collections: COLLECTIONS } };
     if (url === '/api/catalog/status') return { data: { ...CATALOG, ...overrides.catalog } };
     if (url === '/api/gallery/preview') return { data: { ...PREVIEW, ...overrides.preview } };
@@ -310,5 +319,57 @@ describe('C6: failures are visible and actionable', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/Wait a minute and try again/);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Review follow-up: the interface must never show a state with no real process
+// behind it.
+describe('the interface never claims more than it knows', () => {
+  it('says "Published", not "Live", until the storefront has actually loaded it', async () => {
+    mockApi({
+      config: { status: 'published', version: 1 },
+      storefront: { seen: false, lastSeenAt: null },
+    });
+    renderPage(<Publish />);
+
+    expect(await screen.findByText('Published')).toBeInTheDocument();
+    expect(screen.queryByText('Live')).not.toBeInTheDocument();
+    expect(screen.getByText(/not seen on your storefront yet/)).toBeInTheDocument();
+    // And it says what to do about it.
+    expect(screen.getByText(/the block has not been added to your theme/)).toBeInTheDocument();
+  });
+
+  it('says "Live" once the storefront has loaded it', async () => {
+    mockApi({
+      config: { status: 'published', version: 1 },
+      storefront: { seen: true, lastSeenAt: '2026-09-07T10:00:00Z' },
+    });
+    renderPage(<Publish />);
+
+    expect(await screen.findByText('Live')).toBeInTheDocument();
+    expect(screen.queryByText(/not seen on your storefront yet/)).not.toBeInTheDocument();
+  });
+
+  it('reports a sync whose process died as stopped, not as in progress', async () => {
+    mockApi({
+      catalog: {
+        lastSync: {
+          trigger: 'manual',
+          status: 'failed',
+          stale: true,
+          startedAt: '2026-09-07T09:00:00Z',
+          finishedAt: null,
+          counts: CATALOG.lastSync!.counts,
+          error: 'The last sync stopped responding. Run it again.',
+        },
+      },
+    });
+    renderPage(<Collections />);
+
+    expect(await screen.findByText('Stopped')).toBeInTheDocument();
+    expect(screen.queryByText('In progress')).not.toBeInTheDocument();
+    expect(screen.getByText(/stopped responding/)).toBeInTheDocument();
   });
 });
