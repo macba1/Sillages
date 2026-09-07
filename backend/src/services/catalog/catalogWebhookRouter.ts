@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase.js';
 import { handleCatalogWebhook, isCatalogWebhookTopic, type CatalogWebhookDeps } from './catalogWebhooks.js';
+import { handleSubscriptionUpdate, type SubscriptionWebhookDeps } from '../billing/subscriptionWebhook.js';
 
 const LOG = '[catalogWebhook]';
 
@@ -12,6 +13,12 @@ const LOG = '[catalogWebhook]';
  */
 
 export interface DispatchDeps extends CatalogWebhookDeps {
+  /**
+   * Subscription handling has its own store and clock, so it is nested rather
+   * than merged: flattening it would silently hand the catalogue store to the
+   * billing handler.
+   */
+  subscription?: SubscriptionWebhookDeps;
   /** Injected in tests. Defaults to the shared idempotency table. */
   markProcessed?: (webhookId: string, topic: string, shopDomain: string) => Promise<boolean>;
   /** Undoes the idempotency claim when a delivery could not be applied. */
@@ -91,6 +98,19 @@ export async function dispatchSocialGalleryWebhook(
       return { status: 'ignored', topic, reason: outcome.reason };
     }
     console.log(`${LOG} ${topic} from ${shopDomain} -> ${outcome.action}${outcome.detail ? ` (${outcome.detail})` : ''}`);
+    return { status: 'processed', topic };
+  }
+
+  // A plan change has to take the paid feature away, not just be recorded.
+  if (topic === 'app_subscriptions/update') {
+    const outcome = await handleSubscriptionUpdate(shopDomain, payload, {
+      resolveShop: deps.resolveShop,
+      ...deps.subscription,
+    });
+    if (!outcome.handled) {
+      await (deps.releaseProcessed ?? releaseWebhook)(webhookId);
+      return { status: 'ignored', topic, reason: outcome.reason };
+    }
     return { status: 'processed', topic };
   }
 

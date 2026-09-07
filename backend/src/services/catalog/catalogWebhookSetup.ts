@@ -6,7 +6,13 @@ import { CATALOG_WEBHOOK_TOPICS } from './catalogWebhooks.js';
  * Topics registered for the new product: the catalogue ones plus
  * `app/uninstalled`, which must keep working in every mode.
  */
-export const SOCIAL_GALLERY_WEBHOOK_TOPICS = [...CATALOG_WEBHOOK_TOPICS, 'app/uninstalled'] as const;
+export const SOCIAL_GALLERY_WEBHOOK_TOPICS = [
+  ...CATALOG_WEBHOOK_TOPICS,
+  'app/uninstalled',
+  // Without this a cancellation, a declined payment or an expired trial never
+  // reaches us and the gallery keeps serving indefinitely.
+  'app_subscriptions/update',
+] as const;
 
 const LOG = '[catalogWebhookSetup]';
 
@@ -27,6 +33,7 @@ const TOPIC_TO_ENUM: Record<string, string> = {
   'collections/delete': 'COLLECTIONS_DELETE',
   'inventory_levels/update': 'INVENTORY_LEVELS_UPDATE',
   'app/uninstalled': 'APP_UNINSTALLED',
+  'app_subscriptions/update': 'APP_SUBSCRIPTIONS_UPDATE',
 };
 
 const LIST_QUERY = `

@@ -34,18 +34,26 @@ import {
 import { composePost } from '../services/gallery/galleryStore.js';
 import { numericShopifyId } from '../services/gallery/galleryTypes.js';
 import { MemoryGalleryStore } from './helpers/memoryGalleryStore.js';
+import { MemorySubscriptionStore } from './helpers/memorySubscriptionStore.js';
 import type { ShopContext } from '../services/catalog/catalogStore.js';
 
 const SHOP_A: ShopContext = { accountId: 'acc-a', connectionId: 'conn-a', shopDomain: 'alpha.myshopify.com' };
 const SHOP_B: ShopContext = { accountId: 'acc-b', connectionId: 'conn-b', shopDomain: 'beta.myshopify.com' };
 
 let store: MemoryGalleryStore;
-const deps = () => ({ store });
+let subscriptions: MemorySubscriptionStore;
+
+/** Publishing is a paid feature, so every shop here has a live plan by default. */
+const deps = () => ({ store, subscriptions });
 
 beforeEach(() => {
   store = new MemoryGalleryStore();
   store.seedShop(SHOP_A, { products: 5, collections: 2 });
   store.seedShop(SHOP_B, { products: 3, collections: 1 });
+
+  subscriptions = new MemorySubscriptionStore();
+  subscriptions.setLive(SHOP_A, 'growth');
+  subscriptions.setLive(SHOP_B, 'basic');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -63,8 +71,10 @@ describe('B7: publish, disable and revert', () => {
     await saveGallery(SHOP_A, { style: 'warm', heading: 'Shop the look' }, deps());
     const published = await publishGallery(SHOP_A, deps());
 
-    expect(published?.status).toBe('published');
-    expect(published?.version).toBe(1);
+    expect(published.ok).toBe(true);
+    if (!published.ok) return;
+    expect(published.gallery.status).toBe('published');
+    expect(published.gallery.version).toBe(1);
 
     const live = await composePublicGallery(SHOP_A.shopDomain, deps());
     expect(live.active).toBe(true);

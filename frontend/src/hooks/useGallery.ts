@@ -3,6 +3,7 @@ import api from '../lib/api';
 import type {
   CatalogStatus,
   Collection,
+  Entitlements,
   GalleryConfig,
   GalleryPreview,
   GalleryVersion,
@@ -19,6 +20,7 @@ function messageFor(err: unknown, fallback: string): string {
   const response = (err as { response?: { status?: number; data?: { error?: string } } }).response;
   if (response?.data?.error) return response.data.error;
   if (response?.status === 409) return 'A sync is already running. Give it a moment.';
+  if (response?.status === 402) return response?.data?.error ?? 'Choose a plan to publish your gallery.';
   if (response?.status === 429) return 'Too many attempts. Wait a minute and try again.';
   if (response?.status === 502) return 'Shopify did not answer. Try again in a few minutes.';
   return fallback;
@@ -36,6 +38,7 @@ export interface GalleryState {
   config: GalleryConfig | null;
   versions: GalleryVersion[];
   storefront: StorefrontStatus | null;
+  entitlements: Entitlements | null;
   collections: Collection[];
   catalog: CatalogStatus | null;
   preview: GalleryPreview | null;
@@ -56,6 +59,7 @@ export function useGallery(): GalleryState {
   const [config, setConfig] = useState<GalleryConfig | null>(null);
   const [versions, setVersions] = useState<GalleryVersion[]>([]);
   const [storefront, setStorefront] = useState<StorefrontStatus | null>(null);
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null);
   const [preview, setPreview] = useState<GalleryPreview | null>(null);
@@ -63,9 +67,12 @@ export function useGallery(): GalleryState {
   const reload = useCallback(async () => {
     try {
       const [galleryRes, collectionsRes, catalogRes, previewRes] = await Promise.all([
-        api.get<{ gallery: GalleryConfig; versions: GalleryVersion[]; storefront: StorefrontStatus | null }>(
-          '/api/gallery',
-        ),
+        api.get<{
+          gallery: GalleryConfig;
+          versions: GalleryVersion[];
+          storefront: StorefrontStatus | null;
+          entitlements: Entitlements | null;
+        }>('/api/gallery'),
         api.get<{ collections: Collection[] }>('/api/catalog/collections'),
         api.get<CatalogStatus>('/api/catalog/status'),
         api.get<GalleryPreview>('/api/gallery/preview'),
@@ -73,6 +80,7 @@ export function useGallery(): GalleryState {
       setConfig(galleryRes.data.gallery);
       setVersions(galleryRes.data.versions);
       setStorefront(galleryRes.data.storefront ?? null);
+      setEntitlements(galleryRes.data.entitlements ?? null);
       setCollections(collectionsRes.data.collections);
       setCatalog(catalogRes.data);
       setPreview(previewRes.data);
@@ -139,6 +147,7 @@ export function useGallery(): GalleryState {
     config,
     versions,
     storefront,
+    entitlements,
     collections,
     catalog,
     preview,

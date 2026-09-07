@@ -6,6 +6,7 @@ import { resolveShopByAccount } from '../services/catalog/catalogContext.js';
 import {
   composePublicGallery,
   disableGallery,
+  entitlementsForShop,
   getGallery,
   publishGallery,
   revertGallery,
@@ -43,7 +44,10 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       storefront = { seen: lastSeenAt !== null, lastSeenAt };
     }
 
-    res.json({ gallery: config, versions, storefront });
+    // The interface needs to know what this shop may do before offering it.
+    const entitlements = await entitlementsForShop(shop);
+
+    res.json({ gallery: config, versions, storefront, entitlements });
   } catch (err) {
     next(err);
   }
@@ -92,9 +96,14 @@ router.get('/preview', requireAuth, async (req: Request, res: Response, next: Ne
 router.post('/publish', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const shop = await requireShop(req);
-    const published = await publishGallery(shop);
-    if (!published) throw new AppError(400, 'There is no gallery to publish yet');
-    res.json({ gallery: published });
+    const result = await publishGallery(shop);
+
+    if (!result.ok) {
+      // 402 for a missing plan so the interface can offer the plan screen
+      // rather than showing a generic failure.
+      throw new AppError(result.reason === 'no_plan' ? 402 : 400, result.message);
+    }
+    res.json({ gallery: result.gallery });
   } catch (err) {
     next(err);
   }

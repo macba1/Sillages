@@ -359,13 +359,35 @@ describe('A4: idempotency and defensive handling', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('A7: legacy topics in social_gallery mode', () => {
   it('ignores orders and checkouts instead of running legacy handlers', async () => {
-    for (const topic of ['orders/create', 'checkouts/create', 'checkouts/update', 'app_subscriptions/update']) {
+    // app_subscriptions/update is deliberately NOT in this list any more: the
+    // new product handles it, because losing a plan has to disable the gallery.
+    for (const topic of ['orders/create', 'checkouts/create', 'checkouts/update']) {
       const result = await dispatchSocialGalleryWebhook(topic, CTX.shopDomain, `wh-${topic}`, {}, {
         ...deps(),
         markProcessed: async () => false,
       });
       expect(result).toEqual({ status: 'ignored', topic, reason: 'legacy_topic' });
     }
+  });
+
+  it('handles a subscription change rather than ignoring it', async () => {
+    const result = await dispatchSocialGalleryWebhook(
+      'app_subscriptions/update',
+      CTX.shopDomain,
+      'wh-sub',
+      { app_subscription: { name: 'Sillages Basic', status: 'CANCELLED', test: false } },
+      {
+        ...deps(),
+        markProcessed: async () => false,
+        subscription: {
+          store: { get: async () => null, upsert: async () => {}, clear: async () => {} },
+          galleryStore: { getByConnection: async () => null } as never,
+          resolveShop: async () => RESOLVED,
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: 'processed', topic: 'app_subscriptions/update' });
   });
 
   it('still delegates app/uninstalled so uninstall keeps working', async () => {

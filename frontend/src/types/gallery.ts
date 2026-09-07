@@ -154,3 +154,16 @@ export interface PerformanceResponse {
   funnel: { step: string; count: number }[];
   topProducts: { productId: number; opens: number; addToCarts: number }[];
 }
+
+// ── Entitlements (what this shop's plan allows) ─────────────────────────────
+
+export interface Entitlements {
+  canPublish: boolean;
+  canUseMultipleGalleries: boolean;
+  canUseAttribution: boolean;
+  planId: 'basic' | 'growth' | 'pro' | null;
+  status: 'none' | 'pending' | 'active' | 'declined' | 'expired' | 'frozen' | 'cancelled';
+  isTest: boolean;
+  /** Why publishing is unavailable, in words a merchant can act on. */
+  reason: string | null;
+}

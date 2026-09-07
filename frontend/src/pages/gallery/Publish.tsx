@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useGallery, onboardingProgress } from '../../hooks/useGallery';
 import { GalleryPage, Button, Card } from '../../components/gallery/GalleryPage';
 import { T } from '../../components/gallery/styleTokens';
@@ -19,6 +20,9 @@ export default function Publish() {
   // Published is not the same as visible: the block still has to be in the
   // theme. Until we have seen the storefront load it, say so.
   const publishedButUnseen = status === 'published' && g.storefront !== null && !g.storefront.seen;
+  // Publishing is the paid feature. Offering the button to a shop that cannot
+  // use it would only produce a failure they cannot act on.
+  const planBlocked = g.entitlements !== null && !g.entitlements.canPublish;
 
   return (
     <GalleryPage
@@ -51,7 +55,7 @@ export default function Publish() {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {status !== 'published' && (
-              <Button onClick={() => void g.publish()} disabled={g.busy || nothingToShow}>
+              <Button onClick={() => void g.publish()} disabled={g.busy || nothingToShow || planBlocked}>
                 {g.busy ? 'Working…' : 'Publish'}
               </Button>
             )}
@@ -71,6 +75,16 @@ export default function Publish() {
         {nothingToShow && (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: T.danger }}>
             There is nothing to publish yet. Sync your catalogue, or pick a collection that has products.
+          </p>
+        )}
+
+        {planBlocked && (
+          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#8A6520', lineHeight: 1.6 }}>
+            {g.entitlements?.reason}{' '}
+            <Link to="/plan" style={{ color: '#8A6520', fontWeight: 600 }}>
+              See plans
+            </Link>
+            {status === 'published' && ' Your gallery is not being served on your storefront while there is no plan.'}
           </p>
         )}
 

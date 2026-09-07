@@ -2,6 +2,12 @@ import type { ShopContext } from '../catalog/catalogStore.js';
 import { supabaseGalleryStore, type GalleryStore } from './galleryStore.js';
 import { issueIngestToken } from '../events/ingestToken.js';
 import {
+  entitlementsFor,
+  supabaseSubscriptionStore,
+  type Entitlements,
+  type SubscriptionStore,
+} from '../billing/entitlements.js';
+import {
   inactiveGallery,
   isGalleryStyle,
   type GalleryConfig,
@@ -16,6 +22,17 @@ const STORIES_LIMIT = 12;
 
 export interface GalleryDeps {
   store?: GalleryStore;
+  subscriptions?: SubscriptionStore;
+  now?: () => number;
+}
+
+/** What a shop may do right now, closed by default. */
+export async function entitlementsForShop(
+  ctx: ShopContext,
+  deps: GalleryDeps = {},
+): Promise<Entitlements> {
+  const subscriptions = deps.subscriptions ?? supabaseSubscriptionStore;
+  return entitlementsFor(await subscriptions.get(ctx.connectionId), deps.now);
 }
 
 const DEFAULT_SETTINGS: GallerySettings = {
@@ -85,17 +102,32 @@ export async function saveGallery(
  * Bumps the version and snapshots it first, so every published state can be
  * returned to. The version also lets the storefront bust its cache.
  */
-export async function publishGallery(ctx: ShopContext, deps: GalleryDeps = {}): Promise<GalleryConfig | null> {
+export type PublishResult =
+  | { ok: true; gallery: GalleryConfig }
+  | { ok: false; reason: 'no_gallery' | 'no_plan'; message: string };
+
+/**
+ * Publishing is the paid feature. A shop with no live plan cannot publish, and
+ * — see `composePublicGallery` — a gallery published before a plan lapsed stops
+ * being served.
+ */
+export async function publishGallery(ctx: ShopContext, deps: GalleryDeps = {}): Promise<PublishResult> {
   const store = deps.store ?? supabaseGalleryStore;
+
+  const entitlements = await entitlementsForShop(ctx, deps);
+  if (!entitlements.canPublish) {
+    return { ok: false, reason: 'no_plan', message: entitlements.reason ?? 'Choose a plan to publish your gallery.' };
+  }
+
   const current = await store.getByConnection(ctx.connectionId);
-  if (!current) return null;
+  if (!current) return { ok: false, reason: 'no_gallery', message: 'There is no gallery to publish yet.' };
 
   const published = await store.setStatus(current.id, 'published', current.version + 1);
-  if (!published) return null;
+  if (!published) return { ok: false, reason: 'no_gallery', message: 'There is no gallery to publish yet.' };
 
   await store.saveVersion(published);
   console.log(`${LOG} ${ctx.shopDomain}: published v${published.version}`);
-  return published;
+  return { ok: true, gallery: published };
 }
 
 /**
@@ -128,8 +160,9 @@ export async function revertGallery(
 
   await store.upsertSettings(ctx, normaliseSettings(snapshot));
   const published = await publishGallery(ctx, deps);
+  if (!published.ok) return null;
   console.log(`${LOG} ${ctx.shopDomain}: reverted to v${targetVersion}`);
-  return published;
+  return published.gallery;
 }
 
 /**
@@ -147,6 +180,18 @@ export async function composePublicGallery(
   if (!found) return inactiveGallery(shopDomain);
 
   const { config, connectionId } = found;
+
+  // A gallery published while a plan was live must stop being served when that
+  // plan ends. The webhook disables it, but this is the closed-by-default
+  // backstop for a webhook that never arrived.
+  const entitlements = entitlementsFor(
+    await (deps.subscriptions ?? supabaseSubscriptionStore).get(connectionId),
+    deps.now,
+  );
+  if (!entitlements.canPublish) {
+    console.log(`${LOG} ${shopDomain}: not served — ${entitlements.status}`);
+    return inactiveGallery(shopDomain);
+  }
 
   const [posts, stories] = await Promise.all([
     store.loadPosts(connectionId, config.collectionId, config.postsLimit),
