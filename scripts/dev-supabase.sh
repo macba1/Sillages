@@ -54,32 +54,14 @@ PY
   echo "Applying base schema..."
   psql_file "$container" "$REPO_ROOT/supabase/schema.sql" >/dev/null 2>&1 || true
 
-  # Four legacy migrations depend on tables that were created ad hoc in
-  # production and exist in no migration. Those may be skipped. Anything else
-  # failing is a real problem and must stop the run: a missing table would make
-  # the isolation suite pass by accident, since a query against a table that
-  # does not exist returns no rows.
-  local KNOWN_LEGACY_SKIPS="20260317_audit_fixes.sql 20260409_subscription_plans.sql 20260603_brief_delivery.sql 20260603_content_engine.sql"
-
+  # One migration procedure, shared with staging and production. It records
+  # what it applied, refuses a file that changed after being applied, and skips
+  # only the four legacy migrations it knows by name — never "it failed, carry
+  # on", which is how an absent schema used to make the isolation tests pass.
   echo "Applying migrations..."
-  local failed=0
-  for file in "$REPO_ROOT"/supabase/migrations/*.sql; do
-    local name
-    name="$(basename "$file")"
-    if psql_file "$container" "$file" >/dev/null 2>&1; then
-      printf '  ok    %s\n' "$name"
-    elif [[ " $KNOWN_LEGACY_SKIPS " == *" $name "* ]]; then
-      printf '  SKIP  %s (legacy; depends on state not present in the repo)\n' "$name"
-    else
-      printf '  FAIL  %s\n' "$name"
-      psql_file "$container" "$file" 2>&1 | tail -5 | sed 's/^/        /'
-      failed=1
-    fi
-  done
-
-  if [ "$failed" -ne 0 ]; then
+  if ! "$REPO_ROOT/scripts/migrate.sh" apply local; then
     echo
-    echo "A migration failed. Stopping: an absent schema would make the isolation"
+    echo "Migrations failed. Stopping: an absent schema would make the isolation"
     echo "tests pass without proving anything."
     exit 1
   fi
