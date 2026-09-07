@@ -146,6 +146,10 @@ export interface PerformanceResponse {
   connected: boolean;
   range: '7d' | '30d' | '90d';
   measuring: boolean;
+  /** What is genuinely being measured, mechanism by mechanism. */
+  measurement?: { gallery: boolean; checkout: boolean };
+  /** True when the aggregates were unavailable and the counts are bounded. */
+  approximate?: boolean;
   totals: PerformanceTotals;
   funnel: { step: string; count: number }[];
   topProducts: { productId: number; opens: number; addToCarts: number }[];

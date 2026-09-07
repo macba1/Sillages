@@ -12,6 +12,8 @@ export type PreviewStatus = 'pending' | 'ready' | 'failed' | 'claimed' | 'expire
 export interface PreviewProject {
   id: string;
   shopDomain: string;
+  /** The *.myshopify.com name, which is the only one OAuth accepts. */
+  myshopifyDomain: string | null;
   sourceUrl: string;
   shopName: string | null;
   status: PreviewStatus;
@@ -28,6 +30,7 @@ export interface PreviewProject {
 export interface PreviewStore {
   create(input: {
     shopDomain: string;
+    myshopifyDomain: string | null;
     sourceUrl: string;
     shopName: string | null;
     proposals: Proposal[];
@@ -53,6 +56,7 @@ function toProject(row: Record<string, unknown>): PreviewProject {
   return {
     id: row.id as string,
     shopDomain: row.shop_domain as string,
+    myshopifyDomain: (row.myshopify_domain as string | null) ?? null,
     sourceUrl: row.source_url as string,
     shopName: (row.shop_name as string | null) ?? null,
     status: row.status as PreviewStatus,
@@ -73,6 +77,7 @@ export const supabasePreviewStore: PreviewStore = {
       .from('preview_projects')
       .insert({
         shop_domain: input.shopDomain,
+        myshopify_domain: input.myshopifyDomain,
         source_url: input.sourceUrl,
         shop_name: input.shopName,
         status: 'ready',
@@ -101,10 +106,12 @@ export const supabasePreviewStore: PreviewStore = {
   },
 
   async findUnclaimedForShop(shopDomain: string) {
+    // Matched on either name: the visitor may have pasted a custom domain while
+    // Shopify only ever tells us the myshopify one.
     const { data, error } = await supabase
       .from('preview_projects')
       .select('*')
-      .eq('shop_domain', shopDomain)
+      .or(`shop_domain.eq.${shopDomain},myshopify_domain.eq.${shopDomain}`)
       .is('claimed_by_connection_id', null)
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })

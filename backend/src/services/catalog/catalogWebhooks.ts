@@ -129,9 +129,42 @@ export async function handleCatalogWebhook(
       const variant = await store.findVariantByInventoryItem(shop.connectionId, inventoryItemGid);
       if (!variant) return { handled: false, reason: 'not_found' };
 
+      // Shopify fires this per location. Writing one location's count as the
+      // variant's total, and deriving availability from it, marked multi-location
+      // products Sold out while they were still buyable — and ignored variants
+      // whose inventory policy lets them oversell. Re-read the product instead:
+      // it is one request, and it is the only way to get the real totals.
+      const client = createClient(shop.shopDomain, shop.accessToken);
+      const product = await fetchProductByInventoryItem(client, store, shop.connectionId, variant.productId);
+      if (product) {
+        await store.upsertProduct(shop, product, seenAt);
+        return { handled: true, action: 'inventory_updated', detail: inventoryItemGid };
+      }
+
+      // Falling back to the single-location figure is still better than nothing,
+      // but availability is left alone rather than guessed.
       await store.updateVariantInventory(variant.variantId, available, available > 0);
       return { handled: true, action: 'inventory_updated', detail: inventoryItemGid };
     }
+  }
+}
+
+/**
+ * Re-reads the product that owns a variant, so inventory is taken from Shopify's
+ * own totals rather than from one location's slice of them.
+ */
+async function fetchProductByInventoryItem(
+  client: CatalogClient,
+  store: CatalogStore,
+  connectionId: string,
+  productId: string,
+) {
+  const shopifyId = await store.productShopifyId(connectionId, productId);
+  if (!shopifyId) return null;
+  try {
+    return await fetchProduct(client, shopifyId);
+  } catch {
+    return null;
   }
 }
 

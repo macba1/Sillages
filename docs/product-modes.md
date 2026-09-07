@@ -61,7 +61,9 @@ that does not belong to the active mode is not mounted; its prefix answers
 | `/api/plans` (new product plans) | **no** | yes |
 | `/api/catalog` (live Shopify catalogue — see `docs/catalog-sync.md`) | **no** | yes |
 | `/api/gallery` (gallery settings, preview, publish — see `docs/theme-extension.md`) | **no** | yes |
-| `/api/public` (unauthenticated storefront API) | **no** | yes |
+| `/api/public` (unauthenticated storefront API, event ingestion and the before/after generator) | **no** | yes |
+| `/api/performance` (aggregate gallery metrics) | **no** | yes |
+| `/api/subscription` (Shopify Billing — see `docs/billing-and-launch.md`) | **no** | yes |
 | `/api/briefs`, `/api/billing`, `/api/alerts`, `/api/admin`, `/api/chat`, `/api/push`, `/api/actions`, `/api/unsubscribe`, `/api/tower` | yes | **no** |
 
 Three endpoints live inside routers that stay mounted in both modes, so they are

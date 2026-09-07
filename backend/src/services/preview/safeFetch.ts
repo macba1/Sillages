@@ -126,37 +126,81 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-    let response: Response;
     try {
       const transport = options.transport ?? ((url, init) => fetch(url, init));
-      response = await transport(current.toString(), {
-        redirect: 'manual', // every hop is re-checked, never followed blindly
-        signal: controller.signal,
-        headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
-      });
-    } catch {
-      throw new UnsafeUrlError('We could not reach that store.');
+      let response: Response;
+      try {
+        response = await transport(current.toString(), {
+          redirect: 'manual', // every hop is re-checked, never followed blindly
+          signal: controller.signal,
+          headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
+        });
+      } catch {
+        throw new UnsafeUrlError('We could not reach that store.');
+      }
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) throw new UnsafeUrlError('We could not reach that store.');
+        current = new URL(location, current);
+        continue;
+      }
+
+      const declared = Number(response.headers.get('content-length') ?? '0');
+      if (declared > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
+
+      // Read with a real cap. A host that answers chunked with no
+      // content-length would otherwise stream unbounded data into memory: the
+      // declared length is 0, so the check above passes, and this endpoint is
+      // unauthenticated.
+      const body = await readCapped(response, maxBytes);
+
+      return { url: current.toString(), status: response.status, headers: response.headers, body };
     } finally {
+      // Only once the body is read. Clearing it after the headers arrived left
+      // the rest of the transfer with no deadline at all.
       clearTimeout(timer);
     }
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('location');
-      if (!location) throw new UnsafeUrlError('We could not reach that store.');
-      current = new URL(location, current);
-      continue;
-    }
-
-    const length = Number(response.headers.get('content-length') ?? '0');
-    if (length > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
-
-    const body = await response.text();
-    if (body.length > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
-
-    return { url: current.toString(), status: response.status, headers: response.headers, body };
   }
 
   throw new UnsafeUrlError('That address redirects too many times.');
+}
+
+/**
+ * Reads a response body, refusing to buffer more than `maxBytes`.
+ *
+ * Falls back to `text()` only when the response exposes no stream, which is the
+ * case for the synthetic responses used in tests.
+ */
+async function readCapped(response: Response, maxBytes: number): Promise<string> {
+  const stream = response.body;
+  if (!stream || typeof stream.getReader !== 'function') {
+    const body = await response.text();
+    if (body.length > maxBytes) throw new UnsafeUrlError('That store returned too much data.');
+    return body;
+  }
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let total = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value?.byteLength ?? 0;
+      if (total > maxBytes) {
+        throw new UnsafeUrlError('That store returned too much data.');
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+
+  chunks.push(decoder.decode());
+  return chunks.join('');
 }
 
 /** Exported for the tests that pin the private-range rules. */

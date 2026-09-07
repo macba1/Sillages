@@ -68,6 +68,17 @@ export const supabaseCatalogStore: CatalogStore = {
       .eq('id', runId);
   },
 
+  async stillOwnsRun(runId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('catalog_sync_runs')
+      .select('status')
+      .eq('id', runId)
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return data.status === 'running';
+  },
+
   async finishSyncRun(runId: string, counts: SyncCounts, error?: string): Promise<void> {
     await supabase
       .from('catalog_sync_runs')
@@ -355,6 +366,17 @@ export const supabaseCatalogStore: CatalogStore = {
 
     if (error) throw new Error(`softDeleteCollection failed: ${error.message}`);
     return (data?.length ?? 0) > 0;
+  },
+
+  async productShopifyId(connectionId: string, productId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('catalog_products')
+      .select('shopify_id')
+      .eq('connection_id', connectionId)
+      .eq('id', productId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data.shopify_id as string;
   },
 
   async findVariantByInventoryItem(connectionId: string, inventoryItemId: string): Promise<StoredVariantRef | null> {

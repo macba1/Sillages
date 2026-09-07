@@ -77,9 +77,19 @@ export async function runCatalogSync(
     }
 
     // ── Reconciliation ──────────────────────────────────────
-    // Anything we did not see in this complete pass is gone upstream.
-    counts.productsDeleted = await store.softDeleteProductsNotSeenSince(ctx.connectionId, seenAt);
-    counts.collectionsDeleted = await store.softDeleteCollectionsNotSeenSince(ctx.connectionId, seenAt);
+    // Anything we did not see in this complete pass is gone upstream — but only
+    // if we are still the shop's active run. If this run was reclaimed as
+    // stalled while we were working, another importer is now authoritative and
+    // deleting what we did not see would remove products it just wrote.
+    if (await store.stillOwnsRun(run.id)) {
+      counts.productsDeleted = await store.softDeleteProductsNotSeenSince(ctx.connectionId, seenAt);
+      counts.collectionsDeleted = await store.softDeleteCollectionsNotSeenSince(ctx.connectionId, seenAt);
+    } else {
+      console.warn(
+        `${LOG} ${ctx.shopDomain}: this run was reclaimed while it was working — ` +
+          'skipping reconciliation so a concurrent import is not undone',
+      );
+    }
 
     await store.finishSyncRun(run.id, counts);
     console.log(

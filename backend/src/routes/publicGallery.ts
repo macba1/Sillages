@@ -117,6 +117,22 @@ router.post(
   },
 );
 
+/**
+ * Purchase reporting is closed unless deliberately switched on.
+ *
+ * The Web Pixel is the only legitimate caller, and it is not activated on any
+ * store yet (activation needs `webPixelCreate` and the `write_pixels` scope).
+ * Until then this endpoint has no real traffic and would accept
+ * merchant-facing revenue figures from anyone who can read a shop's public
+ * gallery — including order ids that, through the unique index, would
+ * permanently block the shop's real orders from ever being credited.
+ *
+ * Enable it in the same change that activates the pixel.
+ */
+function purchaseReportingEnabled(): boolean {
+  return process.env.ENABLE_PIXEL_PURCHASE_REPORTING === 'true';
+}
+
 // POST /api/public/purchase — reported by the Web Pixel after checkout
 router.post(
   '/purchase',
@@ -124,6 +140,11 @@ router.post(
   eventsLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (!purchaseReportingEnabled()) {
+        res.status(404).json({ error: 'not_enabled' });
+        return;
+      }
+
       const result = await ingestPurchase(req.body);
       if (!result.ok) {
         res.status(result.status).json({ error: result.reason });

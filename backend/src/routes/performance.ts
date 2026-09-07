@@ -8,11 +8,14 @@ import { supabaseGalleryStore } from '../services/gallery/galleryStore.js';
 const router = Router();
 
 /** Ranges the merchant can look at. Bounded, so a query cannot be unbounded. */
-const RANGES: Record<string, number> = {
-  '7d': 7,
-  '30d': 30,
-  '90d': 90,
-};
+// A Map, not an object literal: `?range=constructor` resolves through
+// Object.prototype on a plain object and reaches the query as a function.
+const RANGES = new Map<string, number>([
+  ['7d', 7],
+  ['30d', 30],
+  ['90d', 90],
+]);
+const DEFAULT_RANGE = '30d';
 
 /**
  * What the gallery did. Mounted only in `social_gallery`.
@@ -28,8 +31,9 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    const rangeKey = String(req.query.range ?? '30d');
-    const days = RANGES[rangeKey] ?? RANGES['30d'];
+    const requested = String(req.query.range ?? DEFAULT_RANGE);
+    const rangeKey = RANGES.has(requested) ? requested : DEFAULT_RANGE;
+    const days = RANGES.get(rangeKey)!;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const [totals, top, config] = await Promise.all([
@@ -47,10 +51,23 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       { step: 'Purchases', count: totals.purchases },
     ];
 
+    // Two different things are measured by two different mechanisms, and only
+    // one of them is currently active anywhere. Saying "measuring" for both
+    // would tell a merchant their checkout is tracked when it is not.
+    const galleryMeasured = config?.status === 'published';
+    const checkoutMeasured = totals.purchases > 0 || totals.attributedOrders > 0;
+
     res.json({
       connected: true,
-      range: rangeKey in RANGES ? rangeKey : '30d',
-      measuring: config?.status === 'published',
+      range: rangeKey,
+      measuring: galleryMeasured,
+      measurement: {
+        gallery: galleryMeasured,
+        // The Web Pixel has to be activated by the app, which needs the
+        // write_pixels scope the app does not yet request.
+        checkout: checkoutMeasured,
+      },
+      approximate: totals.approximate === true,
       totals,
       funnel,
       topProducts: top,

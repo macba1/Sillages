@@ -45,6 +45,8 @@ export interface PerformanceTotals {
   attributedRevenue: number;
   currency: string | null;
   sessions: number;
+  /** True when the aggregates were unavailable and these are bounded counts. */
+  approximate?: boolean;
 }
 
 export interface TopProduct {
@@ -72,6 +74,54 @@ export interface EventStore {
   recentJourney(connectionId: string, limit: number): Promise<
     { sessionId: string; steps: { type: GalleryEventType; occurredAt: string; productId: number | null }[] }[]
   >;
+}
+
+/** PostgREST's code for "that function does not exist". */
+function isMissingFunction(error: { code?: string } | null): boolean {
+  return error?.code === 'PGRST202';
+}
+
+/**
+ * The pre-aggregation behaviour, kept only as a fallback for a database that
+ * has not had the migration applied. Bounded, and therefore approximate on a
+ * busy shop — which is why it is not the default.
+ */
+async function approximateTotals(connectionId: string, since: string): Promise<PerformanceTotals> {
+  const { data: events } = await supabase
+    .from('gallery_events')
+    .select('event_type, session_id')
+    .eq('connection_id', connectionId)
+    .gte('occurred_at', since)
+    .limit(20000);
+
+  const counts = new Map<string, number>();
+  const sessions = new Set<string>();
+  for (const row of events ?? []) {
+    counts.set(row.event_type as string, (counts.get(row.event_type as string) ?? 0) + 1);
+    sessions.add(row.session_id as string);
+  }
+
+  const { data: attribution } = await supabase
+    .from('gallery_attribution')
+    .select('amount, currency')
+    .eq('connection_id', connectionId)
+    .gte('occurred_at', since)
+    .limit(5000);
+
+  return {
+    galleryViews: counts.get('gallery_view') ?? 0,
+    postOpens: counts.get('post_open') ?? 0,
+    variantSelects: counts.get('variant_select') ?? 0,
+    saves: counts.get('save') ?? 0,
+    shares: counts.get('share') ?? 0,
+    addToCarts: counts.get('add_to_cart') ?? 0,
+    purchases: counts.get('purchase') ?? 0,
+    attributedOrders: attribution?.length ?? 0,
+    attributedRevenue: Number((attribution ?? []).reduce((sum, r) => sum + Number(r.amount ?? 0), 0).toFixed(2)),
+    currency: ((attribution ?? [])[0]?.currency as string | null) ?? null,
+    sessions: sessions.size,
+    approximate: true,
+  };
 }
 
 export const supabaseEventStore: EventStore = {
@@ -172,8 +222,17 @@ export const supabaseEventStore: EventStore = {
       supabase.rpc('gallery_attribution_totals', { p_connection_id: connectionId, p_since: since }).single(),
     ]);
 
-    // A wrong number is worse than no number: fail loudly rather than showing
-    // zeros that read as "nobody looked at it".
+    // PGRST202 means the aggregate functions are not in this database yet —
+    // nothing in the repo applies migrations on deploy. Degrade to the bounded
+    // application-side count and say the numbers are approximate, rather than
+    // 500ing the whole screen or silently showing zeros.
+    if (isMissingFunction(events.error) || isMissingFunction(attribution.error)) {
+      console.warn('[metrics] aggregate functions missing — falling back to an approximate count');
+      return approximateTotals(connectionId, since);
+    }
+
+    // Any other failure is real: a wrong number is worse than no number,
+    // because it reads as a fact.
     if (events.error) throw new Error(`reading gallery totals failed: ${events.error.message}`);
     if (attribution.error) throw new Error(`reading attribution totals failed: ${attribution.error.message}`);
 

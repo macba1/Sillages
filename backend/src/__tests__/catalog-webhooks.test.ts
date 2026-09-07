@@ -127,15 +127,23 @@ describe('A3: product changes are applied as soon as the webhook arrives', () =>
     expect(await store.countProducts(CTX.connectionId)).toBe(6);
   });
 
-  it('applies an inventory change from inventory_levels/update', async () => {
+  it('takes inventory from Shopify totals, not from the one location that changed', async () => {
+    // Shopify fires this webhook per location. Writing that one location's
+    // count as the variant's total marked multi-location products Sold out
+    // while they were still buyable, so the handler re-reads the product.
     await seedCatalogue();
     const product = [...shop.products.values()][0];
     const inventoryItemId = product.variants[0].inventoryItemId;
 
+    // The shop's real total for this variant, across every location.
+    product.variants[0].inventoryQuantity = 42;
+    product.variants[0].availableForSale = true;
+
     const outcome = await handleCatalogWebhook(
       'inventory_levels/update',
       CTX.shopDomain,
-      { inventory_item_id: inventoryItemId, available: 42 },
+      // The webhook only knows about the warehouse, which is empty.
+      { inventory_item_id: inventoryItemId, available: 0 },
       deps(),
     );
 
@@ -145,9 +153,13 @@ describe('A3: product changes are applied as soon as the webhook arrives', () =>
     expect(variant?.availableForSale).toBe(true);
   });
 
-  it('marks a variant unavailable when inventory reaches zero', async () => {
+  it('marks a variant unavailable when Shopify says it is genuinely out of stock', async () => {
     await seedCatalogue();
-    const inventoryItemId = [...shop.products.values()][0].variants[0].inventoryItemId;
+    const product = [...shop.products.values()][0];
+    const inventoryItemId = product.variants[0].inventoryItemId;
+
+    product.variants[0].inventoryQuantity = 0;
+    product.variants[0].availableForSale = false;
 
     await handleCatalogWebhook(
       'inventory_levels/update',
@@ -159,6 +171,23 @@ describe('A3: product changes are applied as soon as the webhook arrives', () =>
     const variant = store.variants.find((v) => v.inventoryItemId === inventoryItemId);
     expect(variant?.inventoryQuantity).toBe(0);
     expect(variant?.availableForSale).toBe(false);
+  });
+
+  it('falls back to the reported figure when the product cannot be re-read', async () => {
+    await seedCatalogue();
+    const product = [...shop.products.values()][0];
+    const inventoryItemId = product.variants[0].inventoryItemId;
+    shop.removeProduct(product.id);
+
+    const outcome = await handleCatalogWebhook(
+      'inventory_levels/update',
+      CTX.shopDomain,
+      { inventory_item_id: inventoryItemId, available: 5 },
+      deps(),
+    );
+
+    expect(outcome.handled).toBe(true);
+    expect(store.variants.find((v) => v.inventoryItemId === inventoryItemId)?.inventoryQuantity).toBe(5);
   });
 
   it('updates a collection and its membership', async () => {

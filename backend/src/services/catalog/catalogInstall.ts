@@ -4,6 +4,7 @@ import { registerCatalogWebhooks } from './catalogWebhookSetup.js';
 import { runCatalogSync } from './catalogSync.js';
 import { supabaseCatalogStore } from './supabaseCatalogStore.js';
 import { claimPreview } from '../preview/previewService.js';
+import { activateWebPixel } from '../events/webPixel.js';
 import { saveGallery } from '../gallery/galleryService.js';
 
 const LOG = '[catalogInstall]';
@@ -23,6 +24,17 @@ export async function onShopifyConnected(
   claimToken?: string,
 ): Promise<void> {
   if (!isSocialGalleryMode()) return;
+
+  // Checkout and purchase are measured by the Web Pixel, which does nothing
+  // until the app creates it. Deploying the extension is not enough.
+  try {
+    const activation = await activateWebPixel(shopDomain, accessToken);
+    if (!activation.activated) {
+      console.warn(`${LOG} ${shopDomain}: checkout measurement is off (${activation.reason})`);
+    }
+  } catch (err) {
+    console.warn(`${LOG} ${shopDomain}: pixel activation failed: ${(err as Error).message}`);
+  }
 
   try {
     const result = await registerCatalogWebhooks(shopDomain, accessToken);

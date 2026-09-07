@@ -141,6 +141,10 @@ export class MemoryCatalogStore implements CatalogStore {
     if (run) run.heartbeatAt = Date.now() - ageMs;
   }
 
+  async stillOwnsRun(runId: string): Promise<boolean> {
+    return this.runs.find((r) => r.id === runId)?.status === 'running';
+  }
+
   async finishSyncRun(runId: string, counts: SyncCounts, error?: string): Promise<void> {
     const run = this.runs.find((r) => r.id === runId);
     if (!run) return;
@@ -360,6 +364,10 @@ export class MemoryCatalogStore implements CatalogStore {
   }
 
   // ── Inventory ─────────────────────────────────────────────
+
+  async productShopifyId(connectionId: string, productId: string): Promise<string | null> {
+    return this.products.find((p) => p.connectionId === connectionId && p.id === productId)?.shopifyId ?? null;
+  }
 
   async findVariantByInventoryItem(connectionId: string, inventoryItemId: string): Promise<StoredVariantRef | null> {
     const row = this.variants.find(

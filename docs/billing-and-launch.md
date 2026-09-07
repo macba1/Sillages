@@ -124,6 +124,13 @@ with the three looks. 5 — the Preview screen. 6 — the Performance funnel.
 a variant chosen and added to cart, then the Publish screen and the one-click
 publish.
 
-**Privacy answers.** No customer personal data is collected. Scopes requested:
-`read_products`, `read_inventory`. Mandatory privacy webhooks implemented, with
-erasure verified against a real database.
+**Privacy answers.** No customer personal data is collected. Mandatory privacy
+webhooks implemented, with erasure verified against a real database.
+
+**Scopes — not yet reduced.** The new product needs `read_products`,
+`read_inventory` and, for checkout measurement, `write_pixels`. The app still
+requests the twelve legacy scopes in `shopify.app.toml`, including
+`read_all_orders`, `read_customers` and `write_products`, which it no longer
+uses. Trimming that list, and adding `write_pixels`, is a deliberate change to
+the public app that has not been made — and until `write_pixels` is granted the
+Web Pixel cannot be activated at all.

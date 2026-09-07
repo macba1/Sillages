@@ -25,6 +25,7 @@ import { generateBrief } from '../services/briefGenerator.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
 import { onShopifyConnected, shouldRegisterLegacyWebhookTopics } from '../services/catalog/catalogInstall.js';
 import { recordPreviewChoice } from '../services/preview/previewService.js';
+import { isLegacyMode } from '../config/productMode.js';
 import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
@@ -282,8 +283,13 @@ router.get(
               }
             } catch { /* non-fatal */ }
 
-            // social_gallery: register catalogue topics and run the first import.
-            await onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
+            // social_gallery: register catalogue topics and run the first
+            // import. Deliberately not awaited: a real catalogue is minutes of
+            // paginated GraphQL, which would time out the install and leave the
+            // account half-provisioned, since everything below this line would
+            // never run. It never throws, and the merchant sees the catalogue
+            // fill in on the Collections screen.
+            void onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
 
             // Assign Starter plan
             await supabase
@@ -310,7 +316,10 @@ router.get(
             console.log(`[shopify/callback] Auto-install complete for ${shop} → account ${accountId}`);
 
             // Fire-and-forget: generate first brief
-            void generateFirstBrief(accountId);
+            // Legacy only. In social_gallery the OpenAI key is a placeholder, so this
+        // always failed into its seed path and upserted invented revenue, orders
+        // and products into a merchant's snapshots.
+        if (isLegacyMode()) void generateFirstBrief(accountId);
 
             // Generate magic link so merchant is auto-logged in
             let magicToken = '';
@@ -428,7 +437,8 @@ router.get(
       }
 
       // social_gallery: register catalogue topics and run the first import.
-      await onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
+      // Not awaited — see the note on the other call site.
+      void onShopifyConnected(shop, tokenData.access_token, typeof req.query.preview === 'string' ? req.query.preview : undefined);
 
       // Check if this is a reconnection (existing account with subscription)
       const { data: existingAccount } = await supabase
@@ -472,7 +482,10 @@ router.get(
         res.redirect(`${env.FRONTEND_URL}/dashboard?reconnected=true`);
       } else {
         // First install — generate brief and redirect to plan selection
-        void generateFirstBrief(accountId);
+        // Legacy only. In social_gallery the OpenAI key is a placeholder, so this
+        // always failed into its seed path and upserted invented revenue, orders
+        // and products into a merchant's snapshots.
+        if (isLegacyMode()) void generateFirstBrief(accountId);
 
         // Mark as pending plan selection — merchant must choose a plan
         await supabase

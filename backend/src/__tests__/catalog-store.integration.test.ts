@@ -482,6 +482,13 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
     'saved_products',
   ] as const;
 
+  it('the schema is actually present, so the assertions below mean something', async () => {
+    for (const table of TABLES) {
+      const { error } = await admin.from(table).select('*', { head: true, count: 'exact' }).limit(1);
+      expect(error, `${table} is missing; run ./scripts/dev-supabase.sh start`).toBeNull();
+    }
+  });
+
   it('a merchant sees their own rows in every table', async () => {
     for (const table of TABLES) {
       const { data, error } = await asAlpha.from(table).select('*');
@@ -493,8 +500,10 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
   it('a merchant sees none of the other shop\'s rows, in any table', async () => {
     for (const table of TABLES) {
       const { data, error } = await asAlpha.from(table).select('*').eq('connection_id', beta.connectionId);
-      expect(error, table).toBeNull();
-      // RLS filters rather than errors, so an empty result is the guarantee.
+      // The error check is the point: without it a call that failed — because
+      // the table does not exist, say — would return null, and `?? []` would
+      // score a missing schema as proof of isolation.
+      expect(error, `${table} query failed; this assertion proves nothing`).toBeNull();
       expect(data, `${table} leaked another shop's rows`).toEqual([]);
     }
   });
@@ -503,10 +512,12 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
     // Only the backend's service role writes. The policies grant select only,
     // so an anon-key client is read-only even on its own data.
     const own = await asAlpha.from('gallery_configs').update({ style: 'film' }).eq('account_id', alpha.accountId).select('id');
-    expect(own.data ?? []).toEqual([]);
+    expect(own.error, 'query failed; this assertion proves nothing').toBeNull();
+    expect(own.data).toEqual([]);
 
     const other = await asAlpha.from('gallery_configs').update({ style: 'film' }).eq('account_id', beta.accountId).select('id');
-    expect(other.data ?? []).toEqual([]);
+    expect(other.error, 'query failed; this assertion proves nothing').toBeNull();
+    expect(other.data).toEqual([]);
 
     const inserted = await asAlpha.from('gallery_events').insert({
       connection_id: beta.connectionId, session_id: 'sess-forged-12345678',
@@ -526,8 +537,9 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
     // RLS is enabled with no select policy, so these are invisible to every
     // client except the service role.
     for (const table of ['preview_projects', 'preview_claim_tokens', 'shopify_webhook_events'] as const) {
-      const { data } = await asAlpha.from(table).select('*');
-      expect(data ?? [], `${table} must not be readable by a merchant`).toEqual([]);
+      const { data, error } = await asAlpha.from(table).select('*');
+      expect(error, `${table} query failed; this assertion proves nothing`).toBeNull();
+      expect(data, `${table} must not be readable by a merchant`).toEqual([]);
     }
 
     await admin.from('preview_projects').delete().eq('shop_domain', 'rls-preview.myshopify.com');
@@ -539,8 +551,9 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
     });
 
     for (const table of TABLES) {
-      const { data } = await anonymous.from(table).select('*');
-      expect(data ?? [], `${table} is readable without signing in`).toEqual([]);
+      const { data, error } = await anonymous.from(table).select('*');
+      expect(error, `${table} query failed; this assertion proves nothing`).toBeNull();
+      expect(data, `${table} is readable without signing in`).toEqual([]);
     }
   });
 });

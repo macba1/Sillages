@@ -13,9 +13,17 @@ What the gallery reports, how an order gets credited to it, and — as important
 | `variant_select` | a shopper picks an option |
 | `save` / `unsave` | the local favourite is toggled |
 | `share` | link, WhatsApp or the device share sheet |
-| `add_to_cart` | the gallery adds to cart, and the Web Pixel confirms |
+| `add_to_cart` | the gallery only. Shopify's pixel event carries no cart attributes, so the pixel cannot know the session and reporting it there would double-count |
 | `checkout_started` | Web Pixel |
 | `purchase` | written by the server after attribution, never by a browser |
+
+> **Not measured today.** The Web Pixel does nothing until the app activates it
+> with `webPixelCreate`, which needs the `write_pixels` scope the app does not
+> yet request. Until that is granted and an install activates the pixel,
+> `checkout_started` and `purchase` are never reported, attribution stays empty,
+> and the Performance screen says so instead of showing a confident zero.
+> `POST /api/public/purchase` is closed for the same reason: see
+> `ENABLE_PIXEL_PURCHASE_REPORTING` below.
 
 ## What is never collected
 
@@ -84,6 +92,14 @@ Three independent budgets, so one cannot starve another:
 | Admin API | 100 / 15 min per IP |
 | Gallery reads | 120 / min per IP |
 | Event and purchase ingestion | 60 / min per IP, max 50 events per batch |
+
+## `ENABLE_PIXEL_PURCHASE_REPORTING`
+
+`POST /api/public/purchase` writes merchant-facing revenue from a browser. Its
+only legitimate caller is the Web Pixel, which is not active on any store, so
+the endpoint is closed unless this is exactly `"true"`. Open it in the same
+change that activates the pixel — and preferably only once orders can be read
+server-side, since a browser-reported total is not accounting.
 
 ## In the browser
 

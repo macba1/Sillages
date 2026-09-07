@@ -130,7 +130,16 @@ export const supabaseGalleryStore: GalleryStore = {
       : supabase.from('gallery_configs').insert(payload);
 
     const { data, error } = await query.select('*').single();
-    if (error) throw new Error(`saving the gallery failed: ${error.message}`);
+
+    if (error) {
+      // 23505 = another request created this shop's gallery first. That is the
+      // expected outcome of the race, not a failure: read theirs.
+      if (error.code === '23505') {
+        const existingNow = await this.getByConnection(ctx.connectionId);
+        if (existingNow) return existingNow;
+      }
+      throw new Error(`saving the gallery failed: ${error.message}`);
+    }
     return toConfig(data as ConfigRow);
   },
 
@@ -138,7 +147,6 @@ export const supabaseGalleryStore: GalleryStore = {
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = { status };
     if (status === 'published') {
-      patch.published_at = now;
       patch.disabled_at = null;
       if (version !== undefined) patch.version = version;
     }
@@ -152,6 +160,21 @@ export const supabaseGalleryStore: GalleryStore = {
       .maybeSingle();
 
     if (error || !data) return null;
+
+    // published_at marks when this gallery FIRST went live, because that is the
+    // window "has the storefront ever loaded it?" is asked over. Refreshing it
+    // on every republish made the "not seen yet" warning reappear for a gallery
+    // that had been live for weeks.
+    if (status === 'published' && !data.published_at) {
+      const { data: stamped } = await supabase
+        .from('gallery_configs')
+        .update({ published_at: now })
+        .eq('id', configId)
+        .select('*')
+        .maybeSingle();
+      if (stamped) return toConfig(stamped as ConfigRow);
+    }
+
     return toConfig(data as ConfigRow);
   },
 
@@ -211,11 +234,21 @@ export const supabaseGalleryStore: GalleryStore = {
       if (productIds.length === 0) return [];
     }
 
+    // Only products a shopper can actually buy. Drafts and archived products are
+    // imported (the catalogue is a mirror, not a filter) but must never reach a
+    // storefront: their /products/<handle> URL 404s and quick buy would offer a
+    // variant of an unpublished product.
     let query = supabase
       .from('catalog_products')
       .select('id, shopify_id, handle, title, featured_image_url, status')
       .eq('connection_id', connectionId)
+      .eq('status', 'ACTIVE')
       .is('deleted_at', null)
+      // Without an explicit order Postgres is free to return a different 60
+      // products after the nightly reconciliation rewrites the heap, which the
+      // 60s cache turns into an intermittent, unreproducible gallery.
+      .order('shopify_updated_at', { ascending: false, nullsFirst: false })
+      .order('handle', { ascending: true })
       .limit(limit);
 
     if (productIds) query = query.in('id', productIds);

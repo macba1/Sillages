@@ -47,10 +47,14 @@ export async function resolveShopByAccount(accountId: string): Promise<ResolvedS
 
 /** Every shop we should keep a catalogue for. */
 export async function listActiveShops(): Promise<ResolvedShop[]> {
+  // Uninstall writes 'disabled', not 'disconnected'. Excluding only the latter
+  // meant every uninstalled shop was hit with a revoked token every night,
+  // forever. `in` is also NULL-safe, unlike `neq`, which silently drops rows
+  // whose sync_status was never set.
   const { data, error } = await supabase
     .from('shopify_connections')
     .select('id, account_id, shop_domain, access_token, sync_status')
-    .neq('sync_status', 'disconnected');
+    .or('sync_status.is.null,sync_status.in.(pending,active,error)');
 
   if (error || !data) return [];
 

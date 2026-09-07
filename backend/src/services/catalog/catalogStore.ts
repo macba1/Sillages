@@ -46,6 +46,13 @@ export interface CatalogStore {
    */
   startSyncRun(ctx: ShopContext, trigger: SyncTrigger): Promise<SyncRun | null>;
   heartbeatSyncRun(runId: string): Promise<void>;
+  /**
+   * True while this run is still the shop's active one. Reconciliation must
+   * check it: reclaiming a stalled run means an older process may still be
+   * alive and writing, and a reconciliation that deletes what it did not see
+   * would remove products that process had just re-stamped.
+   */
+  stillOwnsRun(runId: string): Promise<boolean>;
   finishSyncRun(runId: string, counts: SyncCounts, error?: string): Promise<void>;
   getLastSyncRun(connectionId: string): Promise<{
     id: string;
@@ -84,6 +91,8 @@ export interface CatalogStore {
   softDeleteCollection(connectionId: string, shopifyId: string): Promise<boolean>;
 
   // ── Inventory ─────────────────────────────────────────────
+  /** The Shopify GID of a stored product, for re-reading it. */
+  productShopifyId(connectionId: string, productId: string): Promise<string | null>;
   /** Resolves the variant that owns a Shopify inventory item. */
   findVariantByInventoryItem(connectionId: string, inventoryItemId: string): Promise<StoredVariantRef | null>;
   updateVariantInventory(variantId: string, quantity: number, availableForSale: boolean): Promise<void>;

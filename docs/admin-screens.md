@@ -35,8 +35,11 @@ a published status — rather than from a checklist the merchant ticks.
   and the list of previous versions with Restore. Publishing is disabled, with
   an explanation, when there is nothing to show. The one-time theme-editor step
   is spelled out here rather than left to support.
-- **Performance** — deliberately empty until Sprint 4. It says measurement is
-  not on yet instead of showing zeros, which would read as "nobody looked".
+- **Performance** — the funnel from gallery views to purchases, saves, shares
+  and the products most added to cart. It distinguishes what is genuinely
+  measured from what is not: gallery activity is reported by the storefront,
+  while checkout and revenue need the Web Pixel, which is not active on any
+  store yet. The screen says so rather than showing a confident zero.
 - **Plan** — Basic, Growth and Pro, read from `GET /api/plans`.
 
 ## Errors

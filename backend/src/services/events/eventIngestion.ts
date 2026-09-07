@@ -133,6 +133,13 @@ export async function ingestPurchase(body: unknown, deps: IngestDeps = {}): Prom
   const parsed = purchaseReportSchema.safeParse(body);
   if (!parsed.success) return { ok: false, status: 400, reason: 'malformed_purchase' };
 
+  // The same clock-skew bound the event path applies. Without it a forged
+  // purchase dated in the future satisfies every reporting window forever.
+  const occurred = Date.parse(parsed.data.occurredAt);
+  if (!Number.isFinite(occurred) || Math.abs(now() - occurred) > MAX_CLOCK_SKEW_MS) {
+    return { ok: false, status: 400, reason: 'implausible_timestamp' };
+  }
+
   const verified = verifyIngestToken(parsed.data.token, now);
   if (!verified) return { ok: false, status: 401, reason: 'invalid_or_expired_token' };
 

@@ -54,6 +54,7 @@ export async function createPreview(input: unknown, deps: PreviewDeps = {}): Pro
 
   const project = await store.create({
     shopDomain: detected.shopDomain,
+    myshopifyDomain: detected.myshopifyDomain,
     sourceUrl: detected.sourceUrl,
     shopName: detected.shopName,
     proposals,
@@ -67,7 +68,9 @@ export async function createPreview(input: unknown, deps: PreviewDeps = {}): Pro
 }
 
 export function previewUrl(token: string): string {
-  return `${env.FRONTEND_URL.replace(/\/+$/, '')}/preview/${token}`;
+  // /preview is the merchant's own preview screen. The public demo lives at
+  // /demo, which is where this link has to point.
+  return `${env.FRONTEND_URL.replace(/\/+$/, '')}/demo/${token}`;
 }
 
 /** What the public preview page is allowed to see. */
@@ -116,12 +119,25 @@ export async function startClaim(
     return { ok: false, status: 410, reason: 'expired', message: 'This preview has expired.' };
   }
 
+  // Shopify's OAuth only accepts a myshopify domain. Sending it the custom
+  // domain the visitor pasted makes the whole funnel end in a 400.
+  const installDomain = project.myshopifyDomain ?? project.shopDomain;
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(installDomain)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: 'unknown_shopify_domain',
+      message:
+        'We could not work out the Shopify address for this store. Install Sillages from the Shopify App Store and your design will be waiting.',
+    };
+  }
+
   const claimExpiry = new Date(now().getTime() + CLAIM_TTL_MINUTES * 60 * 1000).toISOString();
   const claimToken = await store.createClaimToken(project.id, proposal, claimExpiry);
 
   const installUrl =
     `${env.SHOPIFY_APP_URL.replace(/\/+$/, '')}/api/shopify/auth` +
-    `?shop=${encodeURIComponent(project.shopDomain)}&preview=${encodeURIComponent(claimToken)}`;
+    `?shop=${encodeURIComponent(installDomain)}&preview=${encodeURIComponent(claimToken)}`;
 
   return { ok: true, installUrl, claimToken };
 }

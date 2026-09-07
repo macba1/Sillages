@@ -195,6 +195,30 @@ describe('A4: syncing twice is idempotent', () => {
     expect(reclaimed?.error).toMatch(/stopped responding/i);
   });
 
+  it('a reclaimed run does not delete what the run that replaced it just wrote', async () => {
+    // Reclaiming a stalled run removed the guarantee that only one importer is
+    // active. If the older process is still alive, its reconciliation must not
+    // soft-delete products the newer one has already re-stamped.
+    const shop = makeDevStore(5);
+    const now = clock();
+    await runCatalogSync(CTX, 'dev-token', 'install', depsFor(shop, store, now));
+    expect(await store.countProducts(CTX.connectionId)).toBe(5);
+
+    const older = await store.startSyncRun(CTX, 'manual');
+    store.stallRun(older!.id);
+    // A newer run reclaims it and takes over.
+    const newer = await store.startSyncRun(CTX, 'reconciliation');
+    expect(newer).not.toBeNull();
+
+    // The older process, still alive, would now reconcile against its own
+    // stale timestamp. It must find it no longer owns the run and stop.
+    expect(await store.stillOwnsRun(older!.id)).toBe(false);
+    expect(await store.stillOwnsRun(newer!.id)).toBe(true);
+
+    // Nothing was deleted while the two overlapped.
+    expect(await store.countProducts(CTX.connectionId)).toBe(5);
+  });
+
   it('reports a stalled run as stopped, never as still in progress', async () => {
     const abandoned = await store.startSyncRun(CTX, 'manual');
     expect((await store.getLastSyncRun(CTX.connectionId))?.stale).toBe(false);

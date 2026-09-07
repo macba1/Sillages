@@ -36,7 +36,14 @@ export function normaliseSettings(input: unknown, base: GallerySettings = DEFAUL
   const raw = (input ?? {}) as Record<string, unknown>;
 
   const postsLimit = Number(raw.postsLimit ?? base.postsLimit);
-  const heading = typeof raw.heading === 'string' ? raw.heading.trim().slice(0, 120) : base.heading;
+  // `heading: null` is a deliberate "remove it", not an omission. Treating the
+  // two the same made the heading impossible to clear once set.
+  const headingProvided = Object.prototype.hasOwnProperty.call(raw, 'heading');
+  const heading = headingProvided
+    ? typeof raw.heading === 'string'
+      ? raw.heading.trim().slice(0, 120)
+      : null
+    : base.heading;
 
   return {
     collectionId:

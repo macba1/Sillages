@@ -14,6 +14,8 @@ const LOG = '[catalogWebhook]';
 export interface DispatchDeps extends CatalogWebhookDeps {
   /** Injected in tests. Defaults to the shared idempotency table. */
   markProcessed?: (webhookId: string, topic: string, shopDomain: string) => Promise<boolean>;
+  /** Undoes the idempotency claim when a delivery could not be applied. */
+  releaseProcessed?: (webhookId: string) => Promise<void>;
   handleAppUninstalled?: (shopDomain: string) => Promise<void>;
 }
 
@@ -46,6 +48,12 @@ export async function markWebhookProcessed(
   return false;
 }
 
+/** Lets a delivery that failed be retried instead of being dropped forever. */
+export async function releaseWebhook(webhookId: string): Promise<void> {
+  const { error } = await supabase.from('shopify_webhook_events').delete().eq('webhook_id', webhookId);
+  if (error) console.warn(`${LOG} could not release ${webhookId}: ${error.message}`);
+}
+
 export async function dispatchSocialGalleryWebhook(
   topic: string,
   shopDomain: string,
@@ -61,9 +69,25 @@ export async function dispatchSocialGalleryWebhook(
   }
 
   if (isCatalogWebhookTopic(topic)) {
-    const outcome = await handleCatalogWebhook(topic, shopDomain, payload, deps);
+    let outcome;
+    try {
+      outcome = await handleCatalogWebhook(topic, shopDomain, payload, deps);
+    } catch (err) {
+      // The id was recorded before the handler ran, so a redelivery would be
+      // dropped as a duplicate and the change lost until the nightly
+      // reconciliation — up to a day later on a live, shoppable gallery.
+      // Release it so the same delivery can be retried.
+      await (deps.releaseProcessed ?? releaseWebhook)(webhookId);
+      throw err;
+    }
+
     if (!outcome.handled) {
       console.warn(`${LOG} ${topic} from ${shopDomain} not applied: ${outcome.reason}`);
+      // 'unknown_shop' and 'malformed' are final; anything else may succeed on
+      // a retry, so do not hold the id against it.
+      if (outcome.reason === 'not_found') {
+        await (deps.releaseProcessed ?? releaseWebhook)(webhookId);
+      }
       return { status: 'ignored', topic, reason: outcome.reason };
     }
     console.log(`${LOG} ${topic} from ${shopDomain} -> ${outcome.action}${outcome.detail ? ` (${outcome.detail})` : ''}`);

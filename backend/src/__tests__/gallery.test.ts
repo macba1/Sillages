@@ -142,10 +142,34 @@ describe('B3 + B4: styles, posts and stories', () => {
     expect(live.posts.length).toBeLessThan(5);
   });
 
+  it('lets a merchant clear the heading once they have set one', async () => {
+    await saveGallery(SHOP_A, { heading: 'Shop the look' }, deps());
+    expect((await saveGallery(SHOP_A, {}, deps())).heading).toBe('Shop the look');
+
+    // An explicit null is "remove it", not "not provided".
+    expect((await saveGallery(SHOP_A, { heading: null }, deps())).heading).toBeNull();
+  });
+
   it('clamps the post limit instead of trusting the client', async () => {
     expect(normaliseSettings({ postsLimit: 100000 }).postsLimit).toBe(250);
     expect(normaliseSettings({ postsLimit: -4 }).postsLimit).toBe(1);
     expect(normaliseSettings({ postsLimit: 'lots' }).postsLimit).toBe(60);
+  });
+
+  it('never serves a draft or archived product to a storefront', async () => {
+    // The catalogue mirrors everything Shopify has, drafts included. The
+    // storefront must not: a draft's /products/<handle> URL 404s, and quick buy
+    // would offer a variant of an unpublished product.
+    store.setProductStatus(SHOP_A.connectionId, 0, 'DRAFT');
+    store.setProductStatus(SHOP_A.connectionId, 1, 'ARCHIVED');
+
+    await saveGallery(SHOP_A, {}, deps());
+    await publishGallery(SHOP_A, deps());
+    const live = await composePublicGallery(SHOP_A.shopDomain, deps());
+
+    expect(live.posts).toHaveLength(3);
+    expect(live.posts.every((p) => !p.handle.includes('product-0'))).toBe(true);
+    expect(live.posts.every((p) => !p.handle.includes('product-1'))).toBe(true);
   });
 
   it('never puts internal identifiers or shop data in the public payload', async () => {

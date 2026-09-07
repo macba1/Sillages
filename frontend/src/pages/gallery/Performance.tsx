@@ -99,6 +99,25 @@ export default function Performance() {
         </Card>
       )}
 
+      {data?.approximate && (
+        <Card style={{ marginBottom: 20 }}>
+          <p style={{ margin: 0, fontSize: 13, color: T.body }}>
+            These counts are approximate: the reporting tables are still being set up. They will be exact shortly.
+          </p>
+        </Card>
+      )}
+
+      {data?.measurement && data.measurement.gallery && !data.measurement.checkout && (
+        <Card style={{ marginBottom: 20 }}>
+          <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
+            <strong>Checkout and purchases are not being measured yet.</strong> Everything below covers what shoppers
+            did inside the gallery. Orders and revenue need the Sillages storefront pixel, which is not switched on
+            for your store — so "Orders credited" and "Revenue credited" will stay at zero until it is. That is a
+            missing measurement, not a sign that nobody bought anything.
+          </p>
+        </Card>
+      )}
+
       {totals && !nothingYet && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>

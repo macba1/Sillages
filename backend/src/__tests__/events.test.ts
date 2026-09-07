@@ -298,6 +298,19 @@ describe('D9: interaction -> cart -> purchase', () => {
     if (result.ok) expect(result.outcome.attributed).toBe(true);
   });
 
+  it('refuses a purchase dated outside the plausible window', async () => {
+    // A forged purchase dated in the future would otherwise satisfy every
+    // reporting window the merchant can select, forever.
+    for (const occurredAt of ['2099-01-01T00:00:00.000Z', '2001-01-01T00:00:00.000Z']) {
+      const result = await ingestPurchase(
+        { token: issueIngestToken(SHOP), orderId: 6100, variantIds: [99], occurredAt },
+        deps(),
+      );
+      expect(result).toEqual({ ok: false, status: 400, reason: 'implausible_timestamp' });
+    }
+    expect(store.attribution).toHaveLength(0);
+  });
+
   it('refuses a purchase report carrying customer data', async () => {
     const result = await ingestPurchase(
       {

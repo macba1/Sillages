@@ -234,7 +234,8 @@ describe('E3 + E5: three proposals behind an unguessable link', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.url).toBe(`https://sillages.app/preview/${result.project.publicToken}`);
+    // /preview is the merchant's own screen; the public demo is /demo.
+    expect(result.url).toBe(`https://sillages.app/demo/${result.project.publicToken}`);
     expect(Date.parse(result.project.expiresAt)).toBeGreaterThan(Date.now());
     expect(result.project.proposals).toHaveLength(3);
   });

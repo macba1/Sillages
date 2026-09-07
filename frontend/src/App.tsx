@@ -115,9 +115,13 @@ function SocialGalleryRoutes() {
       <Route path="/performance" element={<RequireAuth><Performance /></RequireAuth>} />
       <Route path="/plan" element={<RequireAuth><Plan /></RequireAuth>} />
 
-      {/* The Shopify OAuth callback still redirects to /dashboard; land it on
-          the new home instead of falling through to the catch-all. */}
+      {/* The Shopify install and reconnect flows still redirect to the legacy
+          destinations. Without these a merchant finishing an install falls
+          through to the catch-all and lands on the public marketing page. */}
       <Route path="/dashboard" element={<Navigate to="/collections" replace />} />
+      <Route path="/plans" element={<Navigate to="/plan" replace />} />
+      <Route path="/onboarding" element={<Navigate to="/collections" replace />} />
+      <Route path="/settings" element={<Navigate to="/collections" replace />} />
 
       {/* Public: the before/after a shop owner is sent. No account needed. */}
       <Route path="/demo" element={<DemoForm />} />

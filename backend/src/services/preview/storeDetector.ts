@@ -29,7 +29,14 @@ export interface DetectedProduct {
 }
 
 export interface DetectedStore {
+  /** The hostname the visitor pasted. Often a custom domain. */
   shopDomain: string;
+  /**
+   * The `*.myshopify.com` domain, which is the only thing Shopify's OAuth
+   * accepts. Null when the storefront did not disclose it — most do, via
+   * `/products.json`'s sibling endpoints or a meta tag, but not all.
+   */
+  myshopifyDomain: string | null;
   sourceUrl: string;
   shopName: string | null;
   products: DetectedProduct[];
@@ -102,14 +109,41 @@ export async function detectStore(input: string, options: SafeFetchOptions = {})
     throw new StoreDetectionError('We could not find any products with photos in that store.', 'no_products');
   }
 
-  console.log(`${LOG} detected ${products.length} product(s) at ${origin.hostname}`);
+  const hostname = origin.hostname.toLowerCase();
+  const myshopifyDomain = hostname.endsWith('.myshopify.com')
+    ? hostname
+    : await detectMyshopifyDomain(origin.origin, options);
+
+  console.log(
+    `${LOG} detected ${products.length} product(s) at ${hostname}` +
+      (myshopifyDomain && myshopifyDomain !== hostname ? ` (${myshopifyDomain})` : ''),
+  );
 
   return {
-    shopDomain: origin.hostname.toLowerCase(),
+    shopDomain: hostname,
+    myshopifyDomain,
     sourceUrl: origin.origin,
     shopName: null,
     products,
   };
+}
+
+/**
+ * Finds the `*.myshopify.com` name behind a custom domain.
+ *
+ * Shopify storefronts expose it in `Shopify.shop` inside the inline script the
+ * platform injects on every page. Without it the install link cannot be built,
+ * because Shopify's OAuth rejects anything that is not a myshopify domain — and
+ * nearly every real store uses a custom domain.
+ */
+async function detectMyshopifyDomain(origin: string, options: SafeFetchOptions): Promise<string | null> {
+  try {
+    const response = await safeFetch(origin, options);
+    const match = /Shopify\.shop\s*=\s*["']([a-z0-9][a-z0-9-]*\.myshopify\.com)["']/i.exec(response.body);
+    return match ? match[1].toLowerCase() : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Mapping ─────────────────────────────────────────────────────────────────

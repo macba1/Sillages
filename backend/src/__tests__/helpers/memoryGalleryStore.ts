@@ -29,6 +29,7 @@ interface SeedProduct {
   title: string;
   imageUrl: string;
   variantId: string;
+  status: string;
 }
 
 export class MemoryGalleryStore implements GalleryStore {
@@ -54,6 +55,7 @@ export class MemoryGalleryStore implements GalleryStore {
       title: `${slug} product ${i}`,
       imageUrl: `https://cdn.example/${slug}/${i}.jpg`,
       variantId: `gid://shopify/ProductVariant/${2000 + i}`,
+      status: 'ACTIVE',
     }));
     this.products.set(ctx.connectionId, products);
 
@@ -67,6 +69,12 @@ export class MemoryGalleryStore implements GalleryStore {
       productIds: products.slice(0, Math.max(1, Math.floor(products.length / 2))).map((p) => p.id),
     }));
     this.collections.set(ctx.connectionId, collections);
+  }
+
+  /** Mirrors a product being unpublished or archived in Shopify. */
+  setProductStatus(connectionId: string, index: number, status: string): void {
+    const product = (this.products.get(connectionId) ?? [])[index];
+    if (product) product.status = status;
   }
 
   collectionsFor(connectionId: string): SeedCollection[] {
@@ -148,7 +156,8 @@ export class MemoryGalleryStore implements GalleryStore {
   }
 
   async loadPosts(connectionId: string, collectionId: string | null, limit: number): Promise<PublicPost[]> {
-    let products = this.products.get(connectionId) ?? [];
+    // Mirrors the SQL: only products a shopper can actually buy.
+    let products = (this.products.get(connectionId) ?? []).filter((p) => p.status === 'ACTIVE');
     if (collectionId) {
       const collection = (this.collections.get(connectionId) ?? []).find((c) => c.id === collectionId);
       if (!collection) return [];
