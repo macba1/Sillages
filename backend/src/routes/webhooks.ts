@@ -161,14 +161,29 @@ async function handleShopRedact(shopDomain: string) {
   const { account_id } = connection;
   console.log(`[webhooks/shopify] shop-redact: Found account_id=${account_id} for ${shopDomain}`);
 
+  // Deleting the connection cascades every social-gallery table that hangs off
+  // it: catalogue, variants, images, collections, sync runs, gallery configs and
+  // versions, events, attribution and saved products.
+  //
+  // Previews are the exception. They exist before a shop ever connects, so they
+  // reference the connection with ON DELETE SET NULL and would survive. They
+  // hold the shop's domain and its public catalogue, so shop/redact must remove
+  // them explicitly.
   const deletions = await Promise.allSettled([
     supabase.from('intelligence_briefs').delete().eq('account_id', account_id),
     supabase.from('shopify_daily_snapshots').delete().eq('account_id', account_id),
     supabase.from('user_intelligence_config').delete().eq('account_id', account_id),
+    supabase.from('preview_projects').delete().eq('shop_domain', shopDomain),
     supabase.from('shopify_connections').delete().eq('account_id', account_id),
   ]);
 
-  const tables = ['intelligence_briefs', 'shopify_daily_snapshots', 'user_intelligence_config', 'shopify_connections'];
+  const tables = [
+    'intelligence_briefs',
+    'shopify_daily_snapshots',
+    'user_intelligence_config',
+    'preview_projects',
+    'shopify_connections',
+  ];
   deletions.forEach((result, i) => {
     if (result.status === 'fulfilled') {
       const { error } = result.value;

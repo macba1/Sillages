@@ -35,6 +35,8 @@ import Plan from './pages/gallery/Plan';
 // Public before/after generator (Sprint 5) — no account required
 import DemoForm from './pages/preview/DemoForm';
 import DemoPreview from './pages/preview/DemoPreview';
+import PrivacyGallery from './pages/legal/PrivacyGallery';
+import TermsGallery from './pages/legal/TermsGallery';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -148,10 +150,11 @@ export default function App() {
         {/* Reconnect — requires auth but handled internally */}
         <Route path="/reconnect" element={<Reconnect />} />
 
-        {/* Public landing + legal */}
+        {/* Public landing + legal. The legal pages describe the product the
+            merchant is actually using, so they follow the product mode. */}
         <Route path="/" element={<Landing />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={isSocialGalleryMode() ? <PrivacyGallery /> : <Privacy />} />
+        <Route path="/terms" element={isSocialGalleryMode() ? <TermsGallery /> : <Terms />} />
 
         {/* Default */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -105,7 +105,7 @@ describe('Test 1: route manifest per product mode', () => {
     expect(mounted).not.toContain('/api/plans');
     expect(mounted).not.toContain('/api/catalog');
     expect(getBlockedRoutePrefixes('legacy').sort()).toEqual(
-      ['/api/catalog', '/api/gallery', '/api/performance', '/api/plans', '/api/public'].sort(),
+      ['/api/catalog', '/api/gallery', '/api/performance', '/api/plans', '/api/public', '/api/subscription'].sort(),
     );
   });
 
@@ -113,7 +113,7 @@ describe('Test 1: route manifest per product mode', () => {
     const { getMountedRoutePrefixes, getBlockedRoutePrefixes } = await loadAppModule('social_gallery');
 
     expect(getMountedRoutePrefixes('social_gallery').sort()).toEqual(
-      [...ESSENTIAL_PREFIXES, '/api/plans', '/api/catalog', '/api/gallery', '/api/performance', '/api/public'].sort(),
+      [...ESSENTIAL_PREFIXES, '/api/plans', '/api/catalog', '/api/gallery', '/api/performance', '/api/subscription', '/api/public'].sort(),
     );
     expect(getBlockedRoutePrefixes('social_gallery').sort()).toEqual([...LEGACY_PREFIXES].sort());
   });
@@ -220,6 +220,7 @@ describe('Test 3: social_gallery keeps the essential routes', () => {
       expect((await fetch(`${baseUrl}/api/gallery/publish`, { method: 'POST' })).status).toBe(401);
       expect((await fetch(`${baseUrl}/api/gallery/disable`, { method: 'POST' })).status).toBe(401);
       expect((await fetch(`${baseUrl}/api/performance`)).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/subscription`)).status).toBe(401);
     });
   });
 
@@ -259,6 +260,7 @@ describe('Test 4: legacy keeps the previous behaviour', () => {
         '/api/gallery',
         '/api/public/gallery/anything.myshopify.com',
         '/api/performance',
+        '/api/subscription',
       ]) {
         const res = await fetch(`${baseUrl}${path}`);
         expect(res.status, path).toBe(404);

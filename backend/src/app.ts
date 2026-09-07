@@ -29,6 +29,7 @@ import catalogRoutes from './routes/catalog.js';
 import galleryRoutes from './routes/gallery.js';
 import publicRoutes from './routes/public.js';
 import performanceRoutes from './routes/performance.js';
+import subscriptionRoutes from './routes/subscription.js';
 
 /**
  * Declarative map of every mounted router and the product modes it belongs to.
@@ -61,6 +62,7 @@ export const ROUTE_MANIFEST: readonly RouteMount[] = [
   { prefix: '/api/catalog', router: catalogRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Live Shopify catalogue: status, collections, manual sync' },
   { prefix: '/api/gallery', router: galleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Gallery settings, preview, publish, disable, revert' },
   { prefix: '/api/performance', router: performanceRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Aggregate gallery performance and attributed revenue' },
+  { prefix: '/api/subscription', router: subscriptionRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Shopify Billing for the new product (test mode unless SHOPIFY_BILLING_LIVE=true)' },
   { prefix: '/api/public', router: publicRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated surface: storefront gallery, event ingestion and the before/after generator' },
 
   // ── Legacy product only — retired in social_gallery, never deleted ───────

@@ -220,4 +220,118 @@ describe.skipIf(!enabled)('supabaseCatalogStore against a real Supabase', () => 
     expect(await store.listCollections(otherConnection)).toEqual([]);
     expect(await store.findVariantByInventoryItem(otherConnection, 'gid://shopify/InventoryItem/000001-0')).toBeNull();
   });
+
+  /**
+   * Sprint 6, F3 — shop/redact must leave nothing behind.
+   *
+   * This is the one obligation Shopify audits and the one it is easiest to get
+   * silently wrong, so it is verified against a real database rather than
+   * reasoned about: seed every table the new product writes, delete the
+   * connection the way the redact handler does, and count what survives.
+   */
+  it('deleting the connection removes every trace of the shop', async () => {
+    // The 137-product fixture has no collections, so seed one plus a membership
+    // row: the point of this test is that *every* table is reached.
+    const { data: seededCollection } = await db
+      .from('catalog_collections')
+      .insert({
+        account_id: ctx.accountId,
+        connection_id: ctx.connectionId,
+        shopify_id: 'gid://shopify/Collection/redact-1',
+        handle: 'redact-test',
+        title: 'Redact test',
+      })
+      .select('id')
+      .single();
+
+    const { data: anyProduct } = await db
+      .from('catalog_products')
+      .select('id')
+      .eq('connection_id', ctx.connectionId)
+      .limit(1)
+      .single();
+
+    await db.from('catalog_collection_products').insert({
+      collection_id: seededCollection!.id,
+      product_id: anyProduct!.id,
+      connection_id: ctx.connectionId,
+      position: 0,
+    });
+
+    const gallery = await db
+      .from('gallery_configs')
+      .insert({ account_id: ctx.accountId, connection_id: ctx.connectionId, style: 'warm', status: 'published' })
+      .select('id')
+      .single();
+    expect(gallery.error).toBeNull();
+
+    await db.from('gallery_config_versions').insert({
+      gallery_config_id: gallery.data!.id,
+      connection_id: ctx.connectionId,
+      version: 1,
+      snapshot: { style: 'warm' },
+    });
+    await db.from('gallery_events').insert({
+      connection_id: ctx.connectionId,
+      session_id: 'sess-redact-test-1234',
+      event_type: 'gallery_view',
+      occurred_at: new Date().toISOString(),
+      dedupe_key: 'redact-1',
+    });
+    await db.from('gallery_attribution').insert({
+      connection_id: ctx.connectionId,
+      order_shopify_id: 999001,
+      match: 'variant',
+      amount: 10,
+      currency: 'EUR',
+      occurred_at: new Date().toISOString(),
+    });
+    await db.from('saved_products').insert({
+      connection_id: ctx.connectionId,
+      session_id: 'sess-redact-test-1234',
+      product_shopify_id: 123,
+    });
+    await db.from('preview_projects').insert({
+      shop_domain: ctx.shopDomain,
+      source_url: `https://${ctx.shopDomain}`,
+      public_token: `redact-${Date.now()}`,
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    const scoped = [
+      'catalog_products', 'catalog_variants', 'catalog_product_images',
+      'catalog_collections', 'catalog_collection_products', 'catalog_sync_runs',
+      'gallery_configs', 'gallery_config_versions', 'gallery_events',
+      'gallery_attribution', 'saved_products',
+    ] as const;
+
+    const before = await Promise.all(
+      scoped.map((table) =>
+        db.from(table).select('*', { count: 'exact', head: true }).eq('connection_id', ctx.connectionId),
+      ),
+    );
+    for (const [i, result] of before.entries()) {
+      expect(result.count, `${scoped[i]} should have rows before the redact`).toBeGreaterThan(0);
+    }
+
+    // Exactly what handleShopRedact does: previews by shop domain, then the
+    // connection, which cascades everything else.
+    await db.from('preview_projects').delete().eq('shop_domain', ctx.shopDomain);
+    await db.from('shopify_connections').delete().eq('id', ctx.connectionId);
+
+    const after = await Promise.all(
+      scoped.map((table) =>
+        db.from(table).select('*', { count: 'exact', head: true }).eq('connection_id', ctx.connectionId),
+      ),
+    );
+    for (const [i, result] of after.entries()) {
+      expect(result.count, `${scoped[i]} should be empty after the redact`).toBe(0);
+    }
+
+    const { count: previews } = await db
+      .from('preview_projects')
+      .select('*', { count: 'exact', head: true })
+      .eq('shop_domain', ctx.shopDomain);
+    expect(previews, 'previews are not cascaded, so they must be deleted explicitly').toBe(0);
+  }, 60_000);
 });

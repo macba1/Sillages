@@ -71,6 +71,23 @@ export async function dispatchSocialGalleryWebhook(
   }
 
   if (topic === 'app/uninstalled') {
+    // Turn the gallery off first, so the storefront stops serving it even if the
+    // merchant's theme still has the block in place.
+    try {
+      const { supabaseGalleryStore } = await import('../gallery/galleryStore.js');
+      const { resolveShopByDomain } = await import('./catalogContext.js');
+      const shop = await resolveShopByDomain(shopDomain);
+      if (shop) {
+        const config = await supabaseGalleryStore.getByConnection(shop.connectionId);
+        if (config && config.status === 'published') {
+          await supabaseGalleryStore.setStatus(config.id, 'disabled');
+          console.log(`${LOG} ${shopDomain}: gallery disabled on uninstall`);
+        }
+      }
+    } catch (err) {
+      console.warn(`${LOG} ${shopDomain}: could not disable the gallery on uninstall: ${(err as Error).message}`);
+    }
+
     const handler =
       deps.handleAppUninstalled ??
       (async (shop: string) => {
