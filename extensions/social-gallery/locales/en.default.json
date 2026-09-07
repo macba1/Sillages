@@ -1,0 +1,15 @@
+{
+  "names": {
+    "social_gallery": "Sillages social gallery"
+  },
+  "settings": {
+    "heading": {
+      "label": "Heading",
+      "info": "Leave empty to use the heading set in Sillages."
+    },
+    "api_base": {
+      "label": "Sillages API",
+      "info": "Only change this if Sillages support asks you to."
+    }
+  }
+}

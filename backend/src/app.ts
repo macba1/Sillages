@@ -26,6 +26,8 @@ import unsubscribeRoutes from './routes/unsubscribe.js';
 import towerRoutes from './routes/tower.js';
 import plansRoutes from './routes/plans.js';
 import catalogRoutes from './routes/catalog.js';
+import galleryRoutes from './routes/gallery.js';
+import publicGalleryRoutes from './routes/publicGallery.js';
 
 /**
  * Declarative map of every mounted router and the product modes it belongs to.
@@ -56,6 +58,8 @@ export const ROUTE_MANIFEST: readonly RouteMount[] = [
   // ── New product only ─────────────────────────────────────────────────────
   { prefix: '/api/plans', router: plansRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Single source of truth for the new product plans' },
   { prefix: '/api/catalog', router: catalogRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Live Shopify catalogue: status, collections, manual sync' },
+  { prefix: '/api/gallery', router: galleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Gallery settings, preview, publish, disable, revert' },
+  { prefix: '/api/public', router: publicGalleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated storefront API consumed by the theme app extension' },
 
   // ── Legacy product only — retired in social_gallery, never deleted ───────
   { prefix: '/api/briefs', router: briefsRoutes, modes: LEGACY_ONLY, reason: 'Legacy briefs' },
@@ -102,14 +106,24 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: true }));
 
   // ── CORS ──────────────────────────────────────────────────────
-  app.use(
-    cors({
-      origin: [env.FRONTEND_URL, 'https://sillages.app', 'https://www.sillages.app'],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    })
-  );
+  // The admin API is restricted to our own front end. The storefront API is
+  // read by arbitrary shop domains, so it is excluded here and sets its own
+  // headers in `routes/publicGallery.ts`; otherwise this middleware would
+  // answer its preflight with the admin method list and no allowed origin.
+  const adminCors = cors({
+    origin: [env.FRONTEND_URL, 'https://sillages.app', 'https://www.sillages.app'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/public/')) {
+      next();
+      return;
+    }
+    adminCors(req, res, next);
+  });
 
   // ── Rate limiting ─────────────────────────────────────────────
   const limiter = rateLimit({
@@ -119,7 +133,16 @@ export function createApp(): Express {
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' },
   });
-  app.use('/api', limiter);
+  // The storefront API is public and high-traffic: it carries its own, more
+  // generous limiter. Applying the admin limiter to it as well would throttle
+  // ordinary shoppers behind a shared IP.
+  app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/public/')) {
+      next();
+      return;
+    }
+    limiter(req, res, next);
+  });
 
   // ── Health check ──────────────────────────────────────────────
   app.get('/health', (_req, res) => {

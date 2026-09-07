@@ -1,0 +1,6 @@
+# Sillages social gallery — Theme App Extension.
+#
+# The merchant adds this from the theme editor. It never edits theme code, and
+# removing the block removes every trace of it from the storefront.
+name = "social-gallery"
+type = "theme"

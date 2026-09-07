@@ -1,0 +1,45 @@
+{% comment %}
+  Sillages — social gallery.
+
+  A theme app block: the merchant adds it from the theme editor, so no theme
+  code is ever edited and removing the block removes every trace of it.
+
+  The block renders an empty container and nothing else. All content is fetched
+  from the Sillages public API after the page has loaded, so this never blocks
+  rendering. If nothing is published, the script removes the container.
+{% endcomment %}
+
+{{ 'social-gallery.css' | asset_url | stylesheet_tag }}
+
+<div
+  data-sillages-gallery
+  data-shop="{{ shop.permanent_domain }}"
+  data-api="{{ block.settings.api_base | default: 'https://sillages-production.up.railway.app' }}"
+  data-currency="{{ shop.currency }}"
+  {% if block.settings.heading != blank %}data-heading="{{ block.settings.heading | escape }}"{% endif %}
+  {{ block.shopify_attributes }}
+></div>
+
+<script src="{{ 'social-gallery.js' | asset_url }}" type="module" defer></script>
+
+{% schema %}
+{
+  "name": "t:names.social_gallery",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "t:settings.heading.label",
+      "info": "t:settings.heading.info"
+    },
+    {
+      "type": "text",
+      "id": "api_base",
+      "label": "t:settings.api_base.label",
+      "info": "t:settings.api_base.info",
+      "default": "https://sillages-production.up.railway.app"
+    }
+  ]
+}
+{% endschema %}

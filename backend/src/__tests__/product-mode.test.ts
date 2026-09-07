@@ -104,14 +104,16 @@ describe('Test 1: route manifest per product mode', () => {
     }
     expect(mounted).not.toContain('/api/plans');
     expect(mounted).not.toContain('/api/catalog');
-    expect(getBlockedRoutePrefixes('legacy').sort()).toEqual(['/api/catalog', '/api/plans']);
+    expect(getBlockedRoutePrefixes('legacy').sort()).toEqual(
+      ['/api/catalog', '/api/gallery', '/api/plans', '/api/public'].sort(),
+    );
   });
 
   it('social_gallery mounts only essential routes plus /api/plans', async () => {
     const { getMountedRoutePrefixes, getBlockedRoutePrefixes } = await loadAppModule('social_gallery');
 
     expect(getMountedRoutePrefixes('social_gallery').sort()).toEqual(
-      [...ESSENTIAL_PREFIXES, '/api/plans', '/api/catalog'].sort(),
+      [...ESSENTIAL_PREFIXES, '/api/plans', '/api/catalog', '/api/gallery', '/api/public'].sort(),
     );
     expect(getBlockedRoutePrefixes('social_gallery').sort()).toEqual([...LEGACY_PREFIXES].sort());
   });
@@ -209,6 +211,17 @@ describe('Test 3: social_gallery keeps the essential routes', () => {
     });
   });
 
+  it('the gallery admin routes are mounted and auth-guarded', async () => {
+    const { createApp } = await loadAppModule('social_gallery');
+
+    await withServer(createApp(), async (baseUrl) => {
+      expect((await fetch(`${baseUrl}/api/gallery`)).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/gallery/preview`)).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/gallery/publish`, { method: 'POST' })).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/gallery/disable`, { method: 'POST' })).status).toBe(401);
+    });
+  });
+
   it('Shopify OAuth entry point is still available', async () => {
     const { createApp } = await loadAppModule('social_gallery');
 
@@ -238,7 +251,13 @@ describe('Test 4: legacy keeps the previous behaviour', () => {
     const { createApp } = await loadAppModule('legacy');
 
     await withServer(createApp(), async (baseUrl) => {
-      for (const path of ['/api/plans', '/api/catalog/status', '/api/catalog/collections']) {
+      for (const path of [
+        '/api/plans',
+        '/api/catalog/status',
+        '/api/catalog/collections',
+        '/api/gallery',
+        '/api/public/gallery/anything.myshopify.com',
+      ]) {
         const res = await fetch(`${baseUrl}${path}`);
         expect(res.status, path).toBe(404);
         expect((await res.json()).code).toBe('FEATURE_NOT_AVAILABLE_IN_PRODUCT_MODE');
