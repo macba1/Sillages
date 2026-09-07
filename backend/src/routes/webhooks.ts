@@ -8,6 +8,8 @@ import { env } from '../config/env.js';
 import { verifyShopifyWebhook, getAllShopifyCredentials } from '../lib/shopify.js';
 import { processShopifyWebhook } from '../services/shopifyWebhooks.js';
 import { legacyOnly } from '../middleware/productMode.js';
+import { isSocialGalleryMode } from '../config/productMode.js';
+import { dispatchSocialGalleryWebhook } from '../services/catalog/catalogWebhookRouter.js';
 
 const router = Router();
 
@@ -273,7 +275,13 @@ router.post(
     res.json({ received: true });
 
     try {
-      await processShopifyWebhook(topic, shopDomain, webhookId, payload);
+      // The new product handles catalogue topics and deliberately ignores the
+      // legacy order/checkout ones. Uninstall keeps the legacy behaviour.
+      if (isSocialGalleryMode()) {
+        await dispatchSocialGalleryWebhook(topic, shopDomain, webhookId, payload);
+      } else {
+        await processShopifyWebhook(topic, shopDomain, webhookId, payload);
+      }
     } catch (err) {
       console.error(`[webhooks/shopify] Error processing ${topic} from ${shopDomain}: ${(err as Error).message}`);
     }

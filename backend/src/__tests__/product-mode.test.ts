@@ -103,14 +103,15 @@ describe('Test 1: route manifest per product mode', () => {
       expect(mounted).toContain(prefix);
     }
     expect(mounted).not.toContain('/api/plans');
-    expect(getBlockedRoutePrefixes('legacy')).toEqual(['/api/plans']);
+    expect(mounted).not.toContain('/api/catalog');
+    expect(getBlockedRoutePrefixes('legacy').sort()).toEqual(['/api/catalog', '/api/plans']);
   });
 
   it('social_gallery mounts only essential routes plus /api/plans', async () => {
     const { getMountedRoutePrefixes, getBlockedRoutePrefixes } = await loadAppModule('social_gallery');
 
     expect(getMountedRoutePrefixes('social_gallery').sort()).toEqual(
-      [...ESSENTIAL_PREFIXES, '/api/plans'].sort(),
+      [...ESSENTIAL_PREFIXES, '/api/plans', '/api/catalog'].sort(),
     );
     expect(getBlockedRoutePrefixes('social_gallery').sort()).toEqual([...LEGACY_PREFIXES].sort());
   });
@@ -197,6 +198,17 @@ describe('Test 3: social_gallery keeps the essential routes', () => {
     });
   });
 
+  it('the catalogue routes are mounted and auth-guarded', async () => {
+    const { createApp } = await loadAppModule('social_gallery');
+
+    await withServer(createApp(), async (baseUrl) => {
+      // 401 (not 404) proves the router is mounted behind requireAuth.
+      expect((await fetch(`${baseUrl}/api/catalog/status`)).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/catalog/collections`)).status).toBe(401);
+      expect((await fetch(`${baseUrl}/api/catalog/sync`, { method: 'POST' })).status).toBe(401);
+    });
+  });
+
   it('Shopify OAuth entry point is still available', async () => {
     const { createApp } = await loadAppModule('social_gallery');
 
@@ -222,13 +234,15 @@ describe('Test 4: legacy keeps the previous behaviour', () => {
     });
   });
 
-  it('the new /api/plans route is not exposed in legacy', async () => {
+  it('the new /api/plans and /api/catalog routes are not exposed in legacy', async () => {
     const { createApp } = await loadAppModule('legacy');
 
     await withServer(createApp(), async (baseUrl) => {
-      const res = await fetch(`${baseUrl}/api/plans`);
-      expect(res.status).toBe(404);
-      expect((await res.json()).code).toBe('FEATURE_NOT_AVAILABLE_IN_PRODUCT_MODE');
+      for (const path of ['/api/plans', '/api/catalog/status', '/api/catalog/collections']) {
+        const res = await fetch(`${baseUrl}${path}`);
+        expect(res.status, path).toBe(404);
+        expect((await res.json()).code).toBe('FEATURE_NOT_AVAILABLE_IN_PRODUCT_MODE');
+      }
     });
   });
 });
@@ -254,13 +268,25 @@ describe('Test 5: legacy background jobs', () => {
     vi.doUnmock('../services/shopifyWebhooks.js');
   });
 
-  it('social_gallery registers no cron job at all', async () => {
+  it('social_gallery registers no legacy cron job at all', async () => {
     const { schedule, scheduler, auditor } = await loadScheduler('social_gallery');
 
     scheduler.startScheduler();
     auditor.startAuditor();
 
     expect(schedule).not.toHaveBeenCalled();
+  });
+
+  it('the catalogue reconciliation cron runs only in social_gallery', async () => {
+    const sg = await loadScheduler('social_gallery');
+    const sgCatalog = await import('../services/catalog/catalogScheduler.js');
+    sgCatalog.startCatalogScheduler();
+    expect(sg.schedule).toHaveBeenCalledTimes(1);
+
+    const legacy = await loadScheduler('legacy');
+    const legacyCatalog = await import('../services/catalog/catalogScheduler.js');
+    legacyCatalog.startCatalogScheduler();
+    expect(legacy.schedule).not.toHaveBeenCalled();
   });
 
   it('legacy still registers the scheduler and auditor cron jobs', async () => {

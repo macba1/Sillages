@@ -25,6 +25,7 @@ import actionsRoutes from './routes/actions.js';
 import unsubscribeRoutes from './routes/unsubscribe.js';
 import towerRoutes from './routes/tower.js';
 import plansRoutes from './routes/plans.js';
+import catalogRoutes from './routes/catalog.js';
 
 /**
  * Declarative map of every mounted router and the product modes it belongs to.
@@ -54,6 +55,7 @@ export const ROUTE_MANIFEST: readonly RouteMount[] = [
 
   // ── New product only ─────────────────────────────────────────────────────
   { prefix: '/api/plans', router: plansRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Single source of truth for the new product plans' },
+  { prefix: '/api/catalog', router: catalogRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Live Shopify catalogue: status, collections, manual sync' },
 
   // ── Legacy product only — retired in social_gallery, never deleted ───────
   { prefix: '/api/briefs', router: briefsRoutes, modes: LEGACY_ONLY, reason: 'Legacy briefs' },

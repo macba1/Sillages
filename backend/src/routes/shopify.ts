@@ -23,6 +23,7 @@ import { syncFullHistory } from '../services/fullHistorySync.js';
 import { syncAbandonedCarts } from '../services/abandonedCartsSync.js';
 import { generateBrief } from '../services/briefGenerator.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
+import { onShopifyConnected, shouldRegisterLegacyWebhookTopics } from '../services/catalog/catalogInstall.js';
 import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
@@ -268,9 +269,14 @@ router.get(
             } catch { /* non-fatal */ }
 
             try {
-              const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
-              console.log(`[shopify/callback] Webhooks: ${registered.length} registered, ${failed.length} failed`);
+              if (shouldRegisterLegacyWebhookTopics()) {
+                const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
+                console.log(`[shopify/callback] Webhooks: ${registered.length} registered, ${failed.length} failed`);
+              }
             } catch { /* non-fatal */ }
+
+            // social_gallery: register catalogue topics and run the first import.
+            await onShopifyConnected(shop, tokenData.access_token);
 
             // Assign Starter plan
             await supabase
@@ -406,11 +412,16 @@ router.get(
 
       // Register real-time event webhooks (orders, checkouts, uninstall)
       try {
-        const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
-        console.log(`[shopify/callback] Event webhooks: ${registered.length} registered, ${failed.length} failed`);
+        if (shouldRegisterLegacyWebhookTopics()) {
+          const { registered, failed } = await registerShopifyWebhooks(shop, tokenData.access_token);
+          console.log(`[shopify/callback] Event webhooks: ${registered.length} registered, ${failed.length} failed`);
+        }
       } catch (err) {
         console.warn(`[shopify/callback] Event webhook registration warning: ${(err as Error).message}`);
       }
+
+      // social_gallery: register catalogue topics and run the first import.
+      await onShopifyConnected(shop, tokenData.access_token);
 
       // Check if this is a reconnection (existing account with subscription)
       const { data: existingAccount } = await supabase

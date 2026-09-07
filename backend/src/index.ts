@@ -6,6 +6,7 @@ import { createApp } from './app.js';
 
 import { startScheduler } from './services/scheduler.js';
 import { startAuditor } from './services/auditor.js';
+import { startCatalogScheduler } from './services/catalog/catalogScheduler.js';
 
 const app = createApp();
 
@@ -24,6 +25,8 @@ app.listen(PORT, () => {
     startAuditor();
   } else {
     console.log('[server] Legacy background jobs disabled: scheduler and auditor not started');
+    // The new product's only periodic job: nightly catalogue reconciliation.
+    startCatalogScheduler();
   }
 });
 

@@ -39,6 +39,7 @@ Do not compare the raw string anywhere else. Use `isLegacyMode()`,
 |---|---|---|
 | `startScheduler()` — event loop, daily/weekly briefs, orchestrator, trial reminders, leads, outreach, nurture, inbox, content engine, Shopify webhook verification | runs | **not started** |
 | `startAuditor()` — 6-hourly audit and 2-hourly token check | runs | **not started** |
+| `startCatalogScheduler()` — nightly catalogue reconciliation at 04:20 | **not started** | runs |
 
 Both are gated twice: `backend/src/index.ts` only calls them in `legacy`, and
 each function returns immediately if the mode is not `legacy`. No `node-cron`
@@ -58,6 +59,7 @@ that does not belong to the active mode is not mounted; its prefix answers
 | `/api/webhooks` (Shopify privacy topics, `app/uninstalled`, HMAC verification) | yes | yes |
 | `/api/accounts` | yes | yes |
 | `/api/plans` (new product plans) | **no** | yes |
+| `/api/catalog` (live Shopify catalogue — see `docs/catalog-sync.md`) | **no** | yes |
 | `/api/briefs`, `/api/billing`, `/api/alerts`, `/api/admin`, `/api/chat`, `/api/push`, `/api/actions`, `/api/unsubscribe`, `/api/tower` | yes | **no** |
 
 Three endpoints live inside routers that stay mounted in both modes, so they are
