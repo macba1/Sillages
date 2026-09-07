@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ── Mock Supabase ────────────────────────────────────────────────────────────
 const mockSelect = vi.fn();

@@ -205,7 +205,7 @@ async function scrapePublicShopify(domain: string): Promise<PainAnalysis> {
   let hasEmailCapture = false;
   let hasBundles = false;
   let avgPrice = 0;
-  let currency = 'USD';
+  const currency = 'USD';
   let storeDescription = '';
   let contactEmail: string | null = null;
   let instagramHandle: string | null = null;

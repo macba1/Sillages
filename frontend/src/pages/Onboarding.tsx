@@ -313,21 +313,31 @@ export default function Onboarding() {
     try { await api.patch('/api/accounts/language', { language: l }); } catch { /* non-fatal */ }
   }
 
-  // Handle legacy ?connected=true redirects
-  if (new URLSearchParams(window.location.search).get('connected') === 'true') {
-    setTimeout(() => navigate('/dashboard'), 100);
-    return null;
-  }
+  // Handle legacy ?connected=true redirects.
+  //
+  // This used to return early, before the effect below — which changes the
+  // number of hooks between renders and is exactly the mistake React crashes
+  // on. The redirect is an effect now, so the hooks are unconditional.
+  const justConnected = new URLSearchParams(window.location.search).get('connected') === 'true';
 
-  // If store already connected, go to dashboard — no manual onboarding needed
-  // Accounts are created automatically on App Store install
   useEffect(() => {
+    if (!justConnected) return;
+    const timer = setTimeout(() => navigate('/dashboard'), 100);
+    return () => clearTimeout(timer);
+  }, [justConnected, navigate]);
+
+  // If store already connected, go to dashboard — no manual onboarding needed.
+  // Accounts are created automatically on App Store install.
+  useEffect(() => {
+    if (justConnected) return;
     api.get('/api/shopify/connection')
       .then(({ data }) => {
         if (data.connection) navigate('/dashboard', { replace: true });
       })
       .catch(() => { /* ignore */ });
-  }, [navigate]);
+  }, [justConnected, navigate]);
+
+  if (justConnected) return null;
 
   const firstName = account?.full_name?.split(' ')[0] ?? 'there';
 

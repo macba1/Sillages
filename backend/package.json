@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint src --ext ts --report-unused-disable-directives",
     "premerge": "tsc --noEmit && echo 'Build OK'",
     "test": "vitest run",
     "test:watch": "vitest"

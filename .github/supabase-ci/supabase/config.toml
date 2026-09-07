@@ -1,0 +1,39 @@
+# Minimal Supabase project used only by CI, so the integration suite runs
+# against a real Postgres, PostgREST and Auth rather than being skipped.
+project_id = "sillages-ci"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = false
+
+[analytics]
+enabled = false
+
+[realtime]
+enabled = false

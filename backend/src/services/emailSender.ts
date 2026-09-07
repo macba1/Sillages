@@ -276,7 +276,8 @@ function buildV2Html({ brief, lang, currency, brand, weekData, planId, autoAppro
   // ── Headline ──
   const headlineSummary = y?.summary ?? '';
   // Find the most impactful phrase for the highlight
-  const highlightPhrase = act?.what?.match(/€\d+[^\.]*/)?.[0] ?? act?.expected_impact?.match(/€[^\.]+/)?.[0] ?? '';
+  // Inside a character class a dot is literal, so the backslashes were noise.
+  const highlightPhrase = act?.what?.match(/€\d+[^.]*/)?.[0] ?? act?.expected_impact?.match(/€[^.]+/)?.[0] ?? '';
 
   // ── Cart recovery note ──
   let cartNote = '';

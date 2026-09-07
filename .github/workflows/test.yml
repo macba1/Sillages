@@ -1,13 +1,15 @@
 name: Tests
 
+# Runs on every branch, not only develop: pivot/social-gallery had no CI at all
+# while five sprints of work landed on it.
 on:
   push:
-    branches: [develop]
+    branches: ['**']
   pull_request:
-    branches: [main]
 
 jobs:
-  test:
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,13 +24,145 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run type-check
 
-      - name: Run tests
+      - name: Unit tests
         run: npm test
         env:
           NODE_OPTIONS: '--experimental-vm-modules'
+
+      - name: Build
+        run: npm run build
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Tests
+        run: npm test
+
+      # Both product modes must build. A change that only compiles in one of
+      # them is a change that breaks the other on deploy.
+      - name: Build (legacy)
+        run: npm run build
+        env:
+          VITE_PRODUCT_MODE: legacy
+
+      - name: Build (social_gallery)
+        run: npm run build
+        env:
+          VITE_PRODUCT_MODE: social_gallery
+
+  integration:
+    name: Integration (real Postgres)
+    runs-on: ubuntu-latest
+
+    # The suite that proves cross-shop isolation, row level security, erasure,
+    # the metric aggregates and retention. It used to be skipped everywhere,
+    # including here — so the one artefact that would catch an RLS regression
+    # never ran.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start -x studio,edge-runtime,imgproxy,inbucket,logflare,vector,supavisor
+        working-directory: .github/supabase-ci
+
+      - name: Apply the schema and every migration
+        run: |
+          CONTAINER="$(docker ps --format '{{.Names}}' | grep -m1 supabase_db_)"
+          docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/schema.sql
+          ./scripts/migrate.sh apply local
+          docker exec -i "$CONTAINER" psql -q -U postgres -d postgres <<'SQL'
+          grant usage on schema public to anon, authenticated, service_role;
+          grant all privileges on all tables in schema public to anon, authenticated, service_role;
+          grant all privileges on all sequences in schema public to anon, authenticated, service_role;
+          alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+          notify pgrst, 'reload schema';
+          SQL
+
+      - run: npm ci
+        working-directory: backend
+
+      - name: Integration suite
+        working-directory: backend
+        run: |
+          STATUS="$(cd ../.github/supabase-ci && supabase status --output json)"
+          SUPABASE_TEST_URL=http://127.0.0.1:54321 \
+          SUPABASE_TEST_SERVICE_KEY="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["SERVICE_ROLE_KEY"])')" \
+          SUPABASE_TEST_ANON_KEY="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["ANON_KEY"])')" \
+            npx vitest run src/__tests__/catalog-store.integration.test.ts
+
+      - name: Fail if the integration suite was skipped
+        working-directory: backend
+        run: |
+          # A suite that silently skips is worse than one that fails: it looks
+          # green. This is the guard against the credentials above going missing.
+          STATUS="$(cd ../.github/supabase-ci && supabase status --output json)"
+          SUPABASE_TEST_URL=http://127.0.0.1:54321 \
+          SUPABASE_TEST_SERVICE_KEY="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["SERVICE_ROLE_KEY"])')" \
+          SUPABASE_TEST_ANON_KEY="$(printf '%s' "$STATUS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["ANON_KEY"])')" \
+            npx vitest run src/__tests__/catalog-store.integration.test.ts --reporter=json --outputFile=/tmp/int.json
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open('/tmp/int.json'))
+          skipped = sum(
+              1
+              for suite in d.get('testResults', [])
+              for t in suite.get('assertionResults', [])
+              if t.get('status') in ('pending', 'skipped', 'todo')
+          )
+          print(f"integration: {d['numPassedTests']} passed, {skipped} skipped")
+          if skipped or d['numPassedTests'] == 0:
+              sys.exit("The integration suite did not actually run. Refusing to report success.")
+          PY

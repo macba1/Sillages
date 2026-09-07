@@ -1,15 +1,15 @@
-name: Deploy
+name: Deploy verification
 
 on:
   push:
     branches: [main]
 
+# Railway deploys on push to main before this runs, so a red check here is a
+# signal, not a gate. The gate is the Tests workflow on the pull request.
 jobs:
   verify:
+    name: Verify what was just deployed
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
@@ -20,17 +20,26 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Type check
-        run: npx tsc --noEmit
-
-      - name: Run tests
-        run: npm test
+      - name: Backend
+        working-directory: backend
+        run: |
+          npm ci
+          npm run lint
+          npm run type-check
+          npm test
         env:
           NODE_OPTIONS: '--experimental-vm-modules'
 
-      # Railway deploys automatically on push to main.
-      # If tests fail here, the deploy already happened but we get a red check
-      # as a signal that something is wrong.
+      - name: Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run type-check
+          npm test
+          npm run build
+
+      - name: Remind about migrations
+        run: |
+          echo "::notice::Migrations are never applied automatically."
+          echo "::notice::Run ./scripts/migrate.sh plan production and apply what it lists."

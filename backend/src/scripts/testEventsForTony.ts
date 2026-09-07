@@ -53,7 +53,7 @@ async function main() {
   // Fetch 60 days of real Shopify orders
   // ══════════════════════════════════════════════════════════════════
   const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString();
-  let allOrders: ShopifyOrder[] = [];
+  const allOrders: ShopifyOrder[] = [];
   let pageInfo: string | undefined;
 
   do {

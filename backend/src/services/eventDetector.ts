@@ -347,7 +347,7 @@ async function detectOverdueCustomers(accountId: string): Promise<DetectedEvent[
   const sixtyDaysAgo = new Date(Date.now() - 60 * 86400 * 1000).toISOString();
 
   // Fetch 60 days of orders for customer analysis
-  let allOrders: ShopifyOrder[] = [];
+  const allOrders: ShopifyOrder[] = [];
   let pageInfo: string | undefined;
 
   try {
