@@ -298,11 +298,14 @@ describe('Test 5: legacy background jobs', () => {
     expect(schedule).not.toHaveBeenCalled();
   });
 
-  it('the catalogue reconciliation cron runs only in social_gallery', async () => {
+  it('the new product cron jobs run only in social_gallery', async () => {
     const sg = await loadScheduler('social_gallery');
     const sgCatalog = await import('../services/catalog/catalogScheduler.js');
     sgCatalog.startCatalogScheduler();
-    expect(sg.schedule).toHaveBeenCalledTimes(1);
+
+    // Nightly catalogue reconciliation and expired-preview cleanup.
+    const schedules = sg.schedule.mock.calls.map((call) => call[0]);
+    expect(schedules).toEqual(['20 4 * * *', '50 3 * * *']);
 
     const legacy = await loadScheduler('legacy');
     const legacyCatalog = await import('../services/catalog/catalogScheduler.js');

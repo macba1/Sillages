@@ -3,6 +3,8 @@ import { resolveShopByDomain } from './catalogContext.js';
 import { registerCatalogWebhooks } from './catalogWebhookSetup.js';
 import { runCatalogSync } from './catalogSync.js';
 import { supabaseCatalogStore } from './supabaseCatalogStore.js';
+import { claimPreview } from '../preview/previewService.js';
+import { saveGallery } from '../gallery/galleryService.js';
 
 const LOG = '[catalogInstall]';
 
@@ -15,7 +17,11 @@ const LOG = '[catalogInstall]';
  *
  * Never throws: a catalogue problem must not fail an otherwise good install.
  */
-export async function onShopifyConnected(shopDomain: string, accessToken: string): Promise<void> {
+export async function onShopifyConnected(
+  shopDomain: string,
+  accessToken: string,
+  claimToken?: string,
+): Promise<void> {
   if (!isSocialGalleryMode()) return;
 
   try {
@@ -27,8 +33,9 @@ export async function onShopifyConnected(shopDomain: string, accessToken: string
     console.warn(`${LOG} ${shopDomain}: webhook registration failed: ${(err as Error).message}`);
   }
 
+  let shop;
   try {
-    const shop = await resolveShopByDomain(shopDomain);
+    shop = await resolveShopByDomain(shopDomain);
     if (!shop) {
       console.warn(`${LOG} ${shopDomain}: no connection row found — skipping initial sync`);
       return;
@@ -37,6 +44,21 @@ export async function onShopifyConnected(shopDomain: string, accessToken: string
     console.log(`${LOG} ${shopDomain}: initial sync ${outcome.status}`);
   } catch (err) {
     console.warn(`${LOG} ${shopDomain}: initial sync failed: ${(err as Error).message}`);
+    return;
+  }
+
+  // If this shop was shown a before/after demo, recover exactly the design they
+  // were shown instead of dropping them into a blank setup.
+  try {
+    const claimed = await claimPreview(claimToken, shopDomain, shop.connectionId);
+    if (!claimed) return;
+
+    await saveGallery(shop, { style: claimed.proposal });
+    // Deliberately not published: the merchant still previews and publishes.
+    // Recovering the demo removes the setup, not the decision.
+    console.log(`${LOG} ${shopDomain}: seeded the gallery with the "${claimed.proposal}" proposal`);
+  } catch (err) {
+    console.warn(`${LOG} ${shopDomain}: could not recover the preview: ${(err as Error).message}`);
   }
 }
 

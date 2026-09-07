@@ -27,7 +27,7 @@ import towerRoutes from './routes/tower.js';
 import plansRoutes from './routes/plans.js';
 import catalogRoutes from './routes/catalog.js';
 import galleryRoutes from './routes/gallery.js';
-import publicGalleryRoutes from './routes/publicGallery.js';
+import publicRoutes from './routes/public.js';
 import performanceRoutes from './routes/performance.js';
 
 /**
@@ -61,7 +61,7 @@ export const ROUTE_MANIFEST: readonly RouteMount[] = [
   { prefix: '/api/catalog', router: catalogRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Live Shopify catalogue: status, collections, manual sync' },
   { prefix: '/api/gallery', router: galleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Gallery settings, preview, publish, disable, revert' },
   { prefix: '/api/performance', router: performanceRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Aggregate gallery performance and attributed revenue' },
-  { prefix: '/api/public', router: publicGalleryRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated storefront API: gallery reads and event ingestion' },
+  { prefix: '/api/public', router: publicRoutes, modes: SOCIAL_GALLERY_ONLY, reason: 'Unauthenticated surface: storefront gallery, event ingestion and the before/after generator' },
 
   // ── Legacy product only — retired in social_gallery, never deleted ───────
   { prefix: '/api/briefs', router: briefsRoutes, modes: LEGACY_ONLY, reason: 'Legacy briefs' },

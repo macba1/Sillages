@@ -276,7 +276,7 @@ router.get(
             } catch { /* non-fatal */ }
 
             // social_gallery: register catalogue topics and run the first import.
-            await onShopifyConnected(shop, tokenData.access_token);
+            await onShopifyConnected(shop, tokenData.access_token, req.query.preview as string | undefined);
 
             // Assign Starter plan
             await supabase
@@ -421,7 +421,7 @@ router.get(
       }
 
       // social_gallery: register catalogue topics and run the first import.
-      await onShopifyConnected(shop, tokenData.access_token);
+      await onShopifyConnected(shop, tokenData.access_token, req.query.preview as string | undefined);
 
       // Check if this is a reconnection (existing account with subscription)
       const { data: existingAccount } = await supabase

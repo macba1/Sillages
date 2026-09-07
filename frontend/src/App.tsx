@@ -32,6 +32,10 @@ import Publish from './pages/gallery/Publish';
 import Performance from './pages/gallery/Performance';
 import Plan from './pages/gallery/Plan';
 
+// Public before/after generator (Sprint 5) — no account required
+import DemoForm from './pages/preview/DemoForm';
+import DemoPreview from './pages/preview/DemoPreview';
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
@@ -112,6 +116,10 @@ function SocialGalleryRoutes() {
       {/* The Shopify OAuth callback still redirects to /dashboard; land it on
           the new home instead of falling through to the catch-all. */}
       <Route path="/dashboard" element={<Navigate to="/collections" replace />} />
+
+      {/* Public: the before/after a shop owner is sent. No account needed. */}
+      <Route path="/demo" element={<DemoForm />} />
+      <Route path="/demo/:token" element={<DemoPreview />} />
     </>
   );
 }
