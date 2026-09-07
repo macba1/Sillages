@@ -35,7 +35,15 @@ hop of a redirect chain**:
   and IPv4-mapped IPv6;
 - no credentials embedded in the URL;
 - at most 3 redirects, each re-checked rather than followed;
-- an 8-second timeout and a 3 MB response cap.
+- an 8-second timeout and a 3 MB response cap, both covering the **body** and
+  not only the headers;
+- **the connection is pinned to the address that was validated.** Resolving a
+  hostname, approving it, and then letting the OS resolve again at connect time
+  is the DNS-rebinding hole: a record can answer publicly for the check and
+  privately microseconds later for the connection. A custom agent hands the
+  socket the checked address whatever DNS says by then, and refuses outright if
+  that address is not public. TLS still verifies the certificate against the
+  original hostname, so pinning the address does not weaken it.
 
 `preview.test.ts` pins all of it, including a redirect from a public host to a
 private one.

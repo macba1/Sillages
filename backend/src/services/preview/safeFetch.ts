@@ -1,4 +1,6 @@
 import dns from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 
 /**
@@ -59,18 +61,33 @@ function isPrivateAddress(address: string): boolean {
 export interface SafeFetchOptions {
   /** Injected in tests so no DNS lookup or network call happens. */
   lookup?: (hostname: string) => Promise<string[]>;
-  transport?: (url: string, init: { redirect: 'manual'; signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>;
+  /** Escape hatch for tests that need the guard without the pinning agent. */
+  skipPinning?: boolean;
+  transport?: (
+    url: string,
+    init: { redirect: 'manual'; signal: AbortSignal; headers: Record<string, string> },
+  ) => Promise<Response>;
   allowLoopback?: boolean;
   maxBytes?: number;
 }
 
-async function assertPublicHost(hostname: string, options: SafeFetchOptions): Promise<void> {
-  if (options.allowLoopback && (hostname === '127.0.0.1' || hostname === 'localhost')) return;
+/**
+ * Resolves a hostname and refuses it unless every answer is publicly routable.
+ *
+ * Returns the addresses so the caller can connect to one of them directly.
+ * Checking and then letting the OS resolve again at connect time is the classic
+ * DNS-rebinding hole: a hostname can answer with a public address for our check
+ * and a private one microseconds later, for the connection.
+ */
+async function resolvePublicAddresses(hostname: string, options: SafeFetchOptions): Promise<string[]> {
+  if (options.allowLoopback && (hostname === '127.0.0.1' || hostname === 'localhost')) {
+    return ['127.0.0.1'];
+  }
 
   // A literal address needs no lookup, and must be judged directly.
   if (net.isIP(hostname)) {
     if (isPrivateAddress(hostname)) throw new UnsafeUrlError('That address is not reachable.');
-    return;
+    return [hostname];
   }
 
   const lookup = options.lookup ?? (async (host: string) => {
@@ -91,6 +108,42 @@ async function assertPublicHost(hostname: string, options: SafeFetchOptions): Pr
   for (const address of addresses) {
     if (isPrivateAddress(address)) throw new UnsafeUrlError('That address is not reachable.');
   }
+  return addresses;
+}
+
+/**
+ * An agent that connects only to the addresses we already validated, and
+ * re-checks each one at connect time.
+ *
+ * This is what closes the rebinding window: the socket cannot reach an address
+ * the check never saw, whatever DNS says by then. TLS still verifies the
+ * certificate against the original hostname, so pinning the address does not
+ * weaken it.
+ */
+function pinnedAgent(protocol: string, hostname: string, allowed: string[]): http.Agent | https.Agent {
+  const createConnection = (
+    options: Record<string, unknown>,
+    onCreate: (err: Error | null, socket?: net.Socket) => void,
+  ) => {
+    const target = allowed[0];
+    const connectOptions = {
+      ...options,
+      host: target,
+      // Keeps SNI and certificate verification on the real hostname.
+      servername: hostname,
+      lookup: pinnedLookup(allowed),
+    };
+
+    const socket = protocol === 'https:'
+      ? https.globalAgent.createConnection!(connectOptions as never, onCreate as never)
+      : http.globalAgent.createConnection!(connectOptions as never, onCreate as never);
+    return socket;
+  };
+
+  const Agent = protocol === 'https:' ? https.Agent : http.Agent;
+  const agent = new Agent({ keepAlive: false });
+  (agent as unknown as { createConnection: typeof createConnection }).createConnection = createConnection;
+  return agent;
 }
 
 export function assertAllowedScheme(url: URL, options: SafeFetchOptions): void {
@@ -121,7 +174,7 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
     assertAllowedScheme(current, options);
     // Credentials in a URL are a classic way to confuse a fetcher.
     if (current.username || current.password) throw new UnsafeUrlError('That address is not supported.');
-    await assertPublicHost(current.hostname, options);
+    const addresses = await resolvePublicAddresses(current.hostname, options);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -134,7 +187,14 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
           redirect: 'manual', // every hop is re-checked, never followed blindly
           signal: controller.signal,
           headers: { Accept: 'application/json, text/html', 'User-Agent': 'Sillages-Preview/1.0' },
-        });
+          // Connect only to the address we validated. Without this the OS
+          // resolves the hostname again at connect time, and a record that
+          // answered publicly for the check can answer privately for the
+          // connection.
+          ...(options.transport || options.skipPinning
+            ? {}
+            : { agent: pinnedAgent(current.protocol, current.hostname, addresses) }),
+        } as never);
       } catch {
         throw new UnsafeUrlError('We could not reach that store.');
       }
@@ -203,5 +263,32 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
   return chunks.join('');
 }
 
+/**
+ * The DNS resolver a pinned connection uses: it ignores the hostname entirely
+ * and hands back the address we already validated, refusing anything else.
+ *
+ * This is the whole rebinding defence in one function, which is why it is
+ * exported and tested directly rather than only through a socket.
+ */
+export function pinnedLookup(allowed: string[]) {
+  const permitted = new Set(allowed);
+
+  return (
+    _hostname: string,
+    _options: unknown,
+    callback: (err: Error | null, address?: string, family?: number) => void,
+  ): void => {
+    const target = allowed[0];
+    // Belt and braces: the address must still be in the validated set, and
+    // must still be public. A private address can never leave this function
+    // even if the set were somehow polluted.
+    if (!target || !permitted.has(target) || isPrivateAddress(target)) {
+      callback(new UnsafeUrlError('That address is not reachable.'));
+      return;
+    }
+    callback(null, target, net.isIPv6(target) ? 6 : 4);
+  };
+}
+
 /** Exported for the tests that pin the private-range rules. */
-export const __testing = { isPrivateAddress };
+export const __testing = { isPrivateAddress, resolvePublicAddresses, pinnedAgent, pinnedLookup };

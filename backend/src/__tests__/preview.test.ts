@@ -132,6 +132,71 @@ describe('E9: the generator cannot reach a private network', () => {
     ).rejects.toThrow(/redirects too many times/);
   });
 
+  it('connects only to the address it validated, whatever DNS says by then', async () => {
+    // The rebinding attack: a hostname answers publicly for our check, then
+    // privately microseconds later for the connection. The pinned resolver
+    // ignores the hostname entirely and hands back the validated address.
+    const { resolvePublicAddresses, pinnedLookup } = __testing as unknown as {
+      resolvePublicAddresses: (host: string, opts: unknown) => Promise<string[]>;
+      pinnedLookup: (allowed: string[]) => (
+        host: string,
+        opts: unknown,
+        cb: (err: Error | null, address?: string, family?: number) => void,
+      ) => void;
+    };
+
+    const addresses = await resolvePublicAddresses('shop.example', { lookup: async () => ['93.184.216.34'] });
+    const lookup = pinnedLookup(addresses);
+
+    // Whatever the socket asks for — including the attacker's rebound name —
+    // it is handed the address we checked.
+    for (const asked of ['shop.example', 'rebound.attacker.example', 'localhost']) {
+      const answer = await new Promise<{ err: Error | null; address?: string; family?: number }>((resolve) => {
+        lookup(asked, {}, (err, address, family) => resolve({ err, address, family }));
+      });
+      expect(answer.err, asked).toBeNull();
+      expect(answer.address, asked).toBe('93.184.216.34');
+      expect(answer.family, asked).toBe(4);
+    }
+  });
+
+  it('a pinned resolver refuses a private address even if one reaches it', async () => {
+    const { pinnedLookup } = __testing as unknown as {
+      pinnedLookup: (allowed: string[]) => (
+        host: string,
+        opts: unknown,
+        cb: (err: Error | null, address?: string) => void,
+      ) => void;
+    };
+
+    // Defence in depth: were the validated set ever polluted, the resolver
+    // still refuses to hand a socket a private address.
+    for (const address of ['127.0.0.1', '169.254.169.254', '10.0.0.1', '::1']) {
+      const lookup = pinnedLookup([address]);
+      const answer = await new Promise<Error | null>((resolve) => {
+        lookup('shop.example', {}, (err) => resolve(err));
+      });
+      expect(answer, address).toBeInstanceOf(UnsafeUrlError);
+    }
+
+    // And an empty set connects to nothing at all.
+    const empty = pinnedLookup([]);
+    const answer = await new Promise<Error | null>((resolve) => {
+      empty('shop.example', {}, (err) => resolve(err));
+    });
+    expect(answer).toBeInstanceOf(UnsafeUrlError);
+  });
+
+  it('refuses a hostname whose second answer is private, before any connection', async () => {
+    const { resolvePublicAddresses } = __testing as unknown as {
+      resolvePublicAddresses: (host: string, opts: unknown) => Promise<string[]>;
+    };
+
+    await expect(
+      resolvePublicAddresses('rebind.example', { lookup: async () => ['93.184.216.34', '169.254.169.254'] }),
+    ).rejects.toBeInstanceOf(UnsafeUrlError);
+  });
+
   it('refuses a response larger than the cap', async () => {
     const transport = async () => new Response('x'.repeat(5000), { status: 200 });
     await expect(
