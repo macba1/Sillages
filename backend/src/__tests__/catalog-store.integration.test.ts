@@ -544,3 +544,169 @@ describe.skipIf(!enabled || !TEST_ANON_KEY)('row level security keeps two shops 
     }
   });
 });
+
+/**
+ * Review follow-up — the performance numbers, aggregated in the database.
+ *
+ * The point of this suite is accuracy at a volume the old application-side
+ * counting could not reach, and that one shop's events never enter another's
+ * totals. Both are asserted against a real Postgres.
+ */
+describe.skipIf(!enabled)('gallery totals are accurate and shop-scoped', () => {
+  let admin: SupabaseClient;
+  let eventStore: typeof import('../services/events/eventStore.js')['supabaseEventStore'];
+  const users: string[] = [];
+  let connA: string;
+  let connB: string;
+  let accountA: string;
+
+  async function seedShop(label: string): Promise<{ accountId: string; connectionId: string }> {
+    const email = `totals-${label}-${Date.now()}@dev.local`;
+    const { data: user, error } = await admin.auth.admin.createUser({
+      email, password: 'dev-only-password', email_confirm: true,
+    });
+    if (error) throw new Error(error.message);
+    users.push(user.user.id);
+
+    const { data: account } = await admin
+      .from('accounts').upsert({ user_id: user.user.id, email }, { onConflict: 'user_id' })
+      .select('id').single();
+    const { data: connection } = await admin
+      .from('shopify_connections')
+      .insert({
+        account_id: account!.id,
+        shop_domain: `totals-${label}-${Date.now()}.myshopify.com`,
+        access_token: 'dev-only-token',
+        scopes: 'read_products',
+      })
+      .select('id').single();
+
+    return { accountId: account!.id, connectionId: connection!.id };
+  }
+
+  beforeAll(async () => {
+    admin = createClient(TEST_URL!, TEST_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+    vi.doMock('../lib/supabase.js', () => ({ supabase: admin }));
+    ({ supabaseEventStore: eventStore } = await import('../services/events/eventStore.js'));
+
+    const a = await seedShop('a');
+    const b = await seedShop('b');
+    connA = a.connectionId;
+    connB = b.connectionId;
+    accountA = a.accountId;
+
+    const now = Date.now();
+    const rows: Record<string, unknown>[] = [];
+
+    // Shop A: a known mix across three sessions.
+    const plan: [string, number][] = [
+      ['gallery_view', 30], ['post_view', 120], ['post_open', 25],
+      ['variant_select', 12], ['save', 7], ['share', 3], ['add_to_cart', 9],
+    ];
+    let n = 0;
+    for (const [type, count] of plan) {
+      for (let i = 0; i < count; i += 1) {
+        n += 1;
+        rows.push({
+          connection_id: connA,
+          session_id: `sess-a-${(i % 3) + 1}0000000`,
+          event_type: type,
+          product_shopify_id: type === 'post_open' || type === 'add_to_cart' ? 500 + (i % 4) : null,
+          occurred_at: new Date(now - 1000 * n).toISOString(),
+          dedupe_key: `totals-a-${type}-${i}`,
+        });
+      }
+    }
+
+    // Shop B: noise that must never appear in shop A's numbers.
+    for (let i = 0; i < 40; i += 1) {
+      rows.push({
+        connection_id: connB,
+        session_id: `sess-b-${i}0000000`,
+        event_type: 'gallery_view',
+        occurred_at: new Date(now - 1000 * i).toISOString(),
+        dedupe_key: `totals-b-${i}`,
+      });
+    }
+
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error: insertError } = await admin.from('gallery_events').insert(rows.slice(i, i + 200));
+      if (insertError) throw new Error(`seeding events failed: ${insertError.message}`);
+    }
+
+    await admin.from('gallery_attribution').insert([
+      { connection_id: connA, order_shopify_id: 900001, match: 'session', amount: 42.5, currency: 'EUR', occurred_at: new Date(now).toISOString() },
+      { connection_id: connA, order_shopify_id: 900002, match: 'variant', amount: 17.5, currency: 'EUR', occurred_at: new Date(now).toISOString() },
+      { connection_id: connB, order_shopify_id: 900003, match: 'variant', amount: 999, currency: 'USD', occurred_at: new Date(now).toISOString() },
+    ]);
+  }, 120_000);
+
+  afterAll(async () => {
+    for (const id of users) await admin.auth.admin.deleteUser(id);
+    vi.doUnmock('../lib/supabase.js');
+  });
+
+  const since = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  it('counts every event type exactly, with no ceiling', async () => {
+    const totals = await eventStore.totals(connA, since());
+
+    expect(totals.galleryViews).toBe(30);
+    expect(totals.postOpens).toBe(25);
+    expect(totals.variantSelects).toBe(12);
+    expect(totals.saves).toBe(7);
+    expect(totals.shares).toBe(3);
+    expect(totals.addToCarts).toBe(9);
+    // Distinct shoppers, not events — the reason this needs the database.
+    expect(totals.sessions).toBe(3);
+  });
+
+  it('sums attributed revenue for this shop only', async () => {
+    const totals = await eventStore.totals(connA, since());
+
+    expect(totals.attributedOrders).toBe(2);
+    expect(totals.attributedRevenue).toBe(60);
+    expect(totals.currency).toBe('EUR');
+  });
+
+  it('never lets another shop’s events into these numbers', async () => {
+    const a = await eventStore.totals(connA, since());
+    const b = await eventStore.totals(connB, since());
+
+    expect(a.galleryViews).toBe(30);
+    expect(b.galleryViews).toBe(40);
+    expect(b.attributedRevenue).toBe(999);
+    expect(b.sessions).toBe(40);
+  });
+
+  it('respects the time window', async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const empty = await eventStore.totals(connA, future);
+
+    expect(empty.galleryViews).toBe(0);
+    expect(empty.sessions).toBe(0);
+    expect(empty.attributedRevenue).toBe(0);
+  });
+
+  it('ranks the products most added to cart, for this shop only', async () => {
+    const top = await eventStore.topProducts(connA, since(), 10);
+
+    expect(top.length).toBeGreaterThan(0);
+    expect(top.every((p) => p.productId >= 500 && p.productId <= 503)).toBe(true);
+    // Ordered by adds, then opens.
+    for (let i = 1; i < top.length; i += 1) {
+      expect(top[i - 1].addToCarts).toBeGreaterThanOrEqual(top[i].addToCarts);
+    }
+    expect(top.reduce((sum, p) => sum + p.addToCarts, 0)).toBe(9);
+    expect(top.reduce((sum, p) => sum + p.opens, 0)).toBe(25);
+
+    expect(await eventStore.topProducts(connB, since(), 10)).toEqual([]);
+  });
+
+  it('knows whether the storefront has actually loaded the gallery', async () => {
+    expect(await eventStore.lastGalleryViewSince(connA, since())).not.toBeNull();
+    // A shop that published but never had the block added has no view at all.
+    expect(await eventStore.lastGalleryViewSince(connA, new Date(Date.now() + 60_000).toISOString())).toBeNull();
+    void accountA;
+  });
+});

@@ -164,67 +164,51 @@ export const supabaseEventStore: EventStore = {
   },
 
   async totals(connectionId: string, since: string): Promise<PerformanceTotals> {
-    const { data: events } = await supabase
-      .from('gallery_events')
-      .select('event_type, session_id')
-      .eq('connection_id', connectionId)
-      .gte('occurred_at', since)
-      .limit(50000);
+    // Aggregated in the database. Counting in application code meant pulling
+    // tens of thousands of rows on every page load and silently under-counting
+    // once a shop passed the row ceiling.
+    const [events, attribution] = await Promise.all([
+      supabase.rpc('gallery_event_totals', { p_connection_id: connectionId, p_since: since }).single(),
+      supabase.rpc('gallery_attribution_totals', { p_connection_id: connectionId, p_since: since }).single(),
+    ]);
 
-    const counts = new Map<string, number>();
-    const sessions = new Set<string>();
-    for (const row of events ?? []) {
-      const type = row.event_type as string;
-      counts.set(type, (counts.get(type) ?? 0) + 1);
-      sessions.add(row.session_id as string);
-    }
+    // A wrong number is worse than no number: fail loudly rather than showing
+    // zeros that read as "nobody looked at it".
+    if (events.error) throw new Error(`reading gallery totals failed: ${events.error.message}`);
+    if (attribution.error) throw new Error(`reading attribution totals failed: ${attribution.error.message}`);
 
-    const { data: attribution } = await supabase
-      .from('gallery_attribution')
-      .select('amount, currency')
-      .eq('connection_id', connectionId)
-      .gte('occurred_at', since)
-      .limit(10000);
-
-    const attributedRevenue = (attribution ?? []).reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+    const e = (events.data ?? {}) as Record<string, number | null>;
+    const a = (attribution.data ?? {}) as Record<string, number | string | null>;
 
     return {
-      galleryViews: counts.get('gallery_view') ?? 0,
-      postOpens: counts.get('post_open') ?? 0,
-      variantSelects: counts.get('variant_select') ?? 0,
-      saves: counts.get('save') ?? 0,
-      shares: counts.get('share') ?? 0,
-      addToCarts: counts.get('add_to_cart') ?? 0,
-      purchases: counts.get('purchase') ?? 0,
-      attributedOrders: attribution?.length ?? 0,
-      attributedRevenue: Number(attributedRevenue.toFixed(2)),
-      currency: (attribution ?? [])[0]?.currency as string | null ?? null,
-      sessions: sessions.size,
+      galleryViews: Number(e.gallery_views ?? 0),
+      postOpens: Number(e.post_opens ?? 0),
+      variantSelects: Number(e.variant_selects ?? 0),
+      saves: Number(e.saves ?? 0),
+      shares: Number(e.shares ?? 0),
+      addToCarts: Number(e.add_to_carts ?? 0),
+      purchases: Number(e.purchases ?? 0),
+      sessions: Number(e.sessions ?? 0),
+      attributedOrders: Number(a.attributed_orders ?? 0),
+      attributedRevenue: Number(Number(a.attributed_revenue ?? 0).toFixed(2)),
+      currency: (a.currency as string | null) ?? null,
     };
   },
 
   async topProducts(connectionId: string, since: string, limit: number): Promise<TopProduct[]> {
-    const { data } = await supabase
-      .from('gallery_events')
-      .select('product_shopify_id, event_type')
-      .eq('connection_id', connectionId)
-      .in('event_type', ['post_open', 'add_to_cart'])
-      .not('product_shopify_id', 'is', null)
-      .gte('occurred_at', since)
-      .limit(20000);
+    const { data, error } = await supabase.rpc('gallery_top_products', {
+      p_connection_id: connectionId,
+      p_since: since,
+      p_limit: limit,
+    });
 
-    const byProduct = new Map<number, TopProduct>();
-    for (const row of data ?? []) {
-      const productId = Number(row.product_shopify_id);
-      const entry = byProduct.get(productId) ?? { productId, opens: 0, addToCarts: 0 };
-      if (row.event_type === 'post_open') entry.opens += 1;
-      else entry.addToCarts += 1;
-      byProduct.set(productId, entry);
-    }
+    if (error) throw new Error(`reading top products failed: ${error.message}`);
 
-    return [...byProduct.values()]
-      .sort((a, b) => b.addToCarts - a.addToCarts || b.opens - a.opens)
-      .slice(0, limit);
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      productId: Number(row.product_id),
+      opens: Number(row.opens),
+      addToCarts: Number(row.add_to_carts),
+    }));
   },
 
   async lastGalleryViewSince(connectionId: string, since: string): Promise<string | null> {
