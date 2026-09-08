@@ -1,23 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Sillages — DEVELOPMENT app configuration.
 #
-# A separate Shopify app, used only against a development store. It exists so
-# the social-gallery product can be exercised end to end without touching the
-# public listing.
+# A separate Shopify app, linked only to the development store. It exists so the
+# social-gallery product can be exercised end to end without touching the public
+# listing.
 #
-# `shopify.app.toml` is the PUBLIC, PRODUCTION app. Do not edit it, and do not
-# run `shopify app deploy` without `--config dev`.
+# `shopify.app.toml` is the PUBLIC, PRODUCTION app. Do not edit it, and never run
+# `shopify app deploy` or `shopify app dev` without `--config dev`.
 #
-#   shopify app config use dev
-#   shopify app deploy --config dev
-#
-# `client_id` is intentionally left empty: it is filled in by
-# `shopify app config link --config dev` after the app is created in the
-# Partners dashboard. Committing a real one would tie this file to one person's
-# account.
+# `shopify app config link` rewrites this file and strips comments. If that
+# happens again, restore this header and re-check the scopes below.
 # ─────────────────────────────────────────────────────────────────────────────
 
-client_id = ""
+client_id = "22dc365ecf72d104affe4e78da39fea3"
 name = "Sillages (development)"
 application_url = "https://REPLACE-WITH-TUNNEL.trycloudflare.com/api/shopify/auth"
 embedded = false
@@ -25,16 +20,16 @@ embedded = false
 [access_scopes]
 # The minimum the social-gallery product actually uses.
 #
-#   read_products   catalogue: products, variants, images, collections
-#   read_inventory  stock, so a sold-out variant is shown as sold out
-#   write_pixels    activating the Web Pixel with webPixelCreate. Without this
-#                   scope checkout and purchases are never measured — the
-#                   extension does nothing until the app creates it.
+#   read_products         catalogue: products, variants, images, collections
+#   read_inventory        stock, so a sold-out variant is shown as sold out
+#   write_pixels          activating the Web Pixel with webPixelCreate. Without
+#                         it checkout and purchases are never measured, because
+#                         the extension does nothing until the app creates it.
+#   read_customer_events  required by Shopify alongside write_pixels
 #
 # Deliberately NOT requested, unlike the production app: read_all_orders,
 # read_customers, write_customers, read_analytics, read_reports, read_pixels,
 # write_products, write_discounts, read_checkouts, write_marketing_events.
-# The new product reads none of them.
 scopes = "read_products,read_inventory,write_pixels,read_customer_events"
 optional_scopes = []
 use_legacy_install_flow = false

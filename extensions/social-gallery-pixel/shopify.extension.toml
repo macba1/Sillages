@@ -8,6 +8,7 @@ api_version = "2026-01"
 [[extensions]]
 name = "social-gallery-pixel"
 handle = "social-gallery-pixel"
+uid = "3e0f629d-7218-fa93-2640-5a5b3f45135e052f0dce"
 type = "web_pixel_extension"
 runtime_context = "strict"
 

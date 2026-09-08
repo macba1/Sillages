@@ -1,0 +1,15 @@
+{
+  "names": {
+    "social_gallery": "Galería social de Sillages"
+  },
+  "settings": {
+    "heading": {
+      "label": "Título",
+      "info": "Déjalo vacío para usar el título configurado en Sillages."
+    },
+    "api_base": {
+      "label": "API de Sillages",
+      "info": "Cámbialo solo si el soporte de Sillages te lo pide."
+    }
+  }
+}

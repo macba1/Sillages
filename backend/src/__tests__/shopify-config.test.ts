@@ -24,9 +24,11 @@ function clientIdOf(toml: string): string {
 }
 
 describe('the development app is a separate app', () => {
-  it('carries no client id, so it cannot be linked to the public listing by accident', () => {
-    expect(clientIdOf(development)).toBe('');
+  it('is linked to a client id different from the public listing', () => {
+    expect(clientIdOf(development)).not.toBe('');
     expect(clientIdOf(production)).not.toBe('');
+    expect(clientIdOf(development)).not.toBe(clientIdOf(production));
+    expect(development).toContain('name = "Sillages (development)"');
   });
 
   it('requests only what the social-gallery product uses', () => {
