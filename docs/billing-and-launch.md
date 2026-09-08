@@ -2,8 +2,22 @@
 
 ## Billing
 
-Shopify Billing only. A charge appears on the merchant's Shopify invoice; Stripe
-is not part of this product and its routes stay retired in `social_gallery`.
+**Decision, confirmed 8 September 2026:** Shopify Billing is the only way
+Sillages charges for the social-gallery product, matching production. In
+development, only Shopify **test** charges. No real charges, no Stripe, no
+change to the app's distribution or to the production configuration.
+
+The decision is pinned by `src/__tests__/billing-policy.test.ts` rather than by
+this paragraph: no file in the new product may import, construct or call Stripe;
+the legacy Stripe routes must stay legacy-only; `SHOPIFY_BILLING_LIVE` unlocks
+real charges only when it is exactly the string `"true"`; a subscription created
+without it is marked as a test charge; the development environment file may not
+enable live billing; the production TOML keeps its own identity and scopes; and
+the development TOML declares no distribution at all.
+
+That last one matters: **choosing a distribution is permanent.** An app with
+none chosen still installs on a development store and still supports test
+charges, which is everything staging needs.
 
 | Plan | Price | Trial |
 |---|---|---|
