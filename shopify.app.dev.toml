@@ -14,7 +14,7 @@
 
 client_id = "22dc365ecf72d104affe4e78da39fea3"
 name = "Sillages (development)"
-application_url = "https://REPLACE-WITH-TUNNEL.trycloudflare.com/api/shopify/auth"
+application_url = "https://wax-fluid-early-impacts.trycloudflare.com/api/shopify/auth"
 embedded = false
 
 [access_scopes]
@@ -36,7 +36,7 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://REPLACE-WITH-TUNNEL.trycloudflare.com/api/shopify/callback"
+  "https://wax-fluid-early-impacts.trycloudflare.com/api/shopify/callback"
 ]
 
 [webhooks]
@@ -44,7 +44,7 @@ api_version = "2026-01"
 
   # Mandatory privacy topics. Required even on a development app.
   [[webhooks.subscriptions]]
-  uri = "https://REPLACE-WITH-TUNNEL.trycloudflare.com/api/webhooks/shopify-compliance"
+  uri = "https://wax-fluid-early-impacts.trycloudflare.com/api/webhooks/shopify-compliance"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [pos]
