@@ -1,0 +1,13 @@
+# Lets `shopify app dev --config dev` start the Sillages backend and hand it the
+# app credentials directly.
+#
+# This is how SHOPIFY_API_KEY and SHOPIFY_API_SECRET reach the process without
+# ever being written to a file, pasted into a terminal, or seen by anyone. The
+# CLI sets them in the environment of the command below; `dotenv` does not
+# override variables that are already set, so they win over anything in
+# .env.dev.
+name = "sillages-backend"
+roles = ["backend"]
+
+[commands]
+dev = "../scripts/dev-backend.sh"

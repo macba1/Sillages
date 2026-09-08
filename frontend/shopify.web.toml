@@ -1,0 +1,6 @@
+# The Sillages admin, started by `shopify app dev --config dev`.
+name = "sillages-frontend"
+roles = ["frontend"]
+
+[commands]
+dev = "../scripts/dev-frontend.sh"
