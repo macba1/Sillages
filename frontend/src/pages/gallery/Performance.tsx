@@ -123,8 +123,12 @@ export default function Performance() {
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
             <Stat label="Shoppers" value={String(totals.sessions)} />
             <Stat label="Added to cart" value={String(totals.addToCarts)} />
-            <Stat label="Orders credited" value={String(totals.attributedOrders)} />
-            <Stat label="Revenue credited" value={money(totals.attributedRevenue)} />
+            {data?.plan?.attributionAvailable !== false && (
+              <>
+                <Stat label="Orders credited" value={String(totals.attributedOrders)} />
+                <Stat label="Revenue credited" value={money(totals.attributedRevenue)} />
+              </>
+            )}
           </div>
 
           <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>
@@ -177,6 +181,15 @@ export default function Performance() {
                 })}
               </div>
             </>
+          )}
+
+          {data?.plan?.attributionAvailable === false && (
+            <Card style={{ marginBottom: 20 }}>
+              <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
+                <strong>Revenue attribution is part of Growth.</strong> On Basic you see what shoppers did in the
+                gallery. Growth also shows which orders and how much revenue the gallery is responsible for.
+              </p>
+            </Card>
           )}
 
           <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.6, margin: 0 }}>

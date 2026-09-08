@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { resolveShopByAccount } from '../services/catalog/catalogContext.js';
 import { supabaseEventStore } from '../services/events/eventStore.js';
 import { supabaseGalleryStore } from '../services/gallery/galleryStore.js';
+import { entitlementsForShop } from '../services/gallery/galleryService.js';
 
 const router = Router();
 
@@ -36,10 +37,11 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     const days = RANGES.get(rangeKey)!;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    const [totals, top, config] = await Promise.all([
+    const [totals, top, config, entitlements] = await Promise.all([
       supabaseEventStore.totals(shop.connectionId, since),
       supabaseEventStore.topProducts(shop.connectionId, since, 10),
       supabaseGalleryStore.getByConnection(shop.connectionId),
+      entitlementsForShop(shop),
     ]);
 
     // The funnel a merchant actually asks about: did looking turn into buying?
@@ -57,6 +59,16 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     const galleryMeasured = config?.status === 'published';
     const checkoutMeasured = totals.purchases > 0 || totals.attributedOrders > 0;
 
+    // Revenue attribution is a Growth feature; Basic promises "essential
+    // metrics". The entitlement was being computed and never applied, so every
+    // plan saw attributed revenue. Withheld rather than zeroed, so a Basic
+    // merchant is told it is a Growth feature instead of being shown a zero
+    // they would read as "the gallery sold nothing".
+    const attributionVisible = entitlements.canUseAttribution;
+    const visibleTotals = attributionVisible
+      ? totals
+      : { ...totals, attributedOrders: 0, attributedRevenue: 0, currency: null };
+
     res.json({
       connected: true,
       range: rangeKey,
@@ -68,7 +80,11 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
         checkout: checkoutMeasured,
       },
       approximate: totals.approximate === true,
-      totals,
+      plan: {
+        id: entitlements.planId,
+        attributionAvailable: attributionVisible,
+      },
+      totals: visibleTotals,
       funnel,
       topProducts: top,
     });

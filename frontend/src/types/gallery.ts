@@ -146,6 +146,8 @@ export interface PerformanceResponse {
   connected: boolean;
   range: '7d' | '30d' | '90d';
   measuring: boolean;
+  /** Which plan this shop is on, and what that plan includes. */
+  plan?: { id: 'basic' | 'growth' | 'pro' | null; attributionAvailable: boolean };
   /** What is genuinely being measured, mechanism by mechanism. */
   measurement?: { gallery: boolean; checkout: boolean };
   /** True when the aggregates were unavailable and the counts are bounded. */

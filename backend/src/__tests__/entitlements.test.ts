@@ -93,6 +93,15 @@ describe('entitlements are closed by default', () => {
     expect(entitlementsFor(live({ planId: 'growth' })).canUseMultipleGalleries).toBe(true);
   });
 
+  it('a plan Shopify reports but we do not sell grants no Growth feature', () => {
+    // planIdFromName returns null for anything that is not Basic or Growth, and
+    // an unrecognised plan must not quietly unlock the most expensive features.
+    const unknown = entitlementsFor(live({ planId: null }));
+    expect(unknown.canPublish).toBe(true);
+    expect(unknown.canUseAttribution).toBe(false);
+    expect(unknown.canUseMultipleGalleries).toBe(false);
+  });
+
   it('revokes access once the billing period has passed', () => {
     const lapsed = live({ currentPeriodEnd: new Date(Date.now() - 1000).toISOString() });
     expect(entitlementsFor(lapsed).canPublish).toBe(false);
