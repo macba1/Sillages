@@ -25,3 +25,9 @@ supabase/.temp/
 # Generated content dry-run images
 backend/seed-*.png
 backend/content-dryrun-*.png
+
+# Development-only environment files. Real credentials live here and must
+# never be committed.
+.env.dev
+*.env.dev
+**/.env.dev

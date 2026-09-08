@@ -35,7 +35,7 @@ embedded = false
 # read_customers, write_customers, read_analytics, read_reports, read_pixels,
 # write_products, write_discounts, read_checkouts, write_marketing_events.
 # The new product reads none of them.
-scopes = "read_products,read_inventory,write_pixels"
+scopes = "read_products,read_inventory,write_pixels,read_customer_events"
 optional_scopes = []
 use_legacy_install_flow = false
 

@@ -30,11 +30,12 @@ describe('the development app is a separate app', () => {
   });
 
   it('requests only what the social-gallery product uses', () => {
-    expect(scopesOf(development).sort()).toEqual(['read_inventory', 'read_products', 'write_pixels']);
+    expect(scopesOf(development).sort()).toEqual(['read_customer_events', 'read_inventory', 'read_products', 'write_pixels']);
   });
 
   it('requests write_pixels, without which the Web Pixel can never be activated', () => {
     expect(scopesOf(development)).toContain('write_pixels');
+    expect(scopesOf(development)).toContain('read_customer_events');
   });
 
   it('drops every scope the new product does not read', () => {
