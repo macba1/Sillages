@@ -3,6 +3,7 @@ import { supabaseGalleryStore, type GalleryStore } from '../gallery/galleryStore
 import { planIdFromName } from './shopifyBilling.js';
 import {
   entitlementsFor,
+  isDeadStatus,
   supabaseSubscriptionStore,
   type SubscriptionStatus,
   type SubscriptionStore,
@@ -70,6 +71,26 @@ export async function handleSubscriptionUpdate(
     trialEndsAt: typeof raw.trial_ends_on === 'string' ? raw.trial_ends_on : null,
     currentPeriodEnd: typeof raw.current_period_end === 'string' ? raw.current_period_end : null,
   };
+
+  // Upgrading replaces the subscription: Shopify activates the new charge and
+  // CANCELS the old one, so a cancellation arrives for a subscription the shop
+  // has already moved off. There is one row per shop, so writing that blindly
+  // overwrote the live plan and switched the merchant's gallery off seconds
+  // after they paid more. A dead status only counts for the subscription the
+  // shop is actually on.
+  const current = await store.get(shop.connectionId);
+  const supersededByUpgrade =
+    isDeadStatus(status) &&
+    current !== null &&
+    !isDeadStatus(current.status) &&
+    current.shopifyGid !== null &&
+    subscription.shopifyGid !== null &&
+    current.shopifyGid !== subscription.shopifyGid;
+
+  if (supersededByUpgrade) {
+    console.log(`${LOG} ${shopDomain}: ${status} for a replaced subscription — ignored`);
+    return { handled: true, status, galleryDisabled: false };
+  }
 
   await store.upsert(subscription);
 

@@ -17,6 +17,11 @@ const LIVE_STATUSES = new Set(['active']);
 /** Statuses that mean the plan is over. Anything here revokes access. */
 const DEAD_STATUSES = new Set(['declined', 'expired', 'frozen', 'cancelled', 'none']);
 
+/** Whether a status means the plan is over. */
+export function isDeadStatus(status: SubscriptionStatus): boolean {
+  return DEAD_STATUSES.has(status);
+}
+
 export type SubscriptionStatus =
   | 'none' | 'pending' | 'active' | 'declined' | 'expired' | 'frozen' | 'cancelled';
 

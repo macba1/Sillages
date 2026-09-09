@@ -178,6 +178,33 @@ describe('losing the plan takes the feature away', () => {
     expect((await store.getByConnection(SHOP.connectionId))?.status).toBe('disabled');
   });
 
+  it('keeps the gallery on when an upgrade cancels the previous subscription', async () => {
+    // Shopify replaces a subscription by activating the new charge and
+    // cancelling the old one. That cancellation arrived for a subscription the
+    // shop had already moved off, overwrote the single row, and switched the
+    // gallery off seconds after the merchant paid more.
+    subscriptions.setLive(SHOP, 'basic'); // gid .../1
+    await saveGallery(SHOP, {}, deps());
+    await publishGallery(SHOP, deps());
+
+    await handleSubscriptionUpdate(
+      SHOP.shopDomain,
+      { app_subscription: { admin_graphql_api_id: 'gid://shopify/AppSubscription/2', name: 'Sillages Growth', status: 'ACTIVE', test: false } },
+      { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
+    );
+
+    const outcome = await handleSubscriptionUpdate(
+      SHOP.shopDomain,
+      { app_subscription: { admin_graphql_api_id: 'gid://shopify/AppSubscription/1', name: 'Sillages Basic', status: 'CANCELLED', test: false } },
+      { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
+    );
+
+    expect(outcome).toMatchObject({ handled: true, galleryDisabled: false });
+    expect((await store.getByConnection(SHOP.connectionId))?.status).toBe('published');
+    expect((await subscriptions.get(SHOP.connectionId))?.planId).toBe('growth');
+    expect((await subscriptions.get(SHOP.connectionId))?.status).toBe('active');
+  });
+
   it('records every status Shopify can send', async () => {
     for (const [shopify, expected] of [
       ['ACTIVE', 'active'], ['PENDING', 'pending'], ['DECLINED', 'declined'],
