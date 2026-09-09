@@ -164,6 +164,52 @@ describe.skipIf(!enabled)('supabaseCatalogStore against a real Supabase', () => 
     expect(imageCount).toBe(274);
   }, 120_000);
 
+  it('keeps one row per product when a photo is shared between products', async () => {
+    // Shopify returns the SAME ProductImage gid under every product the file is
+    // attached to. A development store with 104 image references had only 18
+    // distinct ids, and the old (connection_id, shopify_id) key made those
+    // products overwrite each other until 65 of 74 showed no photo at all.
+    const sharedId = 'gid://shopify/ProductImage/shared-1';
+    const image = (position: number) => ({
+      shopifyId: sharedId,
+      url: 'https://cdn.shopify.com/shared.jpg',
+      altText: null,
+      width: 1400,
+      height: 1400,
+      position,
+    });
+
+    const product = (n: number) => ({
+      shopifyId: `gid://shopify/Product/shared-${n}`,
+      title: `Shared photo ${n}`,
+      handle: `shared-photo-${n}`,
+      status: 'ACTIVE' as const,
+      productType: null,
+      vendor: null,
+      tags: [],
+      description: null,
+      onlineStoreUrl: null,
+      featuredImageUrl: 'https://cdn.shopify.com/shared.jpg',
+      totalInventory: 5,
+      shopifyUpdatedAt: new Date().toISOString(),
+      images: [image(1)],
+      variants: [],
+    });
+
+    const seenAt = new Date().toISOString();
+    await store.upsertProduct(ctx, product(1), seenAt);
+    await store.upsertProduct(ctx, product(2), seenAt);
+
+    const { data } = await db
+      .from('catalog_product_images')
+      .select('product_id')
+      .eq('connection_id', ctx.connectionId)
+      .eq('shopify_id', sharedId)
+      .is('deleted_at', null);
+
+    expect(new Set((data ?? []).map((row) => row.product_id)).size).toBe(2);
+  }, 60_000);
+
   it('stores prices as numerics, not strings', async () => {
     const { data } = await db
       .from('catalog_variants')

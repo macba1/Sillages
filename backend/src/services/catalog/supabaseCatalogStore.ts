@@ -212,7 +212,9 @@ export const supabaseCatalogStore: CatalogStore = {
           last_seen_at: seenAt,
           deleted_at: null,
         })),
-        { onConflict: 'connection_id,shopify_id' },
+        // A Shopify image id repeats across every product that shares the file,
+        // so the row's identity is (connection, product, image).
+        { onConflict: 'connection_id,product_id,shopify_id' },
       );
       if (imageError) throw new Error(`upsertImages failed: ${imageError.message}`);
       imagesUpserted = product.images.length;
