@@ -176,6 +176,11 @@ export async function exchangeCodeForToken(
       client_id: creds.clientId,
       client_secret: creds.clientSecret,
       code,
+      // Shopify stopped accepting non-expiring offline tokens on the Admin API:
+      // without this the first call answers 403 "[API] Non-expiring access
+      // tokens are no longer accepted". The response then carries expires_in
+      // and a refresh_token, which the callback already stores.
+      expiring: '1',
     },
   );
   return response.data;
