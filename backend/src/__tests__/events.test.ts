@@ -108,6 +108,20 @@ describe('D4: the events a gallery reports', () => {
     expect(store.events[0].galleryConfigId).toBe('gallery-1');
   });
 
+  it('credits checkout_started to the pixel, because nothing else can send it', async () => {
+    // The gallery script never sees checkout. Storing it as 'gallery' made the
+    // Performance screen tell merchants their pixel was "not switched on for
+    // your store" while it was reporting.
+    await ingestEventBatch(
+      batch([event('post_open', { productId: 10 }), event('checkout_started', { productId: 10 })]),
+      deps(),
+    );
+
+    const bySource = Object.fromEntries(store.events.map((e) => [e.type, e.source]));
+    expect(bySource.checkout_started).toBe('web_pixel');
+    expect(bySource.post_open).toBe('gallery');
+  });
+
   it('is idempotent: a retried batch stores nothing twice', async () => {
     const payload = batch([event('post_open', { productId: 10 })]);
 

@@ -37,9 +37,10 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     const days = RANGES.get(rangeKey)!;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    const [totals, top, config, entitlements] = await Promise.all([
+    const [totals, top, pixelReporting, config, entitlements] = await Promise.all([
       supabaseEventStore.totals(shop.connectionId, since),
       supabaseEventStore.topProducts(shop.connectionId, since, 10),
+      supabaseEventStore.pixelReportedSince(shop.connectionId, since),
       supabaseGalleryStore.getByConnection(shop.connectionId),
       entitlementsForShop(shop),
     ]);
@@ -57,7 +58,10 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     // one of them is currently active anywhere. Saying "measuring" for both
     // would tell a merchant their checkout is tracked when it is not.
     const galleryMeasured = config?.status === 'published';
-    const checkoutMeasured = totals.purchases > 0 || totals.attributedOrders > 0;
+    // Whether the pixel reports, not whether anyone has bought yet. Deriving
+    // this from purchases told every shop with no orders that its pixel was
+    // switched off — including shops whose pixel had just reported a checkout.
+    const checkoutMeasured = pixelReporting || totals.purchases > 0 || totals.attributedOrders > 0;
 
     // Revenue attribution is a Growth feature; Basic promises "essential
     // metrics". The entitlement was being computed and never applied, so every

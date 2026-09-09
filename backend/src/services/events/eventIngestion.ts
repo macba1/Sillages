@@ -75,12 +75,18 @@ export async function ingestEventBatch(body: unknown, deps: IngestDeps = {}): Pr
 
   if (usable.length === 0) return { ok: true, accepted: 0, stored: 0 };
 
+  const PIXEL_ONLY_TYPES: readonly string[] = ['checkout_started'];
+
   const rows: StoredEvent[] = usable.map((event) => ({
     connectionId: shop.connectionId,
     galleryConfigId: config?.id ?? null,
     sessionId,
     type: event.type,
-    source: 'gallery',
+    // `checkout_started` can only come from the Web Pixel — the gallery script
+    // never sees checkout. Recording it as 'gallery' made the Performance
+    // screen tell merchants the pixel was "not switched on for your store"
+    // while it was demonstrably reporting.
+    source: PIXEL_ONLY_TYPES.includes(event.type) ? 'web_pixel' : 'gallery',
     productId: event.productId ?? null,
     variantId: event.variantId ?? null,
     orderId: null,

@@ -71,6 +71,13 @@ export interface EventStore {
    * block to their theme.
    */
   lastGalleryViewSince(connectionId: string, since: string): Promise<string | null>;
+  /**
+   * Whether the Web Pixel has reported anything in the window. This is what
+   * "checkout is being measured" means — not "somebody has already bought",
+   * which is what the Performance screen used to check and which made it tell
+   * merchants the pixel was off while it was reporting.
+   */
+  pixelReportedSince(connectionId: string, since: string): Promise<boolean>;
   recentJourney(connectionId: string, limit: number): Promise<
     { sessionId: string; steps: { type: GalleryEventType; occurredAt: string; productId: number | null }[] }[]
   >;
@@ -283,6 +290,18 @@ export const supabaseEventStore: EventStore = {
 
     if (error || !data) return null;
     return data.occurred_at as string;
+  },
+
+  async pixelReportedSince(connectionId: string, since: string): Promise<boolean> {
+    const { count, error } = await supabase
+      .from('gallery_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('connection_id', connectionId)
+      .eq('source', 'web_pixel')
+      .gte('occurred_at', since);
+
+    if (error) return false;
+    return (count ?? 0) > 0;
   },
 
   async recentJourney(connectionId: string, limit: number) {

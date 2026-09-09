@@ -11,10 +11,10 @@ const LOG = '[webPixel]';
  * call the pixel's `settings.apiBase` is empty, it returns before subscribing,
  * and checkout and purchase are never measured on any store.
  *
- * Requires the `write_pixels` scope. The app currently requests `read_pixels`
- * only, so this reports `missing_scope` rather than pretending to have worked —
- * which is what lets the Performance screen tell a merchant the truth about
- * what is and is not being measured.
+ * Requires the `write_pixels` scope, which the social gallery now requests. If
+ * a shop's token predates that, this reports `missing_scope` rather than
+ * pretending to have worked — which is what lets the Performance screen tell a
+ * merchant the truth about what is and is not being measured.
  */
 
 const CREATE = `
