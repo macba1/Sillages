@@ -385,14 +385,19 @@ async function handleAppUninstalled(shopDomain: string): Promise<void> {
     .from('shopify_connections')
     .update({
       token_status: 'invalid',
-      sync_status: 'disabled',
+      // 'disconnected', not 'disabled': the table's check constraint allows
+      // pending | active | error | disconnected. Writing 'disabled' failed the
+      // constraint on every uninstall, so the update was rejected and the shop
+      // stayed marked active with a revoked token — which is why uninstalled
+      // shops kept being polled.
+      sync_status: 'disconnected',
     })
     .eq('shop_domain', shopDomain);
 
   if (error) {
     console.error(`${LOG} Failed to disable ${shopDomain}: ${error.message}`);
   } else {
-    console.log(`${LOG} Disabled ${shopDomain} — token_status=invalid, sync_status=disabled`);
+    console.log(`${LOG} Disabled ${shopDomain} — token_status=invalid, sync_status=disconnected`);
   }
 
   // Mark subscription as canceled
