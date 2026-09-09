@@ -269,7 +269,7 @@ router.get(
             }
 
             // Token already exchanged — skip to upsert connection directly
-            console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}...`);
+            console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope}`);
 
             const tokenExpiresAt = tokenData.expires_in
               ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
@@ -394,7 +394,7 @@ router.get(
       const tokenData = await exchangeCodeForToken(shop, code, credentials);
 
       // 1) Verify token exchange
-      console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} token_prefix=${tokenData.access_token.slice(0, 8)}... expires_in=${tokenData.expires_in ?? 'none'} has_refresh=${!!tokenData.refresh_token}`);
+      console.log(`[shopify/callback] token exchange ok — scope=${tokenData.scope} expires_in=${tokenData.expires_in ?? 'none'} has_refresh=${!!tokenData.refresh_token}`);
 
       // Fetch shop info
       const client = shopifyClient(shop, tokenData.access_token);

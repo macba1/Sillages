@@ -242,7 +242,9 @@ export async function refreshShopifyToken(shopDomain: string): Promise<string | 
       })
       .eq('id', conn.id);
 
-    console.log(`${LOG} Token refreshed for ${shopDomain} — new prefix: ${access_token.slice(0, 8)}... expires: ${expiresAt}`);
+    // Never log any part of the token, not even a prefix: these lines end up in
+    // shared log tails and support threads.
+    console.log(`${LOG} Token refreshed for ${shopDomain} — expires: ${expiresAt}`);
     return access_token;
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : null;
