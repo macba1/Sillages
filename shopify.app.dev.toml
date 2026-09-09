@@ -14,8 +14,14 @@
 
 client_id = "22dc365ecf72d104affe4e78da39fea3"
 name = "Sillages (development)"
-application_url = "https://wax-fluid-early-impacts.trycloudflare.com/api/shopify/auth"
+application_url = "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/shopify/auth"
 embedded = false
+
+[build]
+# Let `shopify app dev` register whatever tunnel it creates. Without this the
+# app keeps the previous run's URL and OAuth fails with "redirect_uri is not
+# whitelisted" — which is exactly what happened on the first install attempt.
+automatically_update_urls_on_dev = true
 
 [access_scopes]
 # The minimum the social-gallery product actually uses.
@@ -32,11 +38,15 @@ embedded = false
 # write_products, write_discounts, read_checkouts, write_marketing_events.
 scopes = "read_products,read_inventory,write_pixels,read_customer_events"
 optional_scopes = []
-use_legacy_install_flow = false
+# The backend implements the classic OAuth authorize flow. With managed
+# installation (`false`) Shopify grants scopes at install and never whitelists a
+# redirect_uri, which is why every install attempt answered
+# "Oauth error invalid_request: The redirect_uri is not whitelisted".
+use_legacy_install_flow = true
 
 [auth]
 redirect_urls = [
-  "https://wax-fluid-early-impacts.trycloudflare.com/api/shopify/callback"
+  "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/shopify/callback"
 ]
 
 [webhooks]
@@ -44,7 +54,7 @@ api_version = "2026-01"
 
   # Mandatory privacy topics. Required even on a development app.
   [[webhooks.subscriptions]]
-  uri = "https://wax-fluid-early-impacts.trycloudflare.com/api/webhooks/shopify-compliance"
+  uri = "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/webhooks/shopify-compliance"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [pos]

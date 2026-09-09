@@ -31,3 +31,6 @@ backend/content-dryrun-*.png
 .env.dev
 *.env.dev
 **/.env.dev
+# Credentials pulled from the Shopify CLI. Never commit.
+.env.dev.shopify
+*.env.shopify

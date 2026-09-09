@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import axios from 'axios';
 import { env } from '../config/env.js';
+import { isSocialGalleryMode } from '../config/productMode.js';
+import { AppError } from '../middleware/errorHandler.js';
 import { supabase } from './supabase.js';
 
 // ── Multi-app credential resolution ─────────────────────────────────────────
@@ -59,13 +61,59 @@ export function validateHmacMultiApp(query: Record<string, string>): ShopifyCred
 
 // ── OAuth helpers ────────────────────────────────────────────────────────────
 
+/**
+ * The only scopes the social-gallery product uses.
+ *
+ * `SHOPIFY_SCOPES` defaults to the legacy twelve-scope string, so a
+ * social_gallery install was asking merchants for `read_all_orders`,
+ * `read_customers`, `write_products` and six others it never reads. Asking for
+ * a permission you do not use is both a review failure and a promise you have
+ * not kept, so the mode decides rather than an environment default.
+ */
+export const SOCIAL_GALLERY_SCOPES = [
+  'read_products',
+  'read_inventory',
+  'write_pixels',
+  'read_customer_events',
+] as const;
+
+/** Scopes the new product must never request, whatever the environment says. */
+const FORBIDDEN_IN_SOCIAL_GALLERY = [
+  'read_all_orders', 'read_orders', 'write_orders',
+  'read_customers', 'write_customers',
+  'write_products', 'read_analytics', 'read_reports',
+  'write_discounts', 'read_checkouts', 'write_marketing_events',
+];
+
+export function scopesForInstall(): string {
+  if (!isSocialGalleryMode()) return env.SHOPIFY_SCOPES;
+
+  // Honour what the Shopify CLI supplies when it is running the app, but never
+  // let a wider list through.
+  const supplied = (process.env.SCOPES ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const requested = supplied.length > 0 ? supplied : [...SOCIAL_GALLERY_SCOPES];
+
+  const forbidden = requested.filter((s) => FORBIDDEN_IN_SOCIAL_GALLERY.includes(s));
+  if (forbidden.length > 0) {
+    throw new AppError(
+      500,
+      `Refusing to request scopes the social gallery does not use: ${forbidden.join(', ')}`,
+    );
+  }
+
+  return requested.join(',');
+}
+
 export function buildInstallUrl(shop: string, state: string, credentials?: ShopifyCredentials): string {
   const creds = credentials ?? resolveShopifyCredentials();
   // Use offline access (no per-user) to get permanent shpat_ tokens
   // that don't expire when the merchant's session ends
   const params = new URLSearchParams({
     client_id: creds.clientId,
-    scope: env.SHOPIFY_SCOPES,
+    scope: scopesForInstall(),
     redirect_uri: `${env.SHOPIFY_APP_URL}/api/shopify/callback`,
     state,
   });

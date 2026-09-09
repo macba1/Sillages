@@ -26,6 +26,15 @@ fi
 
 export PORT="${BACKEND_PORT:-${PORT:-3011}}"
 export PRODUCT_MODE="${PRODUCT_MODE:-social_gallery}"
+
+# The CLI publishes the app's real scopes as SCOPES; the backend reads
+# SHOPIFY_SCOPES, whose default is the legacy twelve-scope string. Without this
+# mapping a development install asked merchants for permissions the new product
+# never uses.
+if [ -n "${SCOPES:-}" ]; then
+  export SHOPIFY_SCOPES="$SCOPES"
+  echo "[dev-backend] scopes from CLI: $SCOPES"
+fi
 export DOTENV_CONFIG_PATH="${DOTENV_CONFIG_PATH:-$(pwd)/.env.dev}"
 
 # Billing must stay in Shopify test mode for the whole of development. Refuse to

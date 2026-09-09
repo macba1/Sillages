@@ -39,10 +39,21 @@ cmd_start() {
   # The analytics/vector container mounts the docker socket, which Colima does
   # not support. Nothing here needs it.
   python3 - <<'PY'
-import re, pathlib
+import os, re, pathlib
 p = pathlib.Path('supabase/config.toml')
 s = p.read_text()
 s = re.sub(r'(\[analytics\]\nenabled = )true', r'\1false', s)
+
+# GoTrue only honours a redirect_to that is on its allow list, and falls back to
+# site_url otherwise. Left at the default the OAuth install dropped the merchant
+# on 127.0.0.1:3000, which nothing serves.
+frontend = os.environ.get('DEV_FRONTEND_URL', 'http://localhost:5183')
+s = re.sub(r'(?m)^site_url = .*$', 'site_url = "%s"' % frontend, s)
+s = re.sub(
+    r'(?m)^additional_redirect_urls = .*$',
+    'additional_redirect_urls = ["%s", "%s/**"]' % (frontend, frontend),
+    s,
+)
 p.write_text(s)
 PY
 

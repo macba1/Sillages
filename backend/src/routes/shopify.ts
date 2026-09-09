@@ -25,10 +25,47 @@ import { generateBrief } from '../services/briefGenerator.js';
 import { registerShopifyWebhooks } from '../services/shopifyWebhooks.js';
 import { onShopifyConnected, shouldRegisterLegacyWebhookTopics } from '../services/catalog/catalogInstall.js';
 import { recordPreviewChoice } from '../services/preview/previewService.js';
-import { isLegacyMode } from '../config/productMode.js';
+import { isLegacyMode, isSocialGalleryMode } from '../config/productMode.js';
 import { legacyOnly } from '../middleware/productMode.js';
 
 const router = Router();
+
+/**
+ * Where an install should drop the merchant. The frontend aliases /dashboard and
+ * /plans onto the gallery routes, but <Navigate> drops the URL fragment — and
+ * that fragment carries the Supabase session, so aliasing logged the merchant
+ * straight back out. Send them to the real route instead.
+ */
+function productPath(legacyPath: '/dashboard' | '/plans'): string {
+  if (!isSocialGalleryMode()) return legacyPath;
+  return legacyPath === '/dashboard' ? '/collections' : '/plan';
+}
+
+/**
+ * Supabase one-time login token for the account's owner, or '' if one cannot be
+ * issued. Callers must fall back to the plain URL: a merchant who lands logged
+ * out is recoverable, a 500 in the middle of an install is not.
+ */
+async function generateMagicToken(accountId: string, redirectTo: string): Promise<string> {
+  try {
+    const { data: account } = await supabase
+      .from('accounts')
+      .select('email')
+      .eq('id', accountId)
+      .maybeSingle();
+    if (!account?.email) return '';
+
+    const { data: linkData } = await supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: account.email,
+      options: { redirectTo },
+    });
+    return linkData?.properties?.hashed_token ?? '';
+  } catch (err) {
+    console.warn(`[shopify/callback] Magic link generation failed: ${(err as Error).message}`);
+    return '';
+  }
+}
 
 // ── GET /api/shopify/auth ────────────────────────────────────────────────────
 // Initiates OAuth flow.  Two modes:
@@ -315,11 +352,11 @@ router.get(
 
             console.log(`[shopify/callback] Auto-install complete for ${shop} → account ${accountId}`);
 
-            // Fire-and-forget: generate first brief
-            // Legacy only. In social_gallery the OpenAI key is a placeholder, so this
-        // always failed into its seed path and upserted invented revenue, orders
-        // and products into a merchant's snapshots.
-        if (isLegacyMode()) void generateFirstBrief(accountId);
+            // Fire-and-forget: generate first brief.
+            // Legacy only. In social_gallery the OpenAI key is a placeholder, so
+            // this always failed into its seed path and upserted invented
+            // revenue, orders and products into a merchant's snapshots.
+            if (isLegacyMode()) void generateFirstBrief(accountId);
 
             // Generate magic link so merchant is auto-logged in
             let magicToken = '';
@@ -327,7 +364,7 @@ router.get(
               const { data: linkData } = await supabase.auth.admin.generateLink({
                 type: 'magiclink',
                 email: ownerEmail,
-                options: { redirectTo: `${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true` },
+                options: { redirectTo: `${env.FRONTEND_URL}${productPath('/plans')}?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true` },
               });
               if (linkData?.properties?.hashed_token) {
                 magicToken = linkData.properties.hashed_token;
@@ -338,10 +375,10 @@ router.get(
 
             if (magicToken) {
               // Redirect via Supabase auth verify endpoint — auto-logs in the merchant
-              res.redirect(`${env.SUPABASE_URL}/auth/v1/verify?token=${magicToken}&type=magiclink&redirect_to=${encodeURIComponent(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`)}`);
+              res.redirect(`${env.SUPABASE_URL}/auth/v1/verify?token=${magicToken}&type=magiclink&redirect_to=${encodeURIComponent(`${env.FRONTEND_URL}${productPath('/plans')}?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`)}`);
             } else {
               // Fallback: redirect to plans with message
-              res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true&email=${encodeURIComponent(ownerEmail)}`);
+              res.redirect(`${env.FRONTEND_URL}${productPath('/plans')}?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true&email=${encodeURIComponent(ownerEmail)}`);
             }
             return;
           }
@@ -454,8 +491,11 @@ router.get(
         // Reconnection — skip billing, sync fresh data, go straight to dashboard
         console.log(`[shopify/callback] Reconnection detected — skipping billing, syncing data`);
 
-        // Fire-and-forget: full sync + abandoned carts + brief with fresh data
-        void (async () => {
+        // Legacy only. These pull order history, abandoned carts and briefs —
+        // none of which the social gallery uses, and all of which need scopes
+        // (read_all_orders, read_checkouts) the gallery deliberately does not
+        // request, so in social_gallery they only ever failed with 403.
+        if (isLegacyMode()) void (async () => {
           try {
             console.log(`[shopify/callback] Reconnection: starting full history sync for ${accountId}`);
             await syncFullHistory(accountId);
@@ -479,7 +519,16 @@ router.get(
           }
         })();
 
-        res.redirect(`${env.FRONTEND_URL}/dashboard?reconnected=true`);
+        // Sign the merchant in, exactly as a first install does. Without this a
+        // reinstall lands on /login and the merchant has to remember a password
+        // they never chose, which reads as "the app is broken".
+        const reconnectTarget = `${env.FRONTEND_URL}${productPath('/dashboard')}?reconnected=true`;
+        const reconnectToken = await generateMagicToken(accountId, reconnectTarget);
+        res.redirect(
+          reconnectToken
+            ? `${env.SUPABASE_URL}/auth/v1/verify?token=${reconnectToken}&type=magiclink&redirect_to=${encodeURIComponent(reconnectTarget)}`
+            : reconnectTarget,
+        );
       } else {
         // First install — generate brief and redirect to plan selection
         // Legacy only. In social_gallery the OpenAI key is a placeholder, so this
@@ -494,7 +543,7 @@ router.get(
           .eq('id', accountId);
 
         console.log(`[shopify/callback] First install — redirecting to plan selection`);
-        res.redirect(`${env.FRONTEND_URL}/plans?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`);
+        res.redirect(`${env.FRONTEND_URL}${productPath('/plans')}?shop=${encodeURIComponent(shop)}&account_id=${encodeURIComponent(accountId)}&new_install=true`);
       }
     } catch (err) {
       next(err);
@@ -744,7 +793,7 @@ router.get('/billing/callback', legacyOnly, async (req: Request, res: Response, 
       }
     }
 
-    res.redirect(`${env.FRONTEND_URL}/dashboard?billing=approved&plan=${planKey ?? 'unknown'}`);
+    res.redirect(`${env.FRONTEND_URL}${productPath('/dashboard')}?billing=approved&plan=${planKey ?? 'unknown'}`);
   } catch (err) {
     next(err);
   }
