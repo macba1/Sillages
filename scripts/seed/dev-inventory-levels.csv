@@ -1,0 +1,175 @@
+Handle,Title,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value,SKU,HS Code,COO,Shop location
+amber-nights,Amber Nights,Size,30 ml,Shade,Natural,,,SIL-001-1,,,18
+amber-nights,Amber Nights,Size,50 ml,Shade,Deep,,,SIL-001-2,,,15
+amber-nights,Amber Nights,Size,100 ml,Shade,Clear,,,SIL-001-3,,,25
+amber-nights-no-2,Amber Nights No. 2,Size,30 ml,Shade,Natural,,,SIL-002-1,,,11
+amber-nights-no-2,Amber Nights No. 2,Size,50 ml,Shade,Deep,,,SIL-002-2,,,15
+amber-nights-no-2,Amber Nights No. 2,Size,100 ml,Shade,Clear,,,SIL-002-3,,,32
+amber-dusk,Amber Dusk,Size,30 ml,Shade,Natural,,,SIL-003-1,,,25
+amber-dusk,Amber Dusk,Size,50 ml,Shade,Deep,,,SIL-003-2,,,19
+amber-dusk,Amber Dusk,Size,100 ml,Shade,Clear,,,SIL-003-3,,,3
+amber-dusk-no-2,Amber Dusk No. 2,Size,30 ml,Shade,Natural,,,SIL-004-1,,,14
+amber-dusk-no-2,Amber Dusk No. 2,Size,50 ml,Shade,Deep,,,SIL-004-2,,,33
+amber-dusk-no-2,Amber Dusk No. 2,Size,100 ml,Shade,Clear,,,SIL-004-3,,,10
+amber-veil,Amber Veil,Size,30 ml,Shade,Natural,,,SIL-005-1,,,35
+amber-veil,Amber Veil,Size,50 ml,Shade,Deep,,,SIL-005-2,,,16
+amber-veil,Amber Veil,Size,100 ml,Shade,Clear,,,SIL-005-3,,,29
+amber-veil-no-2,Amber Veil No. 2,Size,30 ml,Shade,Natural,,,SIL-006-1,,,30
+amber-veil-no-2,Amber Veil No. 2,Size,50 ml,Shade,Deep,,,SIL-006-2,,,15
+amber-veil-no-2,Amber Veil No. 2,Size,100 ml,Shade,Clear,,,SIL-006-3,,,17
+amber-ember,Amber Ember,Size,30 ml,Shade,Natural,,,SIL-007-1,,,29
+amber-ember,Amber Ember,Size,50 ml,Shade,Deep,,,SIL-007-2,,,29
+amber-ember,Amber Ember,Size,100 ml,Shade,Clear,,,SIL-007-3,,,20
+amber-ember-no-2,Amber Ember No. 2,Size,30 ml,Shade,Natural,,,SIL-008-1,,,28
+amber-ember-no-2,Amber Ember No. 2,Size,50 ml,Shade,Deep,,,SIL-008-2,,,8
+amber-ember-no-2,Amber Ember No. 2,Size,100 ml,Shade,Clear,,,SIL-008-3,,,5
+citrus-bloom,Citrus Bloom,Size,30 ml,Shade,Natural,,,SIL-009-1,,,29
+citrus-bloom,Citrus Bloom,Size,50 ml,Shade,Deep,,,SIL-009-2,,,7
+citrus-bloom,Citrus Bloom,Size,100 ml,Shade,Clear,,,SIL-009-3,,,20
+citrus-bloom-no-2,Citrus Bloom No. 2,Size,30 ml,Shade,Natural,,,SIL-010-1,,,34
+citrus-bloom-no-2,Citrus Bloom No. 2,Size,50 ml,Shade,Deep,,,SIL-010-2,,,14
+citrus-bloom-no-2,Citrus Bloom No. 2,Size,100 ml,Shade,Clear,,,SIL-010-3,,,35
+citrus-verve,Citrus Verve,Size,30 ml,Shade,Natural,,,SIL-011-1,,,0
+citrus-verve,Citrus Verve,Size,50 ml,Shade,Deep,,,SIL-011-2,,,19
+citrus-verve,Citrus Verve,Size,100 ml,Shade,Clear,,,SIL-011-3,,,6
+citrus-verve-no-2,Citrus Verve No. 2,Size,30 ml,Shade,Natural,,,SIL-012-1,,,8
+citrus-verve-no-2,Citrus Verve No. 2,Size,50 ml,Shade,Deep,,,SIL-012-2,,,10
+citrus-verve-no-2,Citrus Verve No. 2,Size,100 ml,Shade,Clear,,,SIL-012-3,,,15
+citrus-haze,Citrus Haze,Size,30 ml,Shade,Natural,,,SIL-013-1,,,26
+citrus-haze,Citrus Haze,Size,50 ml,Shade,Deep,,,SIL-013-2,,,21
+citrus-haze,Citrus Haze,Size,100 ml,Shade,Clear,,,SIL-013-3,,,26
+citrus-haze-no-2,Citrus Haze No. 2,Size,30 ml,Shade,Natural,,,SIL-014-1,,,18
+citrus-haze-no-2,Citrus Haze No. 2,Size,50 ml,Shade,Deep,,,SIL-014-2,,,8
+citrus-haze-no-2,Citrus Haze No. 2,Size,100 ml,Shade,Clear,,,SIL-014-3,,,25
+citrus-rind,Citrus Rind,Size,30 ml,Shade,Natural,,,SIL-015-1,,,36
+citrus-rind,Citrus Rind,Size,50 ml,Shade,Deep,,,SIL-015-2,,,24
+citrus-rind,Citrus Rind,Size,100 ml,Shade,Clear,,,SIL-015-3,,,24
+citrus-rind-no-2,Citrus Rind No. 2,Size,30 ml,Shade,Natural,,,SIL-016-1,,,25
+citrus-rind-no-2,Citrus Rind No. 2,Size,50 ml,Shade,Deep,,,SIL-016-2,,,4
+citrus-rind-no-2,Citrus Rind No. 2,Size,100 ml,Shade,Clear,,,SIL-016-3,,,10
+cedar-room,Cedar Room,Size,30 ml,Shade,Natural,,,SIL-017-1,,,15
+cedar-room,Cedar Room,Size,50 ml,Shade,Deep,,,SIL-017-2,,,13
+cedar-room,Cedar Room,Size,100 ml,Shade,Clear,,,SIL-017-3,,,17
+cedar-room-no-2,Cedar Room No. 2,Size,30 ml,Shade,Natural,,,SIL-018-1,,,20
+cedar-room-no-2,Cedar Room No. 2,Size,50 ml,Shade,Deep,,,SIL-018-2,,,22
+cedar-room-no-2,Cedar Room No. 2,Size,100 ml,Shade,Clear,,,SIL-018-3,,,5
+cedar-quiet,Cedar Quiet,Size,30 ml,Shade,Natural,,,SIL-019-1,,,32
+cedar-quiet,Cedar Quiet,Size,50 ml,Shade,Deep,,,SIL-019-2,,,23
+cedar-quiet,Cedar Quiet,Size,100 ml,Shade,Clear,,,SIL-019-3,,,36
+cedar-quiet-no-2,Cedar Quiet No. 2,Size,30 ml,Shade,Natural,,,SIL-020-1,,,32
+cedar-quiet-no-2,Cedar Quiet No. 2,Size,50 ml,Shade,Deep,,,SIL-020-2,,,22
+cedar-quiet-no-2,Cedar Quiet No. 2,Size,100 ml,Shade,Clear,,,SIL-020-3,,,33
+sandal-drift,Sandal Drift,Size,30 ml,Shade,Natural,,,SIL-021-1,,,26
+sandal-drift,Sandal Drift,Size,50 ml,Shade,Deep,,,SIL-021-2,,,39
+sandal-drift,Sandal Drift,Size,100 ml,Shade,Clear,,,SIL-021-3,,,38
+sandal-drift-no-2,Sandal Drift No. 2,Size,30 ml,Shade,Natural,,,SIL-022-1,,,0
+sandal-drift-no-2,Sandal Drift No. 2,Size,50 ml,Shade,Deep,,,SIL-022-2,,,35
+sandal-drift-no-2,Sandal Drift No. 2,Size,100 ml,Shade,Clear,,,SIL-022-3,,,40
+vetiver-field,Vetiver Field,Size,30 ml,Shade,Natural,,,SIL-023-1,,,29
+vetiver-field,Vetiver Field,Size,50 ml,Shade,Deep,,,SIL-023-2,,,15
+vetiver-field,Vetiver Field,Size,100 ml,Shade,Clear,,,SIL-023-3,,,11
+vetiver-field-no-2,Vetiver Field No. 2,Size,30 ml,Shade,Natural,,,SIL-024-1,,,23
+vetiver-field-no-2,Vetiver Field No. 2,Size,50 ml,Shade,Deep,,,SIL-024-2,,,5
+vetiver-field-no-2,Vetiver Field No. 2,Size,100 ml,Shade,Clear,,,SIL-024-3,,,30
+fig-candle,Fig Candle,Size,30 ml,Shade,Natural,,,SIL-025-1,,,14
+fig-candle,Fig Candle,Size,50 ml,Shade,Deep,,,SIL-025-2,,,5
+fig-candle,Fig Candle,Size,100 ml,Shade,Clear,,,SIL-025-3,,,34
+fig-candle-no-2,Fig Candle No. 2,Size,30 ml,Shade,Natural,,,SIL-026-1,,,16
+fig-candle-no-2,Fig Candle No. 2,Size,50 ml,Shade,Deep,,,SIL-026-2,,,10
+fig-candle-no-2,Fig Candle No. 2,Size,100 ml,Shade,Clear,,,SIL-026-3,,,25
+linen-candle,Linen Candle,Size,30 ml,Shade,Natural,,,SIL-027-1,,,30
+linen-candle,Linen Candle,Size,50 ml,Shade,Deep,,,SIL-027-2,,,19
+linen-candle,Linen Candle,Size,100 ml,Shade,Clear,,,SIL-027-3,,,28
+linen-candle-no-2,Linen Candle No. 2,Size,30 ml,Shade,Natural,,,SIL-028-1,,,10
+linen-candle-no-2,Linen Candle No. 2,Size,50 ml,Shade,Deep,,,SIL-028-2,,,39
+linen-candle-no-2,Linen Candle No. 2,Size,100 ml,Shade,Clear,,,SIL-028-3,,,39
+smoke-candle,Smoke Candle,Size,30 ml,Shade,Natural,,,SIL-029-1,,,22
+smoke-candle,Smoke Candle,Size,50 ml,Shade,Deep,,,SIL-029-2,,,11
+smoke-candle,Smoke Candle,Size,100 ml,Shade,Clear,,,SIL-029-3,,,31
+smoke-candle-no-2,Smoke Candle No. 2,Size,30 ml,Shade,Natural,,,SIL-030-1,,,35
+smoke-candle-no-2,Smoke Candle No. 2,Size,50 ml,Shade,Deep,,,SIL-030-2,,,11
+smoke-candle-no-2,Smoke Candle No. 2,Size,100 ml,Shade,Clear,,,SIL-030-3,,,16
+moss-candle,Moss Candle,Size,30 ml,Shade,Natural,,,SIL-031-1,,,5
+moss-candle,Moss Candle,Size,50 ml,Shade,Deep,,,SIL-031-2,,,11
+moss-candle,Moss Candle,Size,100 ml,Shade,Clear,,,SIL-031-3,,,4
+moss-candle-no-2,Moss Candle No. 2,Size,30 ml,Shade,Natural,,,SIL-032-1,,,22
+moss-candle-no-2,Moss Candle No. 2,Size,50 ml,Shade,Deep,,,SIL-032-2,,,30
+moss-candle-no-2,Moss Candle No. 2,Size,100 ml,Shade,Clear,,,SIL-032-3,,,37
+reed-diffuser,Reed Diffuser,Size,30 ml,Shade,Natural,,,SIL-033-1,,,0
+reed-diffuser,Reed Diffuser,Size,50 ml,Shade,Deep,,,SIL-033-2,,,20
+reed-diffuser,Reed Diffuser,Size,100 ml,Shade,Clear,,,SIL-033-3,,,9
+reed-diffuser-no-2,Reed Diffuser No. 2,Size,30 ml,Shade,Natural,,,SIL-034-1,,,39
+reed-diffuser-no-2,Reed Diffuser No. 2,Size,50 ml,Shade,Deep,,,SIL-034-2,,,40
+reed-diffuser-no-2,Reed Diffuser No. 2,Size,100 ml,Shade,Clear,,,SIL-034-3,,,4
+stone-diffuser,Stone Diffuser,Size,30 ml,Shade,Natural,,,SIL-035-1,,,38
+stone-diffuser,Stone Diffuser,Size,50 ml,Shade,Deep,,,SIL-035-2,,,16
+stone-diffuser,Stone Diffuser,Size,100 ml,Shade,Clear,,,SIL-035-3,,,26
+stone-diffuser-no-2,Stone Diffuser No. 2,Size,30 ml,Shade,Natural,,,SIL-036-1,,,9
+stone-diffuser-no-2,Stone Diffuser No. 2,Size,50 ml,Shade,Deep,,,SIL-036-2,,,37
+stone-diffuser-no-2,Stone Diffuser No. 2,Size,100 ml,Shade,Clear,,,SIL-036-3,,,3
+glass-diffuser,Glass Diffuser,Size,30 ml,Shade,Natural,,,SIL-037-1,,,6
+glass-diffuser,Glass Diffuser,Size,50 ml,Shade,Deep,,,SIL-037-2,,,11
+glass-diffuser,Glass Diffuser,Size,100 ml,Shade,Clear,,,SIL-037-3,,,31
+glass-diffuser-no-2,Glass Diffuser No. 2,Size,30 ml,Shade,Natural,,,SIL-038-1,,,40
+glass-diffuser-no-2,Glass Diffuser No. 2,Size,50 ml,Shade,Deep,,,SIL-038-2,,,26
+glass-diffuser-no-2,Glass Diffuser No. 2,Size,100 ml,Shade,Clear,,,SIL-038-3,,,29
+olive-soap,Olive Soap,Size,30 ml,Shade,Natural,,,SIL-039-1,,,31
+olive-soap,Olive Soap,Size,50 ml,Shade,Deep,,,SIL-039-2,,,27
+olive-soap,Olive Soap,Size,100 ml,Shade,Clear,,,SIL-039-3,,,30
+olive-soap-no-2,Olive Soap No. 2,Size,30 ml,Shade,Natural,,,SIL-040-1,,,14
+olive-soap-no-2,Olive Soap No. 2,Size,50 ml,Shade,Deep,,,SIL-040-2,,,5
+olive-soap-no-2,Olive Soap No. 2,Size,100 ml,Shade,Clear,,,SIL-040-3,,,25
+clay-soap,Clay Soap,Size,30 ml,Shade,Natural,,,SIL-041-1,,,18
+clay-soap,Clay Soap,Size,50 ml,Shade,Deep,,,SIL-041-2,,,6
+clay-soap,Clay Soap,Size,100 ml,Shade,Clear,,,SIL-041-3,,,16
+clay-soap-no-2,Clay Soap No. 2,Size,30 ml,Shade,Natural,,,SIL-042-1,,,39
+clay-soap-no-2,Clay Soap No. 2,Size,50 ml,Shade,Deep,,,SIL-042-2,,,25
+clay-soap-no-2,Clay Soap No. 2,Size,100 ml,Shade,Clear,,,SIL-042-3,,,40
+charcoal-soap,Charcoal Soap,Size,30 ml,Shade,Natural,,,SIL-043-1,,,11
+charcoal-soap,Charcoal Soap,Size,50 ml,Shade,Deep,,,SIL-043-2,,,8
+charcoal-soap,Charcoal Soap,Size,100 ml,Shade,Clear,,,SIL-043-3,,,28
+charcoal-soap-no-2,Charcoal Soap No. 2,Size,30 ml,Shade,Natural,,,SIL-044-1,,,0
+charcoal-soap-no-2,Charcoal Soap No. 2,Size,50 ml,Shade,Deep,,,SIL-044-2,,,15
+charcoal-soap-no-2,Charcoal Soap No. 2,Size,100 ml,Shade,Clear,,,SIL-044-3,,,34
+oat-soap,Oat Soap,Size,30 ml,Shade,Natural,,,SIL-045-1,,,14
+oat-soap,Oat Soap,Size,50 ml,Shade,Deep,,,SIL-045-2,,,39
+oat-soap,Oat Soap,Size,100 ml,Shade,Clear,,,SIL-045-3,,,38
+oat-soap-no-2,Oat Soap No. 2,Size,30 ml,Shade,Natural,,,SIL-046-1,,,24
+oat-soap-no-2,Oat Soap No. 2,Size,50 ml,Shade,Deep,,,SIL-046-2,,,26
+oat-soap-no-2,Oat Soap No. 2,Size,100 ml,Shade,Clear,,,SIL-046-3,,,16
+rose-balm,Rose Balm,Size,30 ml,Shade,Natural,,,SIL-047-1,,,20
+rose-balm,Rose Balm,Size,50 ml,Shade,Deep,,,SIL-047-2,,,14
+rose-balm,Rose Balm,Size,100 ml,Shade,Clear,,,SIL-047-3,,,8
+rose-balm-no-2,Rose Balm No. 2,Size,30 ml,Shade,Natural,,,SIL-048-1,,,32
+rose-balm-no-2,Rose Balm No. 2,Size,50 ml,Shade,Deep,,,SIL-048-2,,,18
+rose-balm-no-2,Rose Balm No. 2,Size,100 ml,Shade,Clear,,,SIL-048-3,,,29
+shea-balm,Shea Balm,Size,30 ml,Shade,Natural,,,SIL-049-1,,,10
+shea-balm,Shea Balm,Size,50 ml,Shade,Deep,,,SIL-049-2,,,22
+shea-balm,Shea Balm,Size,100 ml,Shade,Clear,,,SIL-049-3,,,7
+shea-balm-no-2,Shea Balm No. 2,Size,30 ml,Shade,Natural,,,SIL-050-1,,,33
+shea-balm-no-2,Shea Balm No. 2,Size,50 ml,Shade,Deep,,,SIL-050-2,,,9
+shea-balm-no-2,Shea Balm No. 2,Size,100 ml,Shade,Clear,,,SIL-050-3,,,11
+calendula-balm,Calendula Balm,Size,30 ml,Shade,Natural,,,SIL-051-1,,,14
+calendula-balm,Calendula Balm,Size,50 ml,Shade,Deep,,,SIL-051-2,,,37
+calendula-balm,Calendula Balm,Size,100 ml,Shade,Clear,,,SIL-051-3,,,11
+calendula-balm-no-2,Calendula Balm No. 2,Size,30 ml,Shade,Natural,,,SIL-052-1,,,10
+calendula-balm-no-2,Calendula Balm No. 2,Size,50 ml,Shade,Deep,,,SIL-052-2,,,16
+calendula-balm-no-2,Calendula Balm No. 2,Size,100 ml,Shade,Clear,,,SIL-052-3,,,28
+body-oil,Body Oil,Size,30 ml,Shade,Natural,,,SIL-053-1,,,22
+body-oil,Body Oil,Size,50 ml,Shade,Deep,,,SIL-053-2,,,5
+body-oil,Body Oil,Size,100 ml,Shade,Clear,,,SIL-053-3,,,23
+body-oil-no-2,Body Oil No. 2,Size,30 ml,Shade,Natural,,,SIL-054-1,,,20
+body-oil-no-2,Body Oil No. 2,Size,50 ml,Shade,Deep,,,SIL-054-2,,,40
+body-oil-no-2,Body Oil No. 2,Size,100 ml,Shade,Clear,,,SIL-054-3,,,6
+bath-oil,Bath Oil,Size,30 ml,Shade,Natural,,,SIL-055-1,,,0
+bath-oil,Bath Oil,Size,50 ml,Shade,Deep,,,SIL-055-2,,,5
+bath-oil,Bath Oil,Size,100 ml,Shade,Clear,,,SIL-055-3,,,4
+bath-oil-no-2,Bath Oil No. 2,Size,30 ml,Shade,Natural,,,SIL-056-1,,,28
+bath-oil-no-2,Bath Oil No. 2,Size,50 ml,Shade,Deep,,,SIL-056-2,,,23
+bath-oil-no-2,Bath Oil No. 2,Size,100 ml,Shade,Clear,,,SIL-056-3,,,23
+hair-oil,Hair Oil,Size,30 ml,Shade,Natural,,,SIL-057-1,,,4
+hair-oil,Hair Oil,Size,50 ml,Shade,Deep,,,SIL-057-2,,,21
+hair-oil,Hair Oil,Size,100 ml,Shade,Clear,,,SIL-057-3,,,24
+hair-oil-no-2,Hair Oil No. 2,Size,30 ml,Shade,Natural,,,SIL-058-1,,,5
+hair-oil-no-2,Hair Oil No. 2,Size,50 ml,Shade,Deep,,,SIL-058-2,,,9
+hair-oil-no-2,Hair Oil No. 2,Size,100 ml,Shade,Clear,,,SIL-058-3,,,29
