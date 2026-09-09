@@ -95,11 +95,45 @@ Three independent budgets, so one cannot starve another:
 
 ## `ENABLE_PIXEL_PURCHASE_REPORTING`
 
-`POST /api/public/purchase` writes merchant-facing revenue from a browser. Its
-only legitimate caller is the Web Pixel, which is not active on any store, so
-the endpoint is closed unless this is exactly `"true"`. Open it in the same
-change that activates the pixel — and preferably only once orders can be read
-server-side, since a browser-reported total is not accounting.
+`POST /api/public/purchase` writes merchant-facing revenue from a browser, and
+is closed unless this is exactly `"true"`. It is on in the development launcher
+only.
+
+The pixel is now activated at install (`webPixelCreate`), and the whole path was
+exercised against the development store: `checkout_started` and `purchase`
+arrived from a real storefront and produced a `gallery_attribution` row for a
+real order. So the original reason for the flag — "the pixel is not active
+anywhere" — no longer holds. The remaining reason does, and it is the harder
+one.
+
+**The endpoint cannot authenticate its caller.** It verifies a signed ingest
+token, but that token is handed to every visitor of a published gallery, by
+design: the storefront script needs it. Anyone who can open the shop's gallery
+can therefore post an order id and a total. The unique index on order id makes
+that worse rather than better: a forged id permanently blocks the shop's real
+order from ever being credited.
+
+Three ways out, none of them free:
+
+1. **Read orders server-side.** `orders/create` (or `orders/paid`) is signed by
+   Shopify and unforgeable, and the total comes from the shop's own ledger
+   rather than a browser. The pixel would only supply the session link. Costs a
+   `read_orders` scope, which the gallery deliberately does not request today —
+   a product decision about the install consent screen, not a code change.
+2. **Keep the browser as the source and accept what it is.** Every screen must
+   then say revenue is reported by the storefront and is not accounting, which
+   the Performance panel already does. Forgery stays possible; the blast radius
+   is one shop's own numbers, and the order-id index still poisons real orders.
+   Mitigate that by letting a server-confirmed order overwrite a client-reported
+   one instead of colliding with it.
+3. **Bind harder without new scopes.** Require a `checkout_started` from the
+   same session within a short window before a `purchase` is accepted, and make
+   ingest tokens per-session and short-lived. This raises the cost of forgery
+   and caps its rate. It does not make it impossible, because an attacker can
+   replay the whole chain.
+
+Option 1 is the only one that makes the number trustworthy. Until one is chosen,
+the flag stays off outside development and attribution does not ship.
 
 ## In the browser
 
