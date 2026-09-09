@@ -99,3 +99,29 @@ The extension has never been deployed. `shopify app deploy` against a
 development app is required to get its UUID, which is what the theme-editor deep
 link ("Add the gallery to my theme") needs. Until then the merchant adds the
 block manually from the theme editor.
+
+## Adding the block outside the theme editor (staging notes)
+
+Two things cost hours during the development-store validation and are not
+obvious from the Shopify docs.
+
+**The `uid` in `shopify.extension.toml` is not the UUID a theme references.**
+The block type is `shopify://apps/<app-handle>/blocks/<block>/<extension-uuid>`,
+and that UUID is a different value from the 40-hex `uid` the TOML and the Dev
+Dashboard both display. It is written by `shopify app deploy` into
+`.shopify/deploy-bundle/manifest.json` as `modules[].uuid`. Using the `uid`
+makes the theme editor answer `"undefined" not added`, and a pushed template
+silently loses the block.
+
+The app handle comes from Shopify, not from the TOML name:
+
+```graphql
+{ currentAppInstallation { app { handle } } }
+```
+
+**Shopify-managed themes reject app blocks entirely.** The generated
+`test-data` theme on a development store keeps its source server-side — a
+`theme pull` returns six files, `theme push` refuses new sections or assets, and
+an `apps` section pushed into a template comes back with its blocks stripped and
+no error. The same template on a Dawn theme keeps the block. If a merchant
+reports that the block will not stay added, check the theme first.
