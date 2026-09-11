@@ -14,7 +14,7 @@
 
 client_id = "22dc365ecf72d104affe4e78da39fea3"
 name = "Sillages (development)"
-application_url = "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/shopify/auth"
+application_url = "https://rats-efficient-conf-blonde.trycloudflare.com/api/shopify/auth"
 embedded = false
 
 [build]
@@ -24,29 +24,25 @@ embedded = false
 automatically_update_urls_on_dev = true
 
 [access_scopes]
-# The minimum the social-gallery product actually uses.
+# What this launch actually uses, and nothing else.
 #
-#   read_products         catalogue: products, variants, images, collections
-#   read_inventory        stock, so a sold-out variant is shown as sold out
-#   write_pixels          activating the Web Pixel with webPixelCreate. Without
-#                         it checkout and purchases are never measured, because
-#                         the extension does nothing until the app creates it.
-#   read_customer_events  required by Shopify alongside write_pixels
+#   read_products   catalogue: products, variants, images, collections
+#   read_inventory  stock, so a sold-out variant is shown as sold out
 #
-# Deliberately NOT requested, unlike the production app: read_all_orders,
-# read_customers, write_customers, read_analytics, read_reports, read_pixels,
-# write_products, write_discounts, read_checkouts, write_marketing_events.
-scopes = "read_products,read_inventory,write_pixels,read_customer_events"
+# Both are already granted on the public app, so no installed merchant is
+# re-prompted. write_pixels and read_customer_events are deliberately absent:
+# checkout measurement is not in this release.
+scopes = "read_products,read_inventory"
 optional_scopes = []
-# The backend implements the classic OAuth authorize flow. With managed
-# installation (`false`) Shopify grants scopes at install and never whitelists a
-# redirect_uri, which is why every install attempt answered
-# "Oauth error invalid_request: The redirect_uri is not whitelisted".
-use_legacy_install_flow = true
+# Mirrors the public app, which has always used managed installation. An
+# earlier run blamed this setting for "redirect_uri is not whitelisted"; the
+# actual cause was a stale dev preview on the store, and this is set back to
+# false so staging validates the same install path production uses.
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/shopify/callback"
+  "https://rats-efficient-conf-blonde.trycloudflare.com/api/shopify/callback"
 ]
 
 [webhooks]
@@ -54,7 +50,7 @@ api_version = "2026-01"
 
   # Mandatory privacy topics. Required even on a development app.
   [[webhooks.subscriptions]]
-  uri = "https://improvement-date-movies-mitsubishi.trycloudflare.com/api/webhooks/shopify-compliance"
+  uri = "https://rats-efficient-conf-blonde.trycloudflare.com/api/webhooks/shopify-compliance"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
 [pos]
