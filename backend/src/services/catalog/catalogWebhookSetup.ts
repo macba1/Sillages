@@ -12,9 +12,6 @@ export const SOCIAL_GALLERY_WEBHOOK_TOPICS = [
   // Without this a cancellation, a declined payment or an expired trial never
   // reaches us and the gallery keeps serving indefinitely.
   'app_subscriptions/update',
-  // The only source of purchases and revenue. Signed by Shopify, so it cannot
-  // be forged the way the old public endpoint could.
-  'orders/create',
 ] as const;
 
 const LOG = '[catalogWebhookSetup]';
@@ -37,7 +34,6 @@ const TOPIC_TO_ENUM: Record<string, string> = {
   'inventory_levels/update': 'INVENTORY_LEVELS_UPDATE',
   'app/uninstalled': 'APP_UNINSTALLED',
   'app_subscriptions/update': 'APP_SUBSCRIPTIONS_UPDATE',
-  'orders/create': 'ORDERS_CREATE',
 };
 
 const LIST_QUERY = `

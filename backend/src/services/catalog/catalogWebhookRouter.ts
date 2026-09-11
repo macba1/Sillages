@@ -1,7 +1,6 @@
 import { supabase } from '../../lib/supabase.js';
 import { handleCatalogWebhook, isCatalogWebhookTopic, type CatalogWebhookDeps } from './catalogWebhooks.js';
 import { handleSubscriptionUpdate, type SubscriptionWebhookDeps } from '../billing/subscriptionWebhook.js';
-import type { OrderWebhookDeps } from '../events/orderWebhook.js';
 
 const LOG = '[catalogWebhook]';
 
@@ -20,8 +19,6 @@ export interface DispatchDeps extends CatalogWebhookDeps {
    * billing handler.
    */
   subscription?: SubscriptionWebhookDeps;
-  /** Same reasoning for order attribution: its own store and clock. */
-  order?: OrderWebhookDeps;
   /** Injected in tests. Defaults to the shared idempotency table. */
   markProcessed?: (webhookId: string, topic: string, shopDomain: string) => Promise<boolean>;
   /** Undoes the idempotency claim when a delivery could not be applied. */
@@ -109,20 +106,6 @@ export async function dispatchSocialGalleryWebhook(
     const outcome = await handleSubscriptionUpdate(shopDomain, payload, {
       resolveShop: deps.resolveShop,
       ...deps.subscription,
-    });
-    if (!outcome.handled) {
-      await (deps.releaseProcessed ?? releaseWebhook)(webhookId);
-      return { status: 'ignored', topic, reason: outcome.reason };
-    }
-    return { status: 'processed', topic };
-  }
-
-  // Purchases and revenue, from the shop's own ledger.
-  if (topic === 'orders/create') {
-    const { handleOrderCreated } = await import('../events/orderWebhook.js');
-    const outcome = await handleOrderCreated(shopDomain, payload, {
-      resolveShop: deps.resolveShop,
-      ...deps.order,
     });
     if (!outcome.handled) {
       await (deps.releaseProcessed ?? releaseWebhook)(webhookId);

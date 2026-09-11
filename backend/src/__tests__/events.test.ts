@@ -23,7 +23,7 @@ vi.mock('../config/env.js', () => ({
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error('no db in tests'); } } }));
 
 import { issueIngestToken, verifyIngestToken } from '../services/events/ingestToken.js';
-import { ingestEventBatch } from '../services/events/eventIngestion.js';
+import { ingestEventBatch, ingestPurchase } from '../services/events/eventIngestion.js';
 import { attributePurchase } from '../services/events/attribution.js';
 import { containsForbiddenField } from '../services/events/eventTypes.js';
 import { MemoryEventStore } from './helpers/memoryEventStore.js';
@@ -292,26 +292,48 @@ describe('D9: interaction -> cart -> purchase', () => {
     expect(outcome).toEqual({ attributed: false, reason: 'no_match' });
   });
 
-  it('the browser has no way to report a purchase at all', async () => {
-    // This used to be three tests about refusing a forged purchase, an
-    // implausible date and a payload carrying customer data — all defending a
-    // public endpoint that accepted revenue from whoever held a gallery ingest
-    // token, which is every visitor of a published gallery.
-    //
-    // The endpoint is gone. Purchases arrive on Shopify's signed orders/create
-    // webhook, and order-attribution.test.ts covers that path. What is left to
-    // assert here is that the browser door is actually shut.
-    const ingestion = await import('../services/events/eventIngestion.js');
-    expect('ingestPurchase' in ingestion).toBe(false);
+  it('a purchase reported by the pixel goes through the same gate', async () => {
+    await ingestEventBatch(batch([event('add_to_cart', { productId: 10, variantId: 99 })]), deps());
 
-    const result = await ingestEventBatch(
-      batch([event('purchase' as never, { productId: 10, variantId: 99 })]),
+    const result = await ingestPurchase(
+      {
+        token: issueIngestToken(SHOP),
+        sessionId: SESSION,
+        orderId: 6001,
+        amount: 55,
+        currency: 'EUR',
+        variantIds: [99],
+        occurredAt: new Date().toISOString(),
+      },
       deps(),
     );
 
-    expect(result).toMatchObject({ ok: true, stored: 0 });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.outcome.attributed).toBe(true);
+  });
+
+  it('refuses a purchase dated outside the plausible window', async () => {
+    // A forged purchase dated in the future would otherwise satisfy every
+    // reporting window the merchant can select, forever.
+    for (const occurredAt of ['2099-01-01T00:00:00.000Z', '2001-01-01T00:00:00.000Z']) {
+      const result = await ingestPurchase(
+        { token: issueIngestToken(SHOP), orderId: 6100, variantIds: [99], occurredAt },
+        deps(),
+      );
+      expect(result).toEqual({ ok: false, status: 400, reason: 'implausible_timestamp' });
+    }
     expect(store.attribution).toHaveLength(0);
-    expect(store.events.some((e) => e.type === 'purchase')).toBe(false);
+  });
+
+  it('refuses a purchase report carrying customer data', async () => {
+    const result = await ingestPurchase(
+      {
+        token: issueIngestToken(SHOP), orderId: 6002, variantIds: [99],
+        occurredAt: new Date().toISOString(), email: 'buyer@example.com',
+      },
+      deps(),
+    );
+    expect(result).toEqual({ ok: false, status: 400, reason: 'personal_data_not_accepted' });
   });
 
   it('builds a funnel the merchant can read', async () => {
@@ -457,17 +479,9 @@ describe('D5: the Web Pixel contract', () => {
     'utf8',
   );
 
-  it('subscribes only to consent and checkout started', () => {
+  it('subscribes only to consent, checkout started and checkout completed', () => {
     const topics = [...source.matchAll(/analytics\.subscribe\('([^']+)'/g)].map((m) => m[1]);
-    expect(topics.sort()).toEqual(['checkout_started', 'visitor_consent_collected']);
-  });
-
-  it('does not report the completed checkout, because money is Shopify\'s to report', () => {
-    // A pixel runs in the shopper's browser. An order id it sent could be
-    // forged, and order ids are unique per shop, so a forged one permanently
-    // blocked the shop's real order from being credited.
-    expect(source).not.toContain("subscribe('checkout_completed'");
-    expect(source).not.toContain('/api/public/purchase');
+    expect(topics.sort()).toEqual(['checkout_completed', 'checkout_started', 'visitor_consent_collected']);
   });
 
   it('does not report add-to-cart, which the gallery already reports with the real session', () => {
