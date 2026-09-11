@@ -73,9 +73,27 @@ export function validateHmacMultiApp(query: Record<string, string>): ShopifyCred
 export const SOCIAL_GALLERY_SCOPES = [
   'read_products',
   'read_inventory',
-  'write_pixels',
-  'read_customer_events',
 ] as const;
+
+/**
+ * Scopes the gallery would need to measure checkout, and deliberately does not
+ * request in this launch.
+ *
+ * The public app is already installed on live shops with a grant that contains
+ * neither of these. Asking for them would re-prompt every merchant for a
+ * permission this release does not use: the gallery reports what a shopper does
+ * inside it (views, opens, variants, cart, likes, saves, shares) from its own
+ * script, and nothing about checkout or revenue.
+ *
+ * Kept named rather than deleted so the Web Pixel work is picked up, not
+ * rediscovered, when checkout measurement is actually on the roadmap.
+ */
+export const DEFERRED_MEASUREMENT_SCOPES = ['write_pixels', 'read_customer_events'] as const;
+
+/** Whether this build may create a Web Pixel. False unless write_pixels is requested. */
+export function webPixelAvailable(): boolean {
+  return scopesForInstall().split(',').includes('write_pixels');
+}
 
 /** Scopes the new product must never request, whatever the environment says. */
 const FORBIDDEN_IN_SOCIAL_GALLERY = [

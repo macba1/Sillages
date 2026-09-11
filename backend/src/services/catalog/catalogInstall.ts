@@ -5,6 +5,7 @@ import { runCatalogSync } from './catalogSync.js';
 import { supabaseCatalogStore } from './supabaseCatalogStore.js';
 import { claimPreview } from '../preview/previewService.js';
 import { activateWebPixel } from '../events/webPixel.js';
+import { webPixelAvailable } from '../../lib/shopify.js';
 import { saveGallery } from '../gallery/galleryService.js';
 
 const LOG = '[catalogInstall]';
@@ -25,15 +26,22 @@ export async function onShopifyConnected(
 ): Promise<void> {
   if (!isSocialGalleryMode()) return;
 
-  // Checkout and purchase are measured by the Web Pixel, which does nothing
-  // until the app creates it. Deploying the extension is not enough.
-  try {
-    const activation = await activateWebPixel(shopDomain, accessToken);
-    if (!activation.activated) {
-      console.warn(`${LOG} ${shopDomain}: checkout measurement is off (${activation.reason})`);
+  // Checkout measurement is not part of this launch. Creating a Web Pixel needs
+  // `write_pixels`, which the public app has never been granted, and asking for
+  // it would re-prompt every installed merchant for a permission the gallery
+  // does not use. Skipped by capability rather than left to fail at runtime, so
+  // the log says a decision was made instead of something went wrong.
+  if (!webPixelAvailable()) {
+    console.log(`${LOG} ${shopDomain}: checkout measurement not in this release — pixel not created`);
+  } else {
+    try {
+      const activation = await activateWebPixel(shopDomain, accessToken);
+      if (!activation.activated) {
+        console.warn(`${LOG} ${shopDomain}: checkout measurement is off (${activation.reason})`);
+      }
+    } catch (err) {
+      console.warn(`${LOG} ${shopDomain}: pixel activation failed: ${(err as Error).message}`);
     }
-  } catch (err) {
-    console.warn(`${LOG} ${shopDomain}: pixel activation failed: ${(err as Error).message}`);
   }
 
   try {

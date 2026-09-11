@@ -42,12 +42,10 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('the new product asks for four scopes and no more', () => {
-  it('requests exactly the four it uses', async () => {
+describe('the new product asks for two scopes and no more', () => {
+  it('requests exactly the two it uses', async () => {
     const { scopesForInstall } = await load('social_gallery');
-    expect(scopesForInstall().split(',').sort()).toEqual([
-      'read_customer_events', 'read_inventory', 'read_products', 'write_pixels',
-    ]);
+    expect(scopesForInstall().split(',').sort()).toEqual(['read_inventory', 'read_products']);
   });
 
   it('ignores the legacy default even when the environment supplies it', async () => {
@@ -72,15 +70,32 @@ describe('the new product asks for four scopes and no more', () => {
     expect(() => scopesForInstall()).toThrow(/does not use.*write_products/);
   });
 
-  it('builds an install URL carrying only those four', async () => {
+  it('builds an install URL carrying only those two', async () => {
     const { buildInstallUrl } = await load('social_gallery');
     const url = new URL(buildInstallUrl('shop.myshopify.com', 'state-1', {
       clientId: 'cid', clientSecret: 'sec', label: 'dev',
     } as never));
 
-    expect(url.searchParams.get('scope')!.split(',').sort()).toEqual([
-      'read_customer_events', 'read_inventory', 'read_products', 'write_pixels',
-    ]);
+    expect(url.searchParams.get('scope')!.split(',').sort()).toEqual(['read_inventory', 'read_products']);
+  });
+
+  it('asks for nothing the public app has not already been granted', async () => {
+    // This launch ships over the existing public app. Its granted scopes are
+    // the legacy set; requesting anything outside it would re-prompt every
+    // installed merchant for a permission the gallery does not use.
+    const granted = BASE_ENV.SHOPIFY_SCOPES.split(',');
+    const { scopesForInstall } = await load('social_gallery');
+
+    for (const scope of scopesForInstall().split(',')) {
+      expect(granted, scope).toContain(scope);
+    }
+  });
+
+  it('does not create a Web Pixel while write_pixels is not requested', async () => {
+    const { webPixelAvailable, DEFERRED_MEASUREMENT_SCOPES } = await load('social_gallery');
+
+    expect(webPixelAvailable()).toBe(false);
+    expect([...DEFERRED_MEASUREMENT_SCOPES]).toEqual(['write_pixels', 'read_customer_events']);
   });
 
   it('leaves the legacy product asking for exactly what it always asked for', async () => {
