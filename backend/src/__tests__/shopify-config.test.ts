@@ -68,11 +68,26 @@ describe('the development app is a separate app', () => {
     }
   });
 
-  it('leaves the public application untouched', () => {
-    // The production app is not ours to change in this branch: its scopes and
-    // its URLs must stay exactly as they were.
+  it('keeps the public application on its own URLs', () => {
+    // The pivot narrows the public app's scopes, and nothing else about it. Its
+    // URLs in particular must never pick up a development tunnel.
     expect(production).toContain('sillages-production.up.railway.app');
-    expect(scopesOf(production)).toContain('read_all_orders');
+    expect(production).not.toContain('trycloudflare.com');
     expect(development).not.toContain('sillages-production.up.railway.app');
+  });
+
+  it('asks merchants for the same two scopes in production as in development', () => {
+    // One product, one permission story. A difference here would mean staging
+    // proved something production does not do.
+    expect(scopesOf(production).sort()).toEqual(scopesOf(development).sort());
+    expect(scopesOf(production).sort()).toEqual(['read_inventory', 'read_products']);
+  });
+
+  it('drops the legacy permissions from the public app as well', () => {
+    for (const scope of ['read_all_orders', 'read_customers', 'write_customers',
+      'write_products', 'read_analytics', 'read_reports', 'read_pixels',
+      'write_discounts', 'read_checkouts', 'write_marketing_events']) {
+      expect(scopesOf(production), scope).not.toContain(scope);
+    }
   });
 });

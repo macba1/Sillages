@@ -14,7 +14,21 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_all_orders,read_products,write_products,read_customers,write_customers,read_analytics,read_inventory,read_reports,read_pixels,write_discounts,read_checkouts,write_marketing_events"
+#
+# Narrowed for the Social Gallery pivot, from twelve scopes to the two the
+# product reads:
+#
+#   read_products   catalogue: products, variants, images, collections
+#   read_inventory  stock, so a sold-out variant shows as sold out
+#
+# Both were already inside every installed merchant's grant, so nobody is
+# re-prompted. Removed rather than left in place: asking for permissions the
+# product does not read is an App Store review failure and a promise to the
+# merchant that is not kept.
+#
+# Deliberately absent — write_pixels and read_customer_events (checkout
+# measurement is not in this release) and read_orders (no revenue attribution).
+scopes = "read_products,read_inventory"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
