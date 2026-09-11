@@ -75,11 +75,16 @@ export const SOCIAL_GALLERY_SCOPES = [
   'read_inventory',
   'write_pixels',
   'read_customer_events',
+  // Revenue is read from Shopify's signed orders/create webhook, never from the
+  // storefront. `read_orders` covers the last 60 days of orders, which is all
+  // attribution ever looks at; `read_all_orders` stays forbidden because the
+  // full history is not needed and requires Shopify's approval.
+  'read_orders',
 ] as const;
 
 /** Scopes the new product must never request, whatever the environment says. */
 const FORBIDDEN_IN_SOCIAL_GALLERY = [
-  'read_all_orders', 'read_orders', 'write_orders',
+  'read_all_orders', 'write_orders',
   'read_customers', 'write_customers',
   'write_products', 'read_analytics', 'read_reports',
   'write_discounts', 'read_checkouts', 'write_marketing_events',

@@ -42,11 +42,11 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('the new product asks for four scopes and no more', () => {
-  it('requests exactly the four it uses', async () => {
+describe('the new product asks for five scopes and no more', () => {
+  it('requests exactly the five it uses', async () => {
     const { scopesForInstall } = await load('social_gallery');
     expect(scopesForInstall().split(',').sort()).toEqual([
-      'read_customer_events', 'read_inventory', 'read_products', 'write_pixels',
+      'read_customer_events', 'read_inventory', 'read_orders', 'read_products', 'write_pixels',
     ]);
   });
 
@@ -72,15 +72,32 @@ describe('the new product asks for four scopes and no more', () => {
     expect(() => scopesForInstall()).toThrow(/does not use.*write_products/);
   });
 
-  it('builds an install URL carrying only those four', async () => {
+  it('builds an install URL carrying only those five', async () => {
     const { buildInstallUrl } = await load('social_gallery');
     const url = new URL(buildInstallUrl('shop.myshopify.com', 'state-1', {
       clientId: 'cid', clientSecret: 'sec', label: 'dev',
     } as never));
 
     expect(url.searchParams.get('scope')!.split(',').sort()).toEqual([
-      'read_customer_events', 'read_inventory', 'read_products', 'write_pixels',
+      'read_customer_events', 'read_inventory', 'read_orders', 'read_products', 'write_pixels',
     ]);
+  });
+
+  it('asks for read_orders but never read_all_orders', async () => {
+    // Revenue comes from the signed orders/create webhook, which read_orders
+    // covers. read_all_orders reaches back beyond 60 days, needs Shopify's
+    // approval, and attribution never looks that far back.
+    const { scopesForInstall } = await load('social_gallery');
+    const scopes = scopesForInstall().split(',');
+
+    expect(scopes).toContain('read_orders');
+    expect(scopes).not.toContain('read_all_orders');
+  });
+
+  it('still refuses read_all_orders if something hands it in', async () => {
+    process.env.SCOPES = 'read_products,read_all_orders';
+    const { scopesForInstall } = await load('social_gallery');
+    expect(() => scopesForInstall()).toThrow(/does not use.*read_all_orders/);
   });
 
   it('leaves the legacy product asking for exactly what it always asked for', async () => {

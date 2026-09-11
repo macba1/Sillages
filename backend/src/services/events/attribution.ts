@@ -87,7 +87,9 @@ export async function attributePurchase(
     galleryConfigId: input.galleryConfigId,
     sessionId: input.sessionId ?? `order-${input.orderId}`,
     type: 'purchase',
-    source: 'web_pixel',
+    // Shopify's signed webhook, not the storefront. The browser cannot report a
+    // purchase at all any more.
+    source: 'shopify',
     productId: null,
     variantId: matchedVariantIds[0] ?? null,
     orderId: input.orderId,

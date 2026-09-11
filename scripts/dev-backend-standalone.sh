@@ -25,15 +25,11 @@ set -a
 set +a
 
 export SHOPIFY_APP_URL="$TUNNEL"
-export SHOPIFY_SCOPES="${SCOPES:-read_products,read_inventory,write_pixels,read_customer_events}"
+export SHOPIFY_SCOPES="${SCOPES:-read_products,read_inventory,write_pixels,read_customer_events,read_orders}"
 export PORT="$PORT_ARG"
 export PRODUCT_MODE=social_gallery
 export FRONTEND_URL="${FRONTEND_URL:-http://localhost:5183}"
 unset SHOPIFY_BILLING_LIVE
-# Staging only. The endpoint accepts revenue from anyone holding a gallery
-# ingest token, and those are handed to every storefront visitor, so it stays
-# off by default until that is closed. See docs/measurement.md.
-export ENABLE_PIXEL_PURCHASE_REPORTING=true
 
 echo "[standalone] product=$PRODUCT_MODE port=$PORT app_url=$SHOPIFY_APP_URL"
 echo "[standalone] scopes=$SHOPIFY_SCOPES"

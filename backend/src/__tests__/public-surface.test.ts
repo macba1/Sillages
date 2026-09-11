@@ -114,47 +114,25 @@ describe('the storefront can actually talk to the event endpoint', () => {
     });
   });
 
-  it('keeps purchase reporting closed while the pixel does not exist', async () => {
-    // The Web Pixel is the only legitimate caller and is not activated on any
-    // store. Leaving the path open would let anyone who can read a shop's
-    // public gallery write merchant-facing revenue, and squat order ids that
-    // the unique index would then never release.
-    delete process.env.ENABLE_PIXEL_PURCHASE_REPORTING;
+  it('has no purchase endpoint for anyone to post revenue to', async () => {
+    // It used to exist behind a flag. The flag is gone with it: the only
+    // credential this surface can check is the gallery ingest token, and that
+    // is handed to every visitor of a published gallery, so no configuration
+    // made the endpoint safe. Revenue comes from Shopify's signed
+    // orders/create webhook instead.
     const { createApp } = await loadApp();
 
     await withServer(createApp(), async (baseUrl) => {
       const res = await fetch(`${baseUrl}/api/public/purchase`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ orderId: 999, amount: 100000, currency: 'EUR' }),
       });
+
       expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'not_enabled' });
+      // Not the old "not_enabled": there is nothing to enable.
+      expect(await res.json()).not.toMatchObject({ error: 'not_enabled' });
     });
-  });
-
-  it('accepts a purchase report once reporting is deliberately switched on', async () => {
-    process.env.ENABLE_PIXEL_PURCHASE_REPORTING = 'true';
-    const { createApp } = await loadApp(() => {
-      vi.doMock('../services/events/eventIngestion.js', () => ({
-        ingestEventBatch: async () => ({ ok: true, accepted: 0, stored: 0 }),
-        ingestPurchase: async () => ({ ok: true, outcome: { attributed: true, match: 'session', variantIds: [1] } }),
-      }));
-    });
-
-    try {
-      await withServer(createApp(), async (baseUrl) => {
-        const res = await fetch(`${baseUrl}/api/public/purchase`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        });
-        expect(res.status).toBe(202);
-        expect(await res.json()).toEqual({ attributed: true });
-      });
-    } finally {
-      delete process.env.ENABLE_PIXEL_PURCHASE_REPORTING;
-    }
   });
 });
 

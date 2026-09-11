@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { validateShopDomain } from '../lib/shopify.js';
 import { composePublicGallery } from '../services/gallery/galleryService.js';
 import { inactiveGallery } from '../services/gallery/galleryTypes.js';
-import { ingestEventBatch, ingestPurchase } from '../services/events/eventIngestion.js';
+import { ingestEventBatch } from '../services/events/eventIngestion.js';
 
 const router = Router();
 
@@ -54,7 +54,7 @@ router.options('/gallery/:shopDomain', publicCors, (_req, res) => {
   res.status(204).end();
 });
 
-router.options(['/events', '/purchase'], publicCors, (_req, res) => {
+router.options(['/events'], publicCors, (_req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.status(204).end();
 });
@@ -118,43 +118,16 @@ router.post(
 );
 
 /**
- * Purchase reporting is closed unless deliberately switched on.
+ * There is deliberately no purchase endpoint here.
  *
- * The Web Pixel is the only legitimate caller, and it is not activated on any
- * store yet (activation needs `webPixelCreate` and the `write_pixels` scope).
- * Until then this endpoint has no real traffic and would accept
- * merchant-facing revenue figures from anyone who can read a shop's public
- * gallery — including order ids that, through the unique index, would
- * permanently block the shop's real orders from ever being credited.
+ * Revenue arrives on Shopify's signed `orders/create` webhook and nowhere else
+ * — see services/events/orderWebhook.ts. This router is reachable by anyone who
+ * can open a published gallery, and its only credential, the ingest token, is
+ * handed to every one of them. Any order id it accepted could be forged, and
+ * because order ids are unique per shop, a forged one permanently blocked the
+ * shop's real order from ever being credited.
  *
- * Enable it in the same change that activates the pixel.
+ * The storefront reports what a shopper did. Shopify reports what they paid.
  */
-function purchaseReportingEnabled(): boolean {
-  return process.env.ENABLE_PIXEL_PURCHASE_REPORTING === 'true';
-}
-
-// POST /api/public/purchase — reported by the Web Pixel after checkout
-router.post(
-  '/purchase',
-  publicCors,
-  eventsLimiter,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (!purchaseReportingEnabled()) {
-        res.status(404).json({ error: 'not_enabled' });
-        return;
-      }
-
-      const result = await ingestPurchase(req.body);
-      if (!result.ok) {
-        res.status(result.status).json({ error: result.reason });
-        return;
-      }
-      res.status(202).json({ attributed: result.outcome.attributed });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
 
 export default router;

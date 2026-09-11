@@ -358,16 +358,42 @@ describe('A4: idempotency and defensive handling', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('A7: legacy topics in social_gallery mode', () => {
-  it('ignores orders and checkouts instead of running legacy handlers', async () => {
+  it('ignores checkouts instead of running legacy handlers', async () => {
     // app_subscriptions/update is deliberately NOT in this list any more: the
     // new product handles it, because losing a plan has to disable the gallery.
-    for (const topic of ['orders/create', 'checkouts/create', 'checkouts/update']) {
+    // Neither is orders/create — it is now the only source of revenue, see the
+    // test below and order-attribution.test.ts.
+    for (const topic of ['checkouts/create', 'checkouts/update']) {
       const result = await dispatchSocialGalleryWebhook(topic, CTX.shopDomain, `wh-${topic}`, {}, {
         ...deps(),
         markProcessed: async () => false,
       });
       expect(result).toEqual({ status: 'ignored', topic, reason: 'legacy_topic' });
     }
+  });
+
+  it('routes orders/create to attribution rather than ignoring it', async () => {
+    const result = await dispatchSocialGalleryWebhook(
+      'orders/create',
+      CTX.shopDomain,
+      'wh-order-1',
+      { id: 5001, total_price: '10.00', currency: 'EUR', line_items: [], note_attributes: [] },
+      {
+        ...deps(),
+        markProcessed: async () => false,
+        order: {
+          resolveShop: async () => RESOLVED,
+          galleryStore: { getByConnection: async () => null } as never,
+          store: {
+            variantsTouchedSince: async () => [],
+            upsertAttribution: async () => true,
+            insertEvents: async () => 1,
+          } as never,
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: 'processed', topic: 'orders/create' });
   });
 
   it('handles a subscription change rather than ignoring it', async () => {

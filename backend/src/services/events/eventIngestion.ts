@@ -1,12 +1,10 @@
 import { resolveShopByDomain } from '../catalog/catalogContext.js';
 import { supabaseGalleryStore, type GalleryStore } from '../gallery/galleryStore.js';
 import { supabaseEventStore, type EventStore, type StoredEvent } from './eventStore.js';
-import { attributePurchase, type AttributionOutcome } from './attribution.js';
 import {
   CLIENT_REPORTABLE_TYPES,
   containsForbiddenField,
   eventBatchSchema,
-  purchaseReportSchema,
   type ClientEvent,
 } from './eventTypes.js';
 import { verifyIngestToken } from './ingestToken.js';
@@ -119,54 +117,3 @@ function occurredMs(value: string): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
-
-export type PurchaseResult =
-  | { ok: true; outcome: AttributionOutcome }
-  | { ok: false; status: 400 | 401 | 404; reason: string };
-
-/**
- * Accepts a purchase reported by the Web Pixel and decides whether the gallery
- * is credited with it.
- */
-export async function ingestPurchase(body: unknown, deps: IngestDeps = {}): Promise<PurchaseResult> {
-  const galleryStore = deps.galleryStore ?? supabaseGalleryStore;
-  const resolveShop = deps.resolveShop ?? resolveShopByDomain;
-  const now = deps.now ?? Date.now;
-
-  const forbidden = containsForbiddenField(body);
-  if (forbidden) return { ok: false, status: 400, reason: 'personal_data_not_accepted' };
-
-  const parsed = purchaseReportSchema.safeParse(body);
-  if (!parsed.success) return { ok: false, status: 400, reason: 'malformed_purchase' };
-
-  // The same clock-skew bound the event path applies. Without it a forged
-  // purchase dated in the future satisfies every reporting window forever.
-  const occurred = Date.parse(parsed.data.occurredAt);
-  if (!Number.isFinite(occurred) || Math.abs(now() - occurred) > MAX_CLOCK_SKEW_MS) {
-    return { ok: false, status: 400, reason: 'implausible_timestamp' };
-  }
-
-  const verified = verifyIngestToken(parsed.data.token, now);
-  if (!verified) return { ok: false, status: 401, reason: 'invalid_or_expired_token' };
-
-  const shop = await resolveShop(verified.shopDomain);
-  if (!shop) return { ok: false, status: 404, reason: 'unknown_shop' };
-
-  const config = await galleryStore.getByConnection(shop.connectionId);
-
-  const outcome = await attributePurchase(
-    {
-      connectionId: shop.connectionId,
-      galleryConfigId: config?.id ?? null,
-      orderId: parsed.data.orderId,
-      sessionId: parsed.data.sessionId ?? null,
-      amount: parsed.data.amount ?? null,
-      currency: parsed.data.currency ?? null,
-      purchasedVariantIds: parsed.data.variantIds,
-      occurredAt: parsed.data.occurredAt,
-    },
-    { store: deps.store, now },
-  );
-
-  return { ok: true, outcome };
-}

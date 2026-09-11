@@ -11,7 +11,8 @@ export interface StoredEvent {
   galleryConfigId: string | null;
   sessionId: string;
   type: GalleryEventType;
-  source: 'gallery' | 'web_pixel';
+  /** 'shopify' is the only source allowed to carry money. */
+  source: 'gallery' | 'web_pixel' | 'shopify';
   productId: number | null;
   variantId: number | null;
   orderId: number | null;

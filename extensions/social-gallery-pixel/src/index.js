@@ -129,24 +129,16 @@ register(({ analytics, browser, init, settings }) => {
     });
   });
 
-  analytics.subscribe('checkout_completed', (event) => {
-    const checkout = event?.data?.checkout;
-    if (!checkout) return;
-
-    const orderId = Number(String(checkout.order?.id ?? '').replace(/\D/g, ''));
-    if (!Number.isSafeInteger(orderId) || !orderId) return;
-
-    const variantIds = (checkout.lineItems || [])
-      .map((line) => Number(String(line?.variant?.id ?? '').replace(/\D/g, '')))
-      .filter((id) => Number.isSafeInteger(id) && id > 0);
-
-    void send('/api/public/purchase', {
-      sessionId: sessionFrom(checkout),
-      orderId,
-      amount: Number(checkout.totalPrice?.amount) || undefined,
-      currency: checkout.currencyCode || undefined,
-      variantIds,
-      occurredAt: new Date(event.timestamp || Date.now()).toISOString(),
-    });
-  });
+  // Deliberately NOT subscribing to `checkout_completed`.
+  //
+  // The pixel runs in the shopper's browser. Anything it reports can be
+  // fabricated by anyone who can open the gallery, because the token it sends
+  // with is handed to every visitor. An order id in particular is unique per
+  // shop, so a forged one permanently blocked the shop's real order from being
+  // credited.
+  //
+  // Purchases and revenue come from Shopify's signed `orders/create` webhook.
+  // The cart already carries `_sillages_sid`, and Shopify passes cart
+  // attributes into the order, so the server can tell which gallery session
+  // bought without the browser saying anything at all.
 });
