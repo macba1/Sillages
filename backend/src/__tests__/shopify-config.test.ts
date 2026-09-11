@@ -31,13 +31,24 @@ describe('the development app is a separate app', () => {
     expect(development).toContain('name = "Sillages (development)"');
   });
 
-  it('requests only what the social-gallery product uses', () => {
-    expect(scopesOf(development).sort()).toEqual(['read_customer_events', 'read_inventory', 'read_products', 'write_pixels']);
+  it('requests only what this launch uses', () => {
+    expect(scopesOf(development).sort()).toEqual(['read_inventory', 'read_products']);
   });
 
-  it('requests write_pixels, without which the Web Pixel can never be activated', () => {
-    expect(scopesOf(development)).toContain('write_pixels');
-    expect(scopesOf(development)).toContain('read_customer_events');
+  it('stays inside what the public app has already been granted', () => {
+    // The gallery ships over the existing public app. Requesting anything
+    // outside its grant would re-prompt every installed merchant.
+    for (const scope of scopesOf(development)) {
+      expect(scopesOf(production), scope).toContain(scope);
+    }
+  });
+
+  it('does not request write_pixels, because checkout measurement is not in this launch', () => {
+    // The public app has read_pixels and never had write_pixels, so creating a
+    // Web Pixel would need a new permission from every merchant for something
+    // this release does not use.
+    expect(scopesOf(development)).not.toContain('write_pixels');
+    expect(scopesOf(development)).not.toContain('read_customer_events');
   });
 
   it('drops every scope the new product does not read', () => {
