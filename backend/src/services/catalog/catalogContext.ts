@@ -61,15 +61,26 @@ export async function resolveShopByDomain(shopDomain: string): Promise<ResolvedS
 }
 
 export async function resolveShopByAccount(accountId: string): Promise<ResolvedShop | null> {
+  // An account can hold more than one connection: production has accounts that
+  // installed on several shops over the years, and every reinstall of a new
+  // shop adds another. `maybeSingle()` treats that as an error and returned
+  // null, so the admin told those merchants "No Shopify store connected" while
+  // their catalogue sat in the database.
+  //
+  // The gallery is one shop's, so pick one deterministically: a live connection
+  // first, most recently connected. Uninstalled shops are excluded the same way
+  // listActiveShops excludes them.
   const { data, error } = await supabase
     .from('shopify_connections')
-    .select('id, account_id, shop_domain, access_token')
+    .select('id, account_id, shop_domain, access_token, updated_at')
     .eq('account_id', accountId)
-    .maybeSingle();
+    .or('sync_status.is.null,sync_status.in.(pending,active,error)')
+    .order('updated_at', { ascending: false })
+    .limit(1);
 
-  if (error || !data) return null;
+  if (error || !data || data.length === 0) return null;
 
-  return withFreshToken(data as never);
+  return withFreshToken(data[0] as never);
 }
 
 /** Every shop we should keep a catalogue for. */
