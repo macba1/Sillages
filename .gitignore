@@ -34,3 +34,5 @@ backend/content-dryrun-*.png
 # Credentials pulled from the Shopify CLI. Never commit.
 .env.dev.shopify
 *.env.shopify
+.vercel
+.env*

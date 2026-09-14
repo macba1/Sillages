@@ -155,8 +155,18 @@ export default function App() {
         <Route path="/reconnect" element={<Reconnect />} />
 
         {/* Public landing + legal. The legal pages describe the product the
-            merchant is actually using, so they follow the product mode. */}
-        <Route path="/" element={<Landing />} />
+            merchant is actually using, so they follow the product mode.
+
+            The landing still sells the daily brief. Serving it in
+            social_gallery meant a merchant who had just installed the gallery
+            landed on marketing for a product that no longer exists, with an
+            "Install on Shopify" button. Until a gallery landing is written,
+            the root sends them to the product: RequireAuth turns that into
+            /login for a visitor who is not signed in. */}
+        <Route
+          path="/"
+          element={isSocialGalleryMode() ? <Navigate to={HOME_ROUTE} replace /> : <Landing />}
+        />
         <Route path="/privacy" element={isSocialGalleryMode() ? <PrivacyGallery /> : <Privacy />} />
         <Route path="/terms" element={isSocialGalleryMode() ? <TermsGallery /> : <Terms />} />
 
