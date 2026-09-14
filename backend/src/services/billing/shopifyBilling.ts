@@ -24,36 +24,6 @@ export function isLiveBilling(): boolean {
   return process.env.SHOPIFY_BILLING_LIVE === 'true';
 }
 
-const CREATE_SUBSCRIPTION = `
-  mutation SillagesSubscriptionCreate(
-    $name: String!
-    $returnUrl: URL!
-    $trialDays: Int!
-    $test: Boolean!
-    $amount: Decimal!
-    $currencyCode: CurrencyCode!
-  ) {
-    appSubscriptionCreate(
-      name: $name
-      returnUrl: $returnUrl
-      trialDays: $trialDays
-      test: $test
-      lineItems: [{
-        plan: {
-          appRecurringPricingDetails: {
-            price: { amount: $amount, currencyCode: $currencyCode }
-            interval: EVERY_30_DAYS
-          }
-        }
-      }]
-    ) {
-      confirmationUrl
-      appSubscription { id status }
-      userErrors { field message }
-    }
-  }
-`;
-
 const CURRENT_SUBSCRIPTIONS = `
   query SillagesCurrentSubscription {
     currentAppInstallation {
@@ -84,70 +54,53 @@ export interface BillingDeps {
 }
 
 export type StartSubscriptionResult =
-  | { ok: true; confirmationUrl: string; test: boolean; planId: SocialGalleryPlanId }
-  | { ok: false; status: 400 | 502; reason: string; message: string };
+  | { ok: true; pricingPageUrl: string; planId: SocialGalleryPlanId }
+  | { ok: false; status: 400; reason: string; message: string };
 
 /**
- * Starts a subscription and returns the URL where the merchant approves it.
- * Nothing is charged until they approve, and in test mode nothing is charged at
- * all.
+ * The app's handle on the Shopify App Store, which is also the handle in the
+ * hosted pricing URL. Overridable so a differently-named app can reuse this.
  */
-export async function startSubscription(
-  shopDomain: string,
-  accessToken: string,
-  planId: unknown,
-  deps: BillingDeps = {},
-): Promise<StartSubscriptionResult> {
+export function appHandle(): string {
+  return process.env.SHOPIFY_APP_HANDLE || 'sillages';
+}
+
+/** `shop.myshopify.com` -> `shop`, which is what admin URLs use. */
+export function storeHandle(shopDomain: string): string {
+  return String(shopDomain).replace(/\.myshopify\.com$/i, '');
+}
+
+/**
+ * Where a merchant chooses a plan.
+ *
+ * The app is on Shopify App Pricing: Shopify owns the subscription, and
+ * `appSubscriptionCreate` is refused outright with "Cannot use the Billing API
+ * (to create charges) when on Shopify App Pricing." So the product does not
+ * create charges at all — it sends the merchant to the page Shopify hosts, and
+ * learns the outcome from Shopify afterwards.
+ */
+export function managedPricingUrl(shopDomain: string): string {
+  return `https://admin.shopify.com/store/${storeHandle(shopDomain)}/charges/${appHandle()}/pricing_plans`;
+}
+
+/**
+ * Answers "where do I send this merchant to subscribe?".
+ *
+ * Validates the plan first so the UI cannot send someone to pay for Pro while
+ * it is still coming soon.
+ */
+export function startSubscription(shopDomain: string, planId: unknown): StartSubscriptionResult {
   if (!isSocialGalleryPlanId(String(planId))) {
     return { ok: false, status: 400, reason: 'unknown_plan', message: 'Choose Basic or Growth.' };
   }
 
   const plan: SocialGalleryPlan = SOCIAL_GALLERY_PLANS[String(planId) as SocialGalleryPlanId];
 
-  // A plan that is not on sale cannot be subscribed to, whatever the client sent.
   if (plan.status !== 'available' || plan.priceUsd === null) {
     return { ok: false, status: 400, reason: 'plan_not_available', message: `${plan.name} is not available yet.` };
   }
 
-  const test = !isLiveBilling();
-  const client = (deps.createClient ?? createCatalogClient)(shopDomain, accessToken);
-
-  try {
-    const data = await client.request<{
-      appSubscriptionCreate: {
-        confirmationUrl: string | null;
-        appSubscription: { id: string; status: string } | null;
-        userErrors: { field: string[] | null; message: string }[];
-      };
-    }>(CREATE_SUBSCRIPTION, {
-      name: `Sillages ${plan.name}`,
-      returnUrl: `${env.SHOPIFY_APP_URL.replace(/\/+$/, '')}/api/subscription/callback?shop=${encodeURIComponent(shopDomain)}&plan=${plan.id}`,
-      trialDays: plan.trialDays,
-      test,
-      amount: plan.priceUsd.toFixed(2),
-      currencyCode: plan.currency,
-    });
-
-    const errors = data.appSubscriptionCreate.userErrors;
-    if (errors.length > 0) {
-      return {
-        ok: false,
-        status: 502,
-        reason: 'shopify_rejected',
-        message: errors.map((e) => e.message).join('; '),
-      };
-    }
-
-    const confirmationUrl = data.appSubscriptionCreate.confirmationUrl;
-    if (!confirmationUrl) {
-      return { ok: false, status: 502, reason: 'no_confirmation_url', message: 'Shopify did not return an approval link.' };
-    }
-
-    console.log(`${LOG} ${shopDomain}: started ${plan.id}${test ? ' (test charge)' : ''}`);
-    return { ok: true, confirmationUrl, test, planId: plan.id };
-  } catch (err) {
-    return { ok: false, status: 502, reason: 'shopify_unreachable', message: (err as Error).message };
-  }
+  return { ok: true, pricingPageUrl: managedPricingUrl(shopDomain), planId: plan.id };
 }
 
 export interface ActiveSubscription {
@@ -198,11 +151,30 @@ export async function cancelSubscription(
   return data.appSubscriptionCancel.userErrors.length === 0;
 }
 
-/** Maps "Sillages Growth" back to the plan id, so the UI can highlight it. */
+/**
+ * Maps what Shopify calls the plan back to our plan id.
+ *
+ * Covers both shapes: "Sillages Growth", the name the old Billing API charges
+ * were created with, and "Growth" or "growth", the display name and handle a
+ * Shopify App Pricing plan carries.
+ */
 export function planIdFromName(name: string): SocialGalleryPlanId | null {
-  const normalised = String(name ?? '').toLowerCase();
+  const normalised = String(name ?? '').trim().toLowerCase();
+  if (!normalised) return null;
   for (const plan of getAvailableSocialGalleryPlans()) {
+    if (normalised === plan.id) return plan.id;
     if (normalised.includes(plan.name.toLowerCase())) return plan.id;
   }
   return null;
+}
+
+/**
+ * The plan handle Shopify puts on the welcome link.
+ *
+ * Only ever a hint: the merchant controls the URL they come back on, so it is
+ * never trusted on its own. `confirmSubscription` asks Shopify what the shop is
+ * actually on and that answer wins.
+ */
+export function planIdFromHandle(handle: unknown): SocialGalleryPlanId | null {
+  return planIdFromName(typeof handle === 'string' ? handle : '');
 }

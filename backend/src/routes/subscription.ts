@@ -6,6 +6,8 @@ import { env } from '../config/env.js';
 import { resolveShopByAccount } from '../services/catalog/catalogContext.js';
 import {
   isLiveBilling,
+  managedPricingUrl,
+  planIdFromHandle,
   readSubscription,
   startSubscription,
 } from '../services/billing/shopifyBilling.js';
@@ -61,6 +63,8 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       plans: getAvailableSocialGalleryPlans(),
       subscription,
       unreachable,
+      /** Shopify hosts the plan picker; the product only links to it. */
+      pricingPageUrl: managedPricingUrl(shop.shopDomain),
       /** False means every charge Shopify creates here is a test charge. */
       live: isLiveBilling(),
     });
@@ -75,32 +79,38 @@ router.post('/', requireAuth, async (req: Request, res: Response, next: NextFunc
     const shop = await resolveShopByAccount(req.accountId!);
     if (!shop) throw new AppError(400, 'No Shopify store connected');
 
-    const result = await startSubscription(
-      shop.shopDomain,
-      shop.accessToken,
-      (req.body as { plan?: unknown })?.plan,
-    );
+    // No charge is created here. The app is on Shopify App Pricing, so Shopify
+    // owns the subscription and this only answers where the merchant goes to
+    // choose one.
+    const result = startSubscription(shop.shopDomain, (req.body as { plan?: unknown })?.plan);
 
     if (!result.ok) {
       res.status(result.status).json({ error: result.reason, message: result.message });
       return;
     }
 
-    res.json({ confirmationUrl: result.confirmationUrl, test: result.test });
+    res.json({ pricingPageUrl: result.pricingPageUrl, planId: result.planId });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/subscription/callback — where Shopify returns after approval
+// GET /api/subscription/callback — the welcome link Shopify's pricing page
+// returns the merchant on.
 //
-// A pure redirect. It is unauthenticated, because Shopify sends the merchant
-// here in their browser, so it deliberately does no work: it used to read the
-// subscription back, which meant anyone could make us call Shopify on a
-// merchant's behalf simply by guessing a shop domain. The Plan screen reads the
-// subscription itself, with the merchant's own session, when it loads.
-router.get('/callback', (_req: Request, res: Response) => {
-  res.redirect(`${env.FRONTEND_URL.replace(/\/+$/, '')}/plan?billing=done`);
+// Shopify appends `plan_handle`. It is a hint and nothing more: the merchant
+// controls the URL they arrive on, so acting on it would let anyone grant
+// themselves a plan by typing one. The handle is carried through to the Plan
+// screen only so the UI can say which plan is being confirmed; the screen then
+// asks Shopify, with the merchant's own session, what the shop is really on.
+//
+// Deliberately still does no Shopify work itself: it is unauthenticated, and
+// reading a subscription here would let anyone make us call Shopify for any
+// shop by guessing a domain.
+router.get('/callback', (req: Request, res: Response) => {
+  const handle = planIdFromHandle((req.query as { plan_handle?: unknown }).plan_handle);
+  const suffix = handle ? `&plan_handle=${encodeURIComponent(handle)}` : '';
+  res.redirect(`${env.FRONTEND_URL.replace(/\/+$/, '')}/plan?billing=done${suffix}`);
 });
 
 export default router;

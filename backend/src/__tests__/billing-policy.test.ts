@@ -150,31 +150,21 @@ describe('development can only ever create a test charge', () => {
     expect(isLiveBilling()).toBe(true);
   });
 
-  it('a subscription created without the switch is marked as a test charge', async () => {
-    delete process.env.SHOPIFY_BILLING_LIVE;
-    const { startSubscription } = await import('../services/billing/shopifyBilling.js');
+  it('the product cannot create a charge at all, in any environment', async () => {
+    // Under Shopify App Pricing, Shopify creates the subscription and decides
+    // whether it is a test one — on a development store it always is. The
+    // product's only job is to send the merchant to Shopify's page, so there is
+    // no code path here that could charge anyone by accident.
+    const billing = await import('../services/billing/shopifyBilling.js');
+    expect('startSubscription' in billing).toBe(true);
 
-    const calls: Record<string, unknown>[] = [];
-    const client = {
-      request: async (_q: string, variables: Record<string, unknown>) => {
-        calls.push(variables);
-        return {
-          appSubscriptionCreate: {
-            confirmationUrl: 'https://shop.myshopify.com/admin/charges/1/confirm',
-            appSubscription: { id: 'gid://shopify/AppSubscription/1', status: 'PENDING' },
-            userErrors: [],
-          },
-        };
-      },
-    };
-
-    const result = await startSubscription('shop.myshopify.com', 'token', 'basic', {
-      createClient: () => client as never,
-    });
-
-    expect(result).toMatchObject({ ok: true, test: true });
-    // The flag Shopify itself uses to decide whether money moves.
-    expect(calls[0].test).toBe(true);
+    const result = billing.startSubscription('shop.myshopify.com', 'basic');
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) {
+      expect(result.pricingPageUrl).toBe(
+        'https://admin.shopify.com/store/shop/charges/sillages/pricing_plans',
+      );
+    }
   });
 
   it('a test charge unlocks features in development and nothing in production', async () => {

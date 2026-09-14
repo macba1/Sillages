@@ -5,8 +5,10 @@ import {
   entitlementsFor,
   supabaseSubscriptionStore,
   type Entitlements,
+  type ShopSubscription,
   type SubscriptionStore,
 } from '../billing/entitlements.js';
+import { readSubscription } from '../billing/shopifyBilling.js';
 import {
   inactiveGallery,
   isGalleryStyle,
@@ -24,15 +26,60 @@ export interface GalleryDeps {
   store?: GalleryStore;
   subscriptions?: SubscriptionStore;
   now?: () => number;
+  /** Injected in tests; defaults to asking Shopify for the active subscription. */
+  confirmWithShopify?: typeof readSubscription;
 }
 
-/** What a shop may do right now, closed by default. */
+/**
+ * What a shop may do right now, closed by default.
+ *
+ * The local mirror is written by `app_subscriptions/update` and by the Plan
+ * screen. Neither is instant: a merchant who subscribes on Shopify's hosted
+ * pricing page and comes straight back can arrive before the webhook does, and
+ * would be told to choose a plan they have just paid for.
+ *
+ * So when the mirror says the shop may not publish, ask Shopify once before
+ * believing it. Shopify's answer is authoritative and is written back, which
+ * also repairs a webhook that never arrived. The reverse is deliberately not
+ * done: a mirror that says "live" is trusted, because the cancellation webhook
+ * and the Plan screen both close it, and re-checking on every read would put a
+ * Shopify call in front of every storefront request.
+ */
 export async function entitlementsForShop(
-  ctx: ShopContext,
+  ctx: ShopContext & { accessToken?: string },
   deps: GalleryDeps = {},
 ): Promise<Entitlements> {
   const subscriptions = deps.subscriptions ?? supabaseSubscriptionStore;
-  return entitlementsFor(await subscriptions.get(ctx.connectionId), deps.now);
+  const mirrored = await subscriptions.get(ctx.connectionId);
+  const fromMirror = entitlementsFor(mirrored, deps.now);
+
+  if (fromMirror.canPublish || !ctx.accessToken) return fromMirror;
+
+  const confirm = deps.confirmWithShopify ?? readSubscription;
+  let live;
+  try {
+    live = await confirm(ctx.shopDomain, ctx.accessToken);
+  } catch {
+    // Shopify unreachable: keep the closed answer rather than opening a paid
+    // feature on a failed lookup.
+    return fromMirror;
+  }
+
+  if (!live) return fromMirror;
+
+  const confirmed = {
+    connectionId: ctx.connectionId,
+    accountId: ctx.accountId,
+    shopifyGid: live.id,
+    planId: live.planId,
+    status: (live.status?.toLowerCase() ?? 'none') as ShopSubscription['status'],
+    isTest: live.test,
+    trialEndsAt: mirrored?.trialEndsAt ?? null,
+    currentPeriodEnd: live.currentPeriodEnd,
+  };
+
+  await subscriptions.upsert(confirmed);
+  return entitlementsFor(confirmed, deps.now);
 }
 
 const DEFAULT_SETTINGS: GallerySettings = {

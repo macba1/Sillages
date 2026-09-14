@@ -25,6 +25,8 @@ vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error
 import {
   cancelSubscription,
   isLiveBilling,
+  managedPricingUrl,
+  planIdFromHandle,
   planIdFromName,
   readSubscription,
   startSubscription,
@@ -62,117 +64,69 @@ afterEach(() => {
 });
 
 // ===========================================================================
-describe('F1: no real charge can be created by accident', () => {
-  it('is in test mode unless SHOPIFY_BILLING_LIVE is exactly "true"', () => {
-    expect(isLiveBilling()).toBe(false);
-    for (const value of ['false', 'TRUE', '1', 'yes', '']) {
-      process.env.SHOPIFY_BILLING_LIVE = value;
-      expect(isLiveBilling(), value).toBe(false);
-    }
-    process.env.SHOPIFY_BILLING_LIVE = 'true';
-    expect(isLiveBilling()).toBe(true);
-  });
-
-  it('creates a test charge by default', async () => {
-    const { client, calls } = fakeClient(() => CREATED);
-
-    const result = await startSubscription('shop.myshopify.com', 'token', 'basic', {
-      createClient: () => client as never,
-    });
-
-    expect(result).toMatchObject({ ok: true, test: true, planId: 'basic' });
-    expect(calls[0].variables.test).toBe(true);
-  });
-
-  it('creates a real charge only when billing is deliberately switched live', async () => {
-    process.env.SHOPIFY_BILLING_LIVE = 'true';
-    const { client, calls } = fakeClient(() => CREATED);
-
-    const result = await startSubscription('shop.myshopify.com', 'token', 'growth', {
-      createClient: () => client as never,
-    });
-
-    expect(result).toMatchObject({ ok: true, test: false });
-    expect(calls[0].variables.test).toBe(false);
-  });
-});
-
-// ===========================================================================
-describe('F1: Basic and Growth, with a 14-day trial', () => {
-  it('sends the right price, currency and trial for each plan', async () => {
-    for (const [plan, amount] of [['basic', '29.00'], ['growth', '79.00']] as const) {
-      const { client, calls } = fakeClient(() => CREATED);
-      const result = await startSubscription('shop.myshopify.com', 'token', plan, {
-        createClient: () => client as never,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(calls[0].variables).toMatchObject({
-        amount,
-        currencyCode: 'USD',
-        trialDays: 14,
-        name: plan === 'basic' ? 'Sillages Basic' : 'Sillages Growth',
-      });
-    }
-  });
-
-  it('refuses Pro, which is shown but not on sale', async () => {
-    const { client, calls } = fakeClient(() => CREATED);
-
-    const result = await startSubscription('shop.myshopify.com', 'token', 'pro', {
-      createClient: () => client as never,
-    });
-
-    expect(result).toMatchObject({ ok: false, status: 400, reason: 'plan_not_available' });
-    // Nothing was ever sent to Shopify.
-    expect(calls).toHaveLength(0);
-  });
-
-  it('refuses a plan that does not exist', async () => {
-    const { client, calls } = fakeClient(() => CREATED);
-    const result = await startSubscription('shop.myshopify.com', 'token', 'enterprise', {
-      createClient: () => client as never,
-    });
-    expect(result).toMatchObject({ ok: false, reason: 'unknown_plan' });
-    expect(calls).toHaveLength(0);
-  });
-
-  it('returns to our own callback after approval', async () => {
-    const { client, calls } = fakeClient(() => CREATED);
-    await startSubscription('shop.myshopify.com', 'token', 'basic', { createClient: () => client as never });
-
-    expect(calls[0].variables.returnUrl).toBe(
-      'https://api.sillages.app/api/subscription/callback?shop=shop.myshopify.com&plan=basic',
+describe('F1: the product never creates a charge', () => {
+  it('has no appSubscriptionCreate left anywhere', () => {
+    // The app is on Shopify App Pricing. Shopify refuses the Billing API
+    // outright — "Cannot use the Billing API (to create charges) when on
+    // Shopify App Pricing" — so the mutation is gone rather than dormant.
+    const source = readFileSync(
+      resolve(__dirname, '../services/billing/shopifyBilling.ts'),
+      'utf8',
     );
+    // The prose above explains why; what must not exist is the call.
+    expect(source).not.toMatch(/appSubscriptionCreate\s*\(/);
+    expect(source).not.toContain('confirmationUrl');
   });
 
-  it('reports what Shopify rejected instead of pretending it worked', async () => {
-    const { client } = fakeClient(() => ({
-      appSubscriptionCreate: {
-        confirmationUrl: null,
-        appSubscription: null,
-        userErrors: [{ field: ['price'], message: 'Plan is not valid for this shop' }],
-      },
-    }));
+  it('sends the merchant to the page Shopify hosts', () => {
+    const result = startSubscription('demo-shop.myshopify.com', 'basic');
 
-    const result = await startSubscription('shop.myshopify.com', 'token', 'basic', {
-      createClient: () => client as never,
+    expect(result).toEqual({
+      ok: true,
+      planId: 'basic',
+      pricingPageUrl: 'https://admin.shopify.com/store/demo-shop/charges/sillages/pricing_plans',
     });
-
-    expect(result).toMatchObject({ ok: false, status: 502, reason: 'shopify_rejected' });
-    if (!result.ok) expect(result.message).toContain('Plan is not valid');
   });
 
-  it('survives Shopify being unreachable', async () => {
-    const client = { request: async () => { throw new Error('socket hang up'); } };
-    const result = await startSubscription('shop.myshopify.com', 'token', 'basic', {
-      createClient: () => client as never,
+  it('refuses Pro, which is shown but not on sale', () => {
+    expect(startSubscription('demo-shop.myshopify.com', 'pro')).toMatchObject({
+      ok: false,
+      reason: 'plan_not_available',
     });
-    expect(result).toMatchObject({ ok: false, status: 502, reason: 'shopify_unreachable' });
+  });
+
+  it('refuses a plan it does not sell', () => {
+    expect(startSubscription('demo-shop.myshopify.com', 'enterprise')).toMatchObject({
+      ok: false,
+      reason: 'unknown_plan',
+    });
   });
 });
 
-// ===========================================================================
+describe('F1: the plan Shopify reports is the one that counts', () => {
+  it('reads a Shopify App Pricing plan by its display name', () => {
+    expect(planIdFromName('Basic')).toBe('basic');
+    expect(planIdFromName('Growth')).toBe('growth');
+  });
+
+  it('reads a plan handle, lower case and all', () => {
+    expect(planIdFromHandle('basic')).toBe('basic');
+    expect(planIdFromHandle('growth')).toBe('growth');
+  });
+
+  it('still recognises a subscription created by the old Billing API', () => {
+    // Shops that subscribed before the move keep a charge named this way.
+    expect(planIdFromName('Sillages Growth')).toBe('growth');
+    expect(planIdFromName('Sillages Basic')).toBe('basic');
+  });
+
+  it('does not invent a plan from something it does not sell', () => {
+    expect(planIdFromName('Enterprise')).toBeNull();
+    expect(planIdFromHandle('')).toBeNull();
+    expect(planIdFromHandle(undefined)).toBeNull();
+  });
+});
+
 describe('F2: reading the subscription back from Shopify', () => {
   it('reports the active subscription and maps it to a plan', async () => {
     const { client } = fakeClient(() => ({

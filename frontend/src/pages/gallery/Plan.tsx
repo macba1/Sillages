@@ -92,8 +92,11 @@ export default function Plan() {
     setBusy(planId);
     setError(null);
     try {
-      const res = await api.post<{ confirmationUrl: string }>('/api/subscription', { plan: planId });
-      window.location.href = res.data.confirmationUrl;
+      // Shopify owns the subscription under App Pricing, so the product never
+      // creates a charge: it sends the merchant to the page Shopify hosts and
+      // learns the outcome from Shopify when they come back.
+      const res = await api.post<{ pricingPageUrl: string }>('/api/subscription', { plan: planId });
+      window.location.href = res.data.pricingPageUrl;
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
       setError(message ?? 'We could not start that plan. Try again in a moment.');
