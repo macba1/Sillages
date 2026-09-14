@@ -106,3 +106,49 @@ product ignores.
 - [ ] production `SHOPIFY_SCOPES` confirmed to still contain the two requested
 - [ ] a named pilot shop to smoke-test on, and someone watching it
 - [ ] agreement that every merchant loses the old product at step 4
+
+---
+
+# What happened on the day — 2026-09-14
+
+The pivot is live on the public app. One thing blocks the last step, and it is
+not a defect in this codebase.
+
+## Blocked: nobody can subscribe, so nobody can publish
+
+Choosing a plan in production answers, from Shopify:
+
+> Cannot use the Billing API (to create charges) when on Shopify App Pricing.
+
+The public app is enrolled in **Shopify App Pricing** (Shopify-managed pricing),
+under which Shopify owns the subscription and the Billing API refuses to create
+charges. The app's own plan picker therefore cannot start a subscription, and
+publishing is entitlement-gated, so no gallery can go live.
+
+The gate itself behaves correctly: Publish is disabled and says "Choose a plan
+to publish your gallery."
+
+Two ways forward, both a pricing decision rather than a code change, and both
+left for Antonio:
+
+1. **Stay on Shopify App Pricing.** Configure the plans (Basic $29, Growth $79)
+   in the app's pricing settings, and change the Plan screen from a charge
+   creator into a link to Shopify's own pricing page. Entitlements keep working:
+   `app_subscriptions/update` fires for managed subscriptions too, and that is
+   already what feeds `shop_subscriptions`.
+2. **Leave Shopify App Pricing** and use the Billing API the code already
+   implements. This changes how the app charges every future merchant, so it is
+   not something to flip while nobody is watching.
+
+Nothing was changed in the app's pricing configuration.
+
+## Also fixed during the launch, from production behaviour
+
+- The root route served the daily-brief landing to merchants who had just
+  installed the gallery. `/` now goes to the product in social_gallery.
+- `resolveShopByAccount` used `maybeSingle()`, so any account with more than one
+  Shopify connection was told "No Shopify store connected". The demo account has
+  three.
+- Supabase Auth's redirect allow list held only `https://sillages.app/**`, while
+  the backend redirects to `www`. The magic link fell back to the site root and
+  the merchant arrived signed out. `https://www.sillages.app/**` added.
