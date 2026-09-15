@@ -63,10 +63,10 @@ async function writeEvent(event: SocialEvent): Promise<void> {
       connection_id: event.connectionId,
       session_id: event.sessionId,
       event_type: event.type,
-      product_id: event.productId,
+      product_shopify_id: event.productId,
       source: 'gallery',
       occurred_at: new Date().toISOString(),
-      client_event_id: `${event.type}:${event.sessionId}:${Date.now()}`,
+      dedupe_key: `${event.type}:${event.sessionId}:${Date.now()}`,
     });
   } catch {
     // Measurement never blocks the thing being measured.

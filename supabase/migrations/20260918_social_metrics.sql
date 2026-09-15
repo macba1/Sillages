@@ -75,7 +75,7 @@ drop function if exists public.gallery_top_products(uuid, timestamptz, integer);
 create function public.gallery_top_products(
   p_connection_id uuid,
   p_since timestamptz,
-  p_limit integer
+  p_limit integer default 10
 )
 returns table (
   product_id   bigint,
@@ -87,22 +87,25 @@ returns table (
 language sql
 stable
 as $$
+  -- The column is product_shopify_id; product_id is this function's own output
+  -- name. Selecting `product_id` here resolves to the OUT parameter, not to a
+  -- column, and Postgres rejects it.
   select
-    product_id,
-    count(*) filter (where event_type = 'post_open')   as opens,
-    count(*) filter (where event_type = 'add_to_cart') as add_to_carts,
-    count(*) filter (where event_type = 'save')        as saves,
-    count(*) filter (where event_type = 'share')       as shares
-  from public.gallery_events
-  where connection_id = p_connection_id
-    and occurred_at >= p_since
-    and product_id is not null
-  group by product_id
+    e.product_shopify_id                                 as product_id,
+    count(*) filter (where e.event_type = 'post_open')   as opens,
+    count(*) filter (where e.event_type = 'add_to_cart') as add_to_carts,
+    count(*) filter (where e.event_type = 'save')        as saves,
+    count(*) filter (where e.event_type = 'share')       as shares
+  from public.gallery_events e
+  where e.connection_id = p_connection_id
+    and e.occurred_at >= p_since
+    and e.product_shopify_id is not null
+  group by e.product_shopify_id
   order by
-    count(*) filter (where event_type = 'add_to_cart') desc,
-    count(*) filter (where event_type = 'save') desc,
-    count(*) filter (where event_type = 'post_open') desc
-  limit greatest(1, least(coalesce(p_limit, 5), 50));
+    count(*) filter (where e.event_type = 'add_to_cart') desc,
+    count(*) filter (where e.event_type = 'save') desc,
+    count(*) filter (where e.event_type = 'post_open') desc
+  limit greatest(1, least(coalesce(p_limit, 10), 50));
 $$;
 
 grant execute on function public.gallery_top_products(uuid, timestamptz, integer) to authenticated, service_role;
