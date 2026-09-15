@@ -13,8 +13,9 @@ The automatic social gallery and nothing else:
 - publish, republish, turn off, roll back to a previous version
 - interaction metrics: gallery views, product views, opens, variants chosen,
   saves, shares, adds to cart
-- Shopify Billing exactly as it is today: Basic $29, Growth $79, Pro coming
-  soon, 14-day trial, test charges until the listing is approved
+- Shopify App Pricing: Basic $9.99 with a 14-day trial, and nothing else on
+  sale. Growth ($19.99) and Pro ($49.99) are shown as coming soon and cannot
+  be subscribed to.
 
 ## What does not ship, and why
 
@@ -152,3 +153,97 @@ Nothing was changed in the app's pricing configuration.
 - Supabase Auth's redirect allow list held only `https://sillages.app/**`, while
   the backend redirects to `www`. The magic link fell back to the site root and
   the merchant arrived signed out. `https://www.sillages.app/**` added.
+
+## Day of launch — 14 September 2026
+
+The pivot went live on the existing public app. The App Store listing was
+replaced in place: it is now **Sillages: Social Gallery**, $9.99/month with a
+free trial, with new feature media and four screenshots taken from production.
+Every reference to the daily brief is gone from the listing, the app shell and
+the legal pages.
+
+### Plans
+
+Shopify App Pricing now has exactly one public plan.
+
+| Plan | Before | Now |
+|---|---|---|
+| `basic` | $29/month | **$9.99/month**, 14-day trial, free on development stores |
+| `growth` | $79/month, public | deleted — see below |
+| `pro` | $59/month, public | deleted |
+| `starter` | $19/month, public | deleted |
+
+`starter` and `pro` were leftovers from the daily brief. `growth` was on sale
+advertising multiple galleries, revenue attribution, automatic reordering and
+design experiments; none of the four exist, and `multiple_galleries` is
+contradicted outright by the `gallery_configs_one_per_connection_idx` unique
+index. Shopify has no draft state for a plan — it is public or it is gone — so
+Growth is a draft in `socialGalleryPlans.ts` (`status: 'coming_soon'`) and no
+longer exists in Shopify.
+
+All three were deleted only after confirming zero real subscribers from three
+independent sources: Shopify's own **$0.00 total earnings to date** on the app,
+"Removed subscriptions: no data" in the Dev Dashboard, and a single row in
+production's `shop_subscriptions` with `status = 'none'`. Shopify's own
+confirmation dialog states that any merchant already subscribed stays
+subscribed; there were none.
+
+### The app handle
+
+`/charges/<handle>/pricing_plans` needs the **installed app handle**, which is
+`sillages-1`. The listing slug is `sillages`, and using it sent every merchant
+to Settings → Apps with no explanation — Shopify redirects an unknown handle
+instead of erroring, so the failure was silent. Fixed in `shopifyBilling.ts`
+and pinned by a test.
+
+### Defects found by running the real journey
+
+Three, all in production, all fixed and redeployed:
+
+1. **The add-to-cart button was invisible on every storefront.** `.sg-buy` set
+   `background: currentColor` and `color: Canvas` in the same rule;
+   `currentColor` resolves against the element's own `color`, so the fill and
+   the text were both Canvas. Quick buy looked like it had no button.
+2. **Saves and shares were never sent.** The event queue only emptied at 20
+   events, on add-to-cart, or on a single `pagehide`. A shopper who browsed,
+   saved and shared produced nothing. "Essential interaction metrics" is a
+   feature Basic advertises.
+3. **The Performance screen promised a pixel that does not ship**, and showed a
+   "Purchases 0" row that reads as "nobody bought" rather than "not measured".
+
+### What was exercised in production
+
+On `sillages-storefront-test.myshopify.com`, a development store created for
+this, with the public app installed from the App Store listing:
+
+| Step | Result |
+|---|---|
+| Install with minimal scopes | consent screen showed "Products" only |
+| Choose Basic on Shopify's hosted page | free test charge, no billing |
+| Plan confirmed by the API | ACTIVE Basic, renews 28/09/2026 |
+| Publishing unblocked by the plan | Publish enabled, version 1 |
+| Theme app block added in the theme editor | gallery renders on the storefront |
+| Catalogue | 15 products, prices, SOLD OUT honoured |
+| Stories | row of collection circles |
+| Quick buy | variant picker, add to cart, "added to your cart" |
+| Save | heart fills, survives a reload, counted |
+| Metrics | views, opens, add-to-cart and saves all arrive |
+| Visual style | changed to Film, republished, served as `style: film` |
+| Turn off | storefront API returned `active: false`, 0 products |
+| Turn on | `active: true`, version 3, 15 products |
+| Versions | three versions listed, earlier ones restorable |
+
+Not exercised: the share event reaching metrics (the control renders and is
+clickable; the theme editor stopped accepting clicks before it could be
+repeated after the fix), the storefront at mobile width, and a live plan
+cancellation — Shopify's managed pricing page offers no cancel control when a
+single plan exists, and cancelling would mean uninstalling. Publishing being
+blocked *without* a plan was observed directly on the other store.
+
+### The Web Pixel
+
+Still not active anywhere. It is bundled in the app version because it is part
+of the app configuration and removing it would need `--allow-deletes`, but it
+is never activated: that needs `write_pixels`, which the app does not request.
+The store's own app page shows **Extensions: 1 active**.
+
