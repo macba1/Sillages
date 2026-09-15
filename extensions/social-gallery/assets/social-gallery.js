@@ -243,13 +243,23 @@ function openSheet(post, gallery, format) {
     );
 
     const buyable = Boolean(variant && variant.available && gallery.showQuickBuy);
-    const buy = h('button', {
-      class: 'sg-buy',
-      type: 'button',
-      disabled: !buyable,
-      text: !variant ? 'Choose an option' : variant.available ? 'Add to cart' : 'Sold out',
-      onclick: () => addToCart(currentVariant(), buy, post),
-    });
+    // The label is a child element: see .sg-buy in social-gallery.css, where the
+    // button's fill is the theme's ink and only the label may override colour.
+    const buy = h(
+      'button',
+      {
+        class: 'sg-buy',
+        type: 'button',
+        disabled: !buyable,
+        onclick: () => addToCart(currentVariant(), buy, post),
+      },
+      [
+        h('span', {
+          class: 'sg-buy__label',
+          text: !variant ? 'Choose an option' : variant.available ? 'Add to cart' : 'Sold out',
+        }),
+      ],
+    );
 
     const body = h('div', { class: 'sg-sheet__body' }, [
       h('img', {
@@ -301,9 +311,13 @@ async function addToCart(variant, button, post) {
   const status = document.querySelector('.sg-sheet__status');
   if (!payload) return;
 
+  // Write to the label, never to the button: replacing the button's text
+  // content would remove the .sg-buy__label element, and the label is the only
+  // thing standing between the text and the same-colour fill behind it.
+  const label = button.querySelector('.sg-buy__label') || button;
   button.disabled = true;
-  const original = button.textContent;
-  button.textContent = 'Adding…';
+  const original = label.textContent;
+  label.textContent = 'Adding…';
 
   try {
     const response = await fetch(`${window.Shopify?.routes?.root || '/'}cart/add.js`.replace('//', '/'), {
@@ -313,21 +327,22 @@ async function addToCart(variant, button, post) {
     });
     if (!response.ok) throw new Error(String(response.status));
 
-    button.textContent = 'Added';
+    label.textContent = 'Added';
     if (status) status.textContent = `${post.title} added to your cart.`;
     void track.push('add_to_cart', { productId: post.id, variantId: variant.id });
     void track.flush();
-    // Carries the gallery session into the checkout, which is what lets the
-    // Web Pixel credit the resulting order to the gallery rather than guess.
+    // Carries the gallery session into the cart. Nothing reads it back today —
+    // the Web Pixel is not shipped and the app does not request read_orders —
+    // but it costs nothing and is what attribution would be built on.
     void markCartSession();
     // Themes listen for this to refresh their cart drawer and count.
     document.dispatchEvent(new CustomEvent('sillages:cart:added', { detail: { variantId: variant.id } }));
     setTimeout(() => {
-      button.textContent = original;
+      label.textContent = original;
       button.disabled = false;
     }, 1600);
   } catch {
-    button.textContent = original;
+    label.textContent = original;
     button.disabled = false;
     if (status) status.textContent = 'We could not add that to your cart. Please try again.';
   }

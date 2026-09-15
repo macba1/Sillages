@@ -230,17 +230,27 @@ html.sg-locked { overflow: hidden; }
 }
 .sg-chip--on { border-color: currentColor; background: var(--sg-surface); font-weight: 600; }
 
+/*
+ * The label lives in a child element on purpose.
+ *
+ * `background: currentColor` resolves against the element's OWN computed
+ * `color`. Declaring `color: Canvas` on this same rule therefore made the
+ * background Canvas as well: a white button with white text, invisible on
+ * every storefront. Setting the label colour one level down leaves
+ * `currentColor` here as the theme's inherited ink, which is what the solid
+ * fill is meant to be.
+ */
 .sg-buy {
   width: 100%;
   min-height: 48px;
   border: 0;
   border-radius: 10px;
   background: currentColor;
-  color: Canvas;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
+.sg-buy__label { color: Canvas; }
 .sg-buy[disabled] { opacity: 0.5; cursor: default; }
 
 /* ── Desktop ────────────────────────────────────────────────── */
