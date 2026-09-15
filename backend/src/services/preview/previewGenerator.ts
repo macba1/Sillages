@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { GALLERY_STYLES, type GalleryStyle } from '../gallery/galleryTypes.js';
+import { BASIC_STYLES, type GalleryStyle } from '../gallery/galleryTypes.js';
 import type { DetectedProduct, DetectedStore } from './storeDetector.js';
 
 /**
@@ -33,6 +33,9 @@ const STYLE_COPY: Record<GalleryStyle, { name: string; description: string }> = 
   original: { name: 'Original', description: 'Your photographs exactly as they are, arranged as a shoppable feed.' },
   warm: { name: 'Warm', description: 'A gently warmer tone that makes product photography feel less like a catalogue.' },
   film: { name: 'Film', description: 'Soft contrast on a printed white frame, like a set of prints.' },
+  soft: { name: 'Soft', description: 'A little light lifted into the shadows, so the photographs feel airy.' },
+  vintage: { name: 'Vintage', description: 'Faded warmth, as if the photographs had been kept in a drawer.' },
+  flash: { name: 'Flash', description: 'Brighter and crisper, the way a product looks under a direct light.' },
 };
 
 const POSTS_PER_PROPOSAL = 24;
@@ -64,7 +67,11 @@ export function buildProposals(store: DetectedStore): Proposal[] {
     priceMax: product.priceMax,
   }));
 
-  return GALLERY_STYLES.map((style) => ({
+  // Three, not every filter there is. This is the cold-outreach page: a
+  // merchant who has never heard of Sillages is being asked to pick one look,
+  // and six choices is a worse question than three. The other filters are
+  // found inside the product, where there is a preview to compare them with.
+  return BASIC_STYLES.map((style) => ({
     style,
     name: STYLE_COPY[style].name,
     description: STYLE_COPY[style].description,

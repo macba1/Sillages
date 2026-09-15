@@ -1,62 +1,167 @@
 /**
  * Sillages social gallery — storefront styles.
  *
- * Mobile first: the base rules are the phone layout, and the only media query
- * widens the grid. Everything is scoped under .sg- so it cannot leak into the
- * theme, and removing the block removes every rule that applies.
+ * Mobile first: the base rules are the phone layout, and the media queries
+ * widen it. Everything is scoped under .sg- so it cannot leak into the theme,
+ * and removing the block removes every rule that applies.
+ *
+ * Three things the merchant chooses are deliberately independent:
+ *
+ *   layout  how the products are arranged   .sg-layout--*
+ *   filter  how the photographs are treated .sg--*
+ *   frame   what is drawn around each photo .sg-frame--*
+ *
+ * Keeping them separate is what stops the combinations from multiplying: a
+ * Polaroid frame works in the feed, the Film filter works in the grid, and
+ * neither knows about the other.
  */
 
 [data-sillages-gallery] {
   --sg-gap: 8px;
   --sg-radius: 12px;
-  --sg-fg: currentColor;
-  --sg-muted: color-mix(in srgb, currentColor 60%, transparent);
+  --sg-muted: color-mix(in srgb, currentColor 58%, transparent);
   --sg-surface: color-mix(in srgb, currentColor 6%, transparent);
+  --sg-hairline: color-mix(in srgb, currentColor 14%, transparent);
+  --sg-paper: #fffefb;
+  --sg-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 7%);
+  /* Filter strength, 0–1. Set inline from the merchant's setting. */
+  --sg-k: 1;
   --sg-img-filter: none;
   --sg-card-bg: transparent;
   --sg-card-pad: 0;
+  --sg-frame-pad: 0;
+  --sg-frame-bg: transparent;
+  --sg-frame-shadow: none;
+  --sg-frame-radius: var(--sg-radius);
 
   display: block;
-  margin: 24px auto;
+  margin: 28px auto;
   padding: 0 12px;
-  max-width: 1200px;
+  max-width: 1240px;
   font: inherit;
   color: inherit;
 }
 
-/* ── Styles the merchant can choose ─────────────────────────── */
+/* ── Filters ────────────────────────────────────────────────────
+ *
+ * Presentation only. Every value is written against `--sg-k`, so the merchant's
+ * intensity slider dials the whole treatment down to the untouched photograph
+ * at 0. The numbers are deliberately small: a shopper must still be able to
+ * judge the real colour of what they are buying.
+ */
 [data-sillages-gallery].sg--original { --sg-img-filter: none; }
 
 [data-sillages-gallery].sg--warm {
-  --sg-img-filter: saturate(1.08) contrast(1.02) sepia(0.12);
+  --sg-img-filter:
+    saturate(calc(1 + 0.10 * var(--sg-k)))
+    contrast(calc(1 + 0.03 * var(--sg-k)))
+    sepia(calc(0.14 * var(--sg-k)));
 }
 
 [data-sillages-gallery].sg--film {
-  --sg-img-filter: saturate(0.92) contrast(1.06) brightness(1.02);
-  --sg-card-bg: #fbfaf7;
-  --sg-card-pad: 8px 8px 0;
-  --sg-radius: 4px;
+  --sg-img-filter:
+    saturate(calc(1 - 0.10 * var(--sg-k)))
+    contrast(calc(1 + 0.08 * var(--sg-k)))
+    brightness(calc(1 + 0.02 * var(--sg-k)));
 }
-[data-sillages-gallery].sg--film .sg-card {
-  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
-  padding-bottom: 6px;
+
+[data-sillages-gallery].sg--soft {
+  --sg-img-filter:
+    brightness(calc(1 + 0.05 * var(--sg-k)))
+    contrast(calc(1 - 0.07 * var(--sg-k)))
+    saturate(calc(1 - 0.04 * var(--sg-k)));
 }
-[data-sillages-gallery].sg--film .sg-card__body { padding: 8px 4px 4px; }
+
+[data-sillages-gallery].sg--vintage {
+  --sg-img-filter:
+    sepia(calc(0.26 * var(--sg-k)))
+    saturate(calc(1 - 0.14 * var(--sg-k)))
+    contrast(calc(1 + 0.05 * var(--sg-k)))
+    brightness(calc(1 + 0.03 * var(--sg-k)));
+}
+
+[data-sillages-gallery].sg--flash {
+  --sg-img-filter:
+    brightness(calc(1 + 0.07 * var(--sg-k)))
+    contrast(calc(1 + 0.12 * var(--sg-k)))
+    saturate(calc(1 + 0.06 * var(--sg-k)));
+}
+
+/* ── Frames ─────────────────────────────────────────────────────
+ *
+ * Drawn around the photograph, never over it, so nothing the shopper needs to
+ * see is covered.
+ */
+[data-sillages-gallery].sg-frame--none { --sg-frame-pad: 0; }
+
+[data-sillages-gallery].sg-frame--clean {
+  --sg-frame-pad: 6px;
+  --sg-frame-bg: var(--sg-paper);
+  --sg-frame-shadow: 0 1px 2px rgb(0 0 0 / 7%);
+  --sg-frame-radius: 8px;
+}
+
+[data-sillages-gallery].sg-frame--polaroid {
+  --sg-frame-pad: 10px 10px 30px;
+  --sg-frame-bg: var(--sg-paper);
+  --sg-frame-shadow: var(--sg-shadow);
+  --sg-frame-radius: 3px;
+}
+
+[data-sillages-gallery].sg-frame--film {
+  --sg-frame-pad: 8px;
+  --sg-frame-bg: #17161a;
+  --sg-frame-shadow: 0 2px 10px rgb(0 0 0 / 22%);
+  --sg-frame-radius: 2px;
+}
+
+[data-sillages-gallery].sg-frame--card {
+  --sg-frame-pad: 0;
+  --sg-frame-bg: var(--sg-paper);
+  --sg-frame-shadow: var(--sg-shadow);
+  --sg-frame-radius: 18px;
+}
+
+.sg-frame {
+  position: relative;
+  display: block;
+  padding: var(--sg-frame-pad);
+  background: var(--sg-frame-bg);
+  box-shadow: var(--sg-frame-shadow);
+  border-radius: var(--sg-frame-radius);
+}
+
+/* The film frame carries sprocket marks down each edge, drawn in CSS so it
+   costs no request and scales with the card. */
+[data-sillages-gallery].sg-frame--film .sg-frame::before,
+[data-sillages-gallery].sg-frame--film .sg-frame::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background-image: linear-gradient(#5b5a63 50%, transparent 0);
+  background-size: 3px 9px;
+  opacity: 0.85;
+}
+[data-sillages-gallery].sg-frame--film .sg-frame::before { left: 2.5px; }
+[data-sillages-gallery].sg-frame--film .sg-frame::after { right: 2.5px; }
 
 /* ── Heading ────────────────────────────────────────────────── */
 .sg-heading {
-  margin: 0 0 12px;
-  font-size: 1.15rem;
+  margin: 0 0 14px;
+  font-size: 1.2rem;
   font-weight: 600;
   line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
-/* ── Stories ────────────────────────────────────────────────── */
+/* ── Story rail ─────────────────────────────────────────────── */
 .sg-stories {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   overflow-x: auto;
-  padding: 4px 0 12px;
+  padding: 4px 0 16px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -64,20 +169,34 @@
 
 .sg-story {
   flex: 0 0 auto;
-  width: 68px;
+  width: 72px;
   text-align: center;
   text-decoration: none;
   color: inherit;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
 }
 .sg-story__bubble {
   display: block;
-  width: 64px;
-  height: 64px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
   overflow: hidden;
   background: var(--sg-surface);
-  outline: 2px solid var(--sg-surface);
-  outline-offset: 2px;
+  position: relative;
+  /* The ring is the only ornament the rail gets: two tones of the theme's own
+     ink, so it belongs to the shop rather than to us. */
+  box-shadow:
+    0 0 0 2px Canvas,
+    0 0 0 4px color-mix(in srgb, currentColor 38%, transparent);
+}
+.sg-story--seen .sg-story__bubble {
+  box-shadow:
+    0 0 0 2px Canvas,
+    0 0 0 4px color-mix(in srgb, currentColor 14%, transparent);
 }
 .sg-story__img,
 .sg-story__placeholder {
@@ -89,7 +208,7 @@
 }
 .sg-story__title {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 11px;
   line-height: 1.2;
   overflow: hidden;
@@ -97,7 +216,7 @@
   white-space: nowrap;
 }
 
-/* ── Grid ───────────────────────────────────────────────────── */
+/* ── Layout: Social Grid ────────────────────────────────────── */
 .sg-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -107,9 +226,11 @@
 .sg-card {
   background: var(--sg-card-bg);
   border-radius: var(--sg-radius);
-  overflow: hidden;
   padding: var(--sg-card-pad);
+  /* Cards arrive together; staggering them looks like a stutter, not polish. */
+  animation: sg-in 0.3s ease-out both;
 }
+@keyframes sg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 .sg-card__media {
   display: block;
@@ -119,7 +240,7 @@
   background: var(--sg-surface);
   cursor: pointer;
   aspect-ratio: 1 / 1;
-  border-radius: calc(var(--sg-radius) - 2px);
+  border-radius: calc(var(--sg-frame-radius) - 2px);
   overflow: hidden;
 }
 .sg-card__img {
@@ -128,21 +249,21 @@
   object-fit: cover;
   display: block;
   filter: var(--sg-img-filter);
-  transition: transform 0.25s ease;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 @media (hover: hover) {
-  .sg-card__media:hover .sg-card__img { transform: scale(1.03); }
+  .sg-card__media:hover .sg-card__img { transform: scale(1.04); }
 }
 
 .sg-card__body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 2px 0;
+  padding: 10px 2px 0;
 }
 .sg-card__title {
   font-size: 13px;
-  line-height: 1.3;
+  line-height: 1.35;
   text-decoration: none;
   color: inherit;
   display: -webkit-box;
@@ -151,7 +272,119 @@
   overflow: hidden;
 }
 .sg-card__price { font-size: 13px; color: var(--sg-muted); }
-.sg-card__sold { font-size: 11px; color: var(--sg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.sg-card__sold {
+  font-size: 11px;
+  color: var(--sg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Polaroid writes the product name inside the paper border instead. */
+[data-sillages-gallery].sg-frame--polaroid .sg-card__caption {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: #4a463f;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sg-card__caption { display: none; }
+[data-sillages-gallery].sg-frame--polaroid .sg-card__caption { display: block; }
+[data-sillages-gallery].sg-frame--polaroid .sg-card__title { display: none; }
+
+/* ── Layout: Polaroid Wall ──────────────────────────────────── */
+.sg-layout--polaroid .sg-grid {
+  display: block;
+  columns: 2;
+  column-gap: var(--sg-gap);
+}
+.sg-layout--polaroid .sg-card {
+  break-inside: avoid;
+  margin-bottom: calc(var(--sg-gap) + 6px);
+  display: inline-block;
+  width: 100%;
+}
+/*
+ * The tilt is chosen by position, not at random, so a product does not move
+ * when the page is reloaded. Five values repeating over seven cards give a
+ * pattern long enough not to read as a repeat.
+ */
+.sg-layout--polaroid .sg-card:nth-child(7n + 1) .sg-frame { transform: rotate(-1.1deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 2) .sg-frame { transform: rotate(0.8deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 3) .sg-frame { transform: rotate(-0.4deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 4) .sg-frame { transform: rotate(1.3deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 5) .sg-frame { transform: rotate(-0.9deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 6) .sg-frame { transform: rotate(0.5deg); }
+.sg-layout--polaroid .sg-card:nth-child(7n + 7) .sg-frame { transform: rotate(-1.4deg); }
+.sg-layout--polaroid .sg-frame { transition: transform 0.3s ease; }
+@media (hover: hover) {
+  .sg-layout--polaroid .sg-card:hover .sg-frame { transform: rotate(0deg) scale(1.02); }
+}
+/* Heights alternate so the wall has a rhythm instead of a ruled edge. */
+.sg-layout--polaroid .sg-card__media { aspect-ratio: 1 / 1; }
+.sg-layout--polaroid .sg-card:nth-child(3n + 2) .sg-card__media { aspect-ratio: 4 / 5; }
+.sg-layout--polaroid .sg-card:nth-child(5n + 3) .sg-card__media { aspect-ratio: 5 / 4; }
+
+/* ── Layout: Social Feed ────────────────────────────────────── */
+.sg-layout--feed .sg-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.sg-layout--feed .sg-card__media { aspect-ratio: 4 / 5; }
+.sg-layout--feed .sg-card__body { padding-top: 12px; gap: 6px; }
+.sg-layout--feed .sg-card__title { font-size: 15px; -webkit-line-clamp: 3; }
+.sg-layout--feed .sg-card__price { font-size: 15px; color: inherit; }
+
+/* The feed is the one layout where the actions sit under the photograph
+   rather than over it: there is room, and reaching them is the whole point. */
+.sg-feed-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 2px 0;
+}
+.sg-feed-actions .sg-save {
+  position: static;
+  background: transparent;
+  backdrop-filter: none;
+  width: 40px;
+  height: 40px;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+}
+.sg-feed-actions__buy {
+  margin-left: auto;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+}
+.sg-layout--feed .sg-save { display: none; }
+.sg-layout--feed .sg-feed-actions .sg-save { display: flex; }
+
+/* ── Layout: Story Gallery ──────────────────────────────────── */
+.sg-layout--stories .sg-stories {
+  gap: 18px;
+  padding-bottom: 20px;
+}
+.sg-layout--stories .sg-story { width: 96px; }
+.sg-layout--stories .sg-story__bubble { width: 90px; height: 90px; }
+.sg-layout--stories .sg-story__title { font-size: 12px; }
+.sg-layout--stories .sg-grid { grid-template-columns: repeat(3, 1fr); }
+.sg-layout--stories .sg-card__body { padding-top: 6px; }
+.sg-layout--stories .sg-card__title { font-size: 12px; -webkit-line-clamp: 1; }
 
 /* ── Skeleton (no layout shift when the real cards arrive) ──── */
 .sg-card--skeleton {
@@ -162,11 +395,129 @@
 }
 @keyframes sg-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
+/* ── Save ───────────────────────────────────────────────────── */
+.sg-card__frame { position: relative; }
+
+.sg-save {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 84%);
+  color: rgb(0 0 0 / 42%);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  transition: color 0.18s ease, transform 0.18s ease;
+  z-index: 1;
+}
+.sg-save--on { color: #e0245e; }
+.sg-save--on .sg-save__mark { animation: sg-love 0.42s cubic-bezier(0.2, 1.4, 0.4, 1); }
+.sg-save__mark { display: block; }
+@keyframes sg-love {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.45); }
+  60% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+@media (hover: hover) { .sg-save:hover { transform: scale(1.08); } }
+
+/* A word, then gone. Never a modal: saving must not interrupt browsing. */
+.sg-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 2147483001;
+  background: rgb(20 18 16 / 92%);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+  animation: sg-toast-in 0.2s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sg-toast__undo {
+  border: 0;
+  background: transparent;
+  color: #ffd9e3;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+@keyframes sg-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* ── Saved bar and panel ────────────────────────────────────── */
+.sg-savedbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 max(10px, env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+.sg-savedbar__btn {
+  pointer-events: auto;
+  border: 0;
+  border-radius: 999px;
+  background: currentColor;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  min-height: 44px;
+}
+.sg-savedbar__label { color: Canvas; }
+
+.sg-saved__empty { margin: 0; font-size: 14px; color: var(--sg-muted); }
+.sg-saved__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.sg-saved__row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.sg-saved__thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--sg-surface);
+  filter: var(--sg-img-filter);
+  cursor: pointer;
+}
+.sg-saved__name { font-size: 13px; line-height: 1.3; }
+.sg-saved__price { font-size: 13px; color: var(--sg-muted); }
+.sg-saved__remove {
+  border: 0;
+  background: transparent;
+  color: var(--sg-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  line-height: 1;
+}
+.sg-saved__actions { display: grid; gap: 8px; }
+
 /* ── Bottom sheet ───────────────────────────────────────────── */
 html.sg-locked { overflow: hidden; }
 
 .sg-sheet { position: fixed; inset: 0; z-index: 2147483000; }
-.sg-sheet__scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 45%); }
+.sg-sheet__scrim { position: absolute; inset: 0; background: rgb(0 0 0 / 48%); }
 .sg-sheet__panel {
   position: absolute;
   left: 0;
@@ -176,22 +527,17 @@ html.sg-locked { overflow: hidden; }
   overflow-y: auto;
   background: Canvas;
   color: CanvasText;
-  border-radius: 16px 16px 0 0;
-  padding: 16px;
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
-  animation: sg-rise 0.22s ease-out;
+  border-radius: 20px 20px 0 0;
+  padding: 18px;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+  animation: sg-rise 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-@keyframes sg-rise { from { transform: translateY(12%); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-  .sg-sheet__panel { animation: none; }
-  .sg-card__img { transition: none; }
-  .sg-card--skeleton { animation: none; }
-}
+@keyframes sg-rise { from { transform: translateY(14%); } to { transform: none; } }
 
 .sg-sheet__close {
   position: absolute;
-  top: 8px;
-  right: 12px;
+  top: 10px;
+  right: 14px;
   border: 0;
   background: transparent;
   font-size: 26px;
@@ -199,27 +545,39 @@ html.sg-locked { overflow: hidden; }
   cursor: pointer;
   color: inherit;
   padding: 4px 8px;
+  z-index: 1;
 }
-.sg-sheet__body { display: grid; gap: 14px; }
+.sg-sheet__body { display: grid; gap: 16px; }
 .sg-sheet__img {
   width: 100%;
-  max-height: 40vh;
+  max-height: 42vh;
   object-fit: cover;
-  border-radius: 12px;
+  border-radius: 14px;
   filter: var(--sg-img-filter);
 }
-.sg-sheet__info { display: grid; gap: 10px; }
-.sg-sheet__title { margin: 0; font-size: 1.05rem; }
-.sg-sheet__price { font-size: 1rem; }
+.sg-sheet__info { display: grid; gap: 12px; align-content: start; }
+.sg-sheet__title { margin: 0; font-size: 1.1rem; line-height: 1.3; }
+.sg-sheet__price { font-size: 1.05rem; }
+.sg-sheet__was { font-size: 0.95rem; color: var(--sg-muted); text-decoration: line-through; margin-left: 8px; }
 .sg-sheet__link { font-size: 13px; text-align: center; }
 .sg-sheet__status { margin: 0; font-size: 13px; min-height: 1.2em; }
+.sg-sheet__next {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
 
 .sg-option { display: grid; gap: 6px; }
 .sg-option__name { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
 .sg-option__values { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .sg-chip {
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border: 1px solid var(--sg-hairline);
   background: transparent;
   color: inherit;
   border-radius: 999px;
@@ -229,6 +587,9 @@ html.sg-locked { overflow: hidden; }
   min-height: 40px;  /* comfortable touch target */
 }
 .sg-chip--on { border-color: currentColor; background: var(--sg-surface); font-weight: 600; }
+/* A combination the shop does not stock is shown, not hidden: a shopper needs
+   to see that the size exists and is simply gone. */
+.sg-chip--gone { opacity: 0.4; text-decoration: line-through; }
 
 /*
  * The label lives in a child element on purpose.
@@ -244,22 +605,197 @@ html.sg-locked { overflow: hidden; }
   width: 100%;
   min-height: 48px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: currentColor;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
 .sg-buy__label { color: Canvas; }
-.sg-buy[disabled] { opacity: 0.5; cursor: default; }
+.sg-buy[disabled] { opacity: 0.45; cursor: default; }
+
+.sg-secondary {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--sg-hairline);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Share ──────────────────────────────────────────────────── */
+.sg-share { display: flex; flex-wrap: wrap; gap: 8px; }
+.sg-share__btn {
+  flex: 1 1 30%;
+  border: 1px solid var(--sg-hairline);
+  background: transparent;
+  color: inherit;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.sg-share__card {
+  width: 100%;
+  max-width: 220px;
+  margin: 0 auto;
+  display: block;
+  border-radius: 12px;
+  box-shadow: var(--sg-shadow);
+  background: var(--sg-surface);
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+}
+.sg-share__hint { font-size: 12px; color: var(--sg-muted); text-align: center; margin: 0; }
+
+/* ── Story viewer ───────────────────────────────────────────── */
+.sg-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483002;
+  background: #0b0a0c;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+}
+.sg-viewer__bars {
+  display: flex;
+  gap: 4px;
+  padding: max(10px, env(safe-area-inset-top)) 12px 8px;
+}
+.sg-viewer__bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 28%);
+  overflow: hidden;
+}
+.sg-viewer__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #fff;
+  transition: width 0.1s linear;
+}
+.sg-viewer__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 10px;
+  font-size: 13px;
+}
+.sg-viewer__collection { font-weight: 600; }
+.sg-viewer__close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.sg-viewer__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.sg-viewer__img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: var(--sg-img-filter);
+}
+/* Two invisible halves: tap left to go back, tap right to go on. The same
+   gesture people already use, with no icon to learn. */
+.sg-viewer__zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 34%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sg-viewer__zone--prev { left: 0; }
+.sg-viewer__zone--next { right: 0; }
+.sg-viewer__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: none;
+}
+.sg-viewer__arrow--prev { left: 12px; }
+.sg-viewer__arrow--next { right: 12px; }
+@media (hover: hover) and (min-width: 750px) {
+  .sg-viewer__arrow { display: block; }
+}
+.sg-viewer__foot {
+  padding: 14px 16px max(16px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgb(0 0 0 / 55%) 30%);
+  display: grid;
+  gap: 10px;
+}
+.sg-viewer__title { margin: 0; font-size: 15px; font-weight: 600; }
+.sg-viewer__price { font-size: 14px; opacity: 0.9; }
+.sg-viewer__actions { display: flex; gap: 8px; align-items: center; }
+.sg-viewer__actions .sg-save {
+  position: static;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  backdrop-filter: none;
+}
+.sg-viewer__actions .sg-save--on { color: #ff6f96; }
+.sg-viewer__shop {
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+}
+.sg-viewer__ghost {
+  border: 1px solid rgb(255 255 255 / 34%);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  padding: 11px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 44px;
+}
 
 /* ── Desktop ────────────────────────────────────────────────── */
 @media (min-width: 750px) {
   [data-sillages-gallery] { --sg-gap: 16px; padding: 0 20px; }
-  .sg-grid { grid-template-columns: repeat(4, 1fr); }
-  .sg-heading { font-size: 1.4rem; margin-bottom: 16px; }
-  .sg-story { width: 84px; }
-  .sg-story__bubble { width: 80px; height: 80px; }
+  .sg-grid { grid-template-columns: repeat(3, 1fr); }
+  .sg-layout--polaroid .sg-grid { columns: 3; }
+  .sg-layout--stories .sg-grid { grid-template-columns: repeat(4, 1fr); }
+  .sg-heading { font-size: 1.5rem; margin-bottom: 18px; }
+  .sg-story { width: 88px; }
+  .sg-story__bubble { width: 82px; height: 82px; }
   .sg-card__title, .sg-card__price { font-size: 14px; }
 
   .sg-sheet__panel {
@@ -268,55 +804,33 @@ html.sg-locked { overflow: hidden; }
     right: auto;
     bottom: auto;
     transform: translate(-50%, -50%);
-    width: min(720px, 92vw);
+    width: min(760px, 92vw);
     max-height: 86vh;
-    border-radius: 16px;
+    border-radius: 18px;
     animation: none;
   }
   .sg-sheet__body { grid-template-columns: 1fr 1fr; align-items: start; }
-  .sg-sheet__img { max-height: 60vh; }
+  .sg-sheet__img { max-height: 62vh; }
+  .sg-viewer__stage { padding: 0 64px; }
 }
 
-/* ── Save and share ─────────────────────────────────────────── */
-.sg-card__frame { position: relative; }
-
-.sg-save {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 82%);
-  color: rgb(0 0 0 / 45%);
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(4px);
-  transition: color 0.15s ease, transform 0.15s ease;
+@media (min-width: 1100px) {
+  .sg-grid { grid-template-columns: repeat(4, 1fr); }
+  .sg-layout--polaroid .sg-grid { columns: 4; }
+  .sg-layout--feed .sg-grid { max-width: 620px; }
 }
-.sg-save--on { color: #D2453F; }
-@media (hover: hover) { .sg-save:hover { transform: scale(1.08); } }
-@media (prefers-reduced-motion: reduce) { .sg-save { transition: none; } }
 
-.sg-share { display: flex; gap: 8px; flex-wrap: wrap; }
-.sg-share__btn {
-  flex: 1 1 auto;
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font-size: 13px;
-  text-align: center;
-  text-decoration: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sg-sheet__panel,
+  .sg-card,
+  .sg-toast { animation: none; }
+  .sg-card__img,
+  .sg-layout--polaroid .sg-frame { transition: none; }
+  .sg-card--skeleton { animation: none; }
+  .sg-save--on .sg-save__mark { animation: none; }
+  @media (hover: hover) {
+    .sg-card__media:hover .sg-card__img { transform: none; }
+    .sg-layout--polaroid .sg-card:hover .sg-frame { transform: none; }
+  }
 }

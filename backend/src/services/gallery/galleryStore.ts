@@ -1,6 +1,11 @@
 import { supabase } from '../../lib/supabase.js';
 import type { ShopContext } from '../catalog/catalogStore.js';
 import {
+  DEFAULT_SETTINGS,
+  FILTER_INTENSITY_DEFAULT,
+  clampIntensity,
+  isGalleryFrame,
+  isGalleryLayout,
   type GalleryConfig,
   type GallerySettings,
   type GalleryStatus,
@@ -37,7 +42,12 @@ interface ConfigRow {
   account_id: string;
   connection_id: string;
   collection_id: string | null;
+  layout: string | null;
   style: string;
+  filter_intensity: number | null;
+  frame: string | null;
+  share_tagline: string | null;
+  hide_branding: boolean | null;
   show_stories: boolean;
   show_quick_buy: boolean;
   posts_limit: number;
@@ -54,7 +64,14 @@ function toConfig(row: ConfigRow): GalleryConfig {
     accountId: row.account_id,
     connectionId: row.connection_id,
     collectionId: row.collection_id,
+    // Read defensively: a row written before the layout migration has nulls,
+    // and it must render exactly as it did then rather than not at all.
+    layout: isGalleryLayout(row.layout) ? row.layout : DEFAULT_SETTINGS.layout,
     style: row.style as GalleryConfig['style'],
+    filterIntensity: clampIntensity(row.filter_intensity ?? FILTER_INTENSITY_DEFAULT),
+    frame: isGalleryFrame(row.frame) ? row.frame : DEFAULT_SETTINGS.frame,
+    shareTagline: row.share_tagline,
+    hideBranding: row.hide_branding === true,
     showStories: row.show_stories,
     showQuickBuy: row.show_quick_buy,
     postsLimit: row.posts_limit,
@@ -69,11 +86,16 @@ function toConfig(row: ConfigRow): GalleryConfig {
 function toSettings(config: GalleryConfig): GallerySettings {
   return {
     collectionId: config.collectionId,
+    layout: config.layout,
     style: config.style,
+    filterIntensity: config.filterIntensity,
+    frame: config.frame,
     showStories: config.showStories,
     showQuickBuy: config.showQuickBuy,
     postsLimit: config.postsLimit,
     heading: config.heading,
+    shareTagline: config.shareTagline,
+    hideBranding: config.hideBranding,
   };
 }
 

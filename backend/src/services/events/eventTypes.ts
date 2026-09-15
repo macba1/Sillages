@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GALLERY_LAYOUTS, GALLERY_STYLES } from '../gallery/galleryTypes.js';
 
 /**
  * The event contract.
@@ -17,6 +18,12 @@ export const GALLERY_EVENT_TYPES = [
   'unsave',
   'share',
   'add_to_cart',
+  'story_open',
+  'story_close',
+  'picks_created',
+  'picks_vote_created',
+  'picks_visit',
+  'friend_vote',
   'checkout_started',
   'purchase',
 ] as const;
@@ -33,6 +40,13 @@ export const CLIENT_REPORTABLE_TYPES: readonly GalleryEventType[] = [
   'unsave',
   'share',
   'add_to_cart',
+  'story_open',
+  'story_close',
+  // A shopper's browser says it made a link; the server writing the link is
+  // what makes it true, and these two are reconciled by counting rows rather
+  // than by trusting the browser.
+  'picks_created',
+  'picks_vote_created',
   'checkout_started',
 ];
 
@@ -42,8 +56,11 @@ export const SHARE_CHANNELS = ['link', 'whatsapp', 'native', 'other'] as const;
 const metaSchema = z
   .object({
     channel: z.enum(SHARE_CHANNELS).optional(),
-    style: z.enum(['original', 'warm', 'film']).optional(),
+    style: z.enum(GALLERY_STYLES).optional(),
+    layout: z.enum(GALLERY_LAYOUTS).optional(),
     position: z.number().int().min(0).max(1000).optional(),
+    /** Whether a story was read to the end. */
+    completed: z.boolean().optional(),
   })
   .strict()
   .default({});
