@@ -222,6 +222,17 @@ router.get(
       // while a price change reaches the card within the hour.
       res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
       res.setHeader('Content-Type', 'image/jpeg');
+
+      // The whole point of this image is to be embedded somewhere else: in the
+      // storefront's own preview, and in whatever a shopper sends it to. The
+      // app's default `Cross-Origin-Resource-Policy: same-origin` forbade
+      // exactly that, so the card loaded fine when fetched or opened directly
+      // and failed silently as an <img> on every storefront — the preview
+      // removed itself and no shopper ever saw the card before sending it.
+      //
+      // Only this route is opened up, and it serves nothing that is not
+      // already public on the shop's own product page.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.send(card);
     } catch (err) {
       next(err);

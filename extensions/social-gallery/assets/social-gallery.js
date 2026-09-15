@@ -141,19 +141,23 @@ function shareControls(post, gallery) {
   const cardHref = shareCardUrl(apiRoot, shopDomain, post.id);
   const wrap = h('div', { class: 'sg-sheet__info' });
 
+  // The frame keeps its 9:16 box whether or not the card arrives. Removing the
+  // image on failure used to change the panel's height, which re-centred it
+  // mid-tap: the shopper's finger landed on whatever slid under it.
   const preview = h('img', {
     class: 'sg-share__card',
     alt: '',
-    loading: 'lazy',
     decoding: 'async',
     src: cardHref,
   });
-  preview.addEventListener('error', () => {
-    preview.remove();
-    hint.remove();
-  });
+  const frame = h('div', { class: 'sg-share__frame' }, [preview]);
   const hint = h('p', { class: 'sg-share__hint', text: `A card to send a friend. ${gallery.shareTagline}` });
-  wrap.appendChild(preview);
+  preview.addEventListener('error', () => {
+    frame.classList.add('sg-share__frame--empty');
+    preview.remove();
+    hint.textContent = 'The card could not be drawn. The link below still works.';
+  });
+  wrap.appendChild(frame);
   wrap.appendChild(hint);
 
   const shared = (channel) => void track.push('share', { productId: post.id, meta: { channel } });
@@ -165,12 +169,9 @@ function shareControls(post, gallery) {
       type: 'button',
       text: 'Copy link',
       onclick: async () => {
-        try {
-          await navigator.clipboard.writeText(links.url);
-          toast('Link copied');
-        } catch {
-          window.prompt('Copy this link', links.url);
-        }
+        // window.prompt used to be the fallback here. It blocks the page until
+        // it is dismissed, which on a storefront is worse than no copy at all.
+        if (await copyOrShow(links.url, wrap)) toast('Link copied');
         shared('link');
       },
     }),
@@ -208,22 +209,116 @@ function shareControls(post, gallery) {
   // Downloading is the honest way to reach a feed the browser cannot post to.
   // Nothing here claims to publish anything on the shopper's behalf.
   row.appendChild(
-    h('a', {
+    h('button', {
       class: 'sg-share__btn',
-      href: cardHref,
-      download: `${post.handle || 'product'}.jpg`,
-      target: '_blank',
-      rel: 'noopener',
+      type: 'button',
       text: 'Save card',
-      onclick: () => {
+      onclick: async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        // `download` on a cross-origin link is ignored: the browser navigated
+        // to the image instead of saving it, while the toast claimed the card
+        // had been saved. Fetching it first makes the file genuinely local, so
+        // the download is real and the message is true.
+        const saved = await downloadCard(cardHref, `${post.handle || 'product'}.jpg`);
+        button.disabled = false;
         shared('other');
-        toast('Card saved. Add it to a story and the link goes with it.');
+        toast(
+          saved
+            ? 'Card saved. Add it to a story and the link goes with it.'
+            : 'Card opened. Press and hold it to save.',
+        );
       },
     }),
   );
 
   wrap.appendChild(row);
   return wrap;
+}
+
+/**
+ * Puts a link on the clipboard, or on the screen.
+ *
+ * `window.prompt` was the old fallback. It blocks the page until dismissed,
+ * which on someone else's storefront is unacceptable, so a refused clipboard
+ * now shows the link in place instead: selectable, readable, dismissible.
+ */
+async function copyOrShow(url, container) {
+  try {
+    await navigator.clipboard.writeText(url);
+    return true;
+  } catch {
+    showLink(url, container, 'Copy this link and send it');
+    return false;
+  }
+}
+
+/**
+ * The link, kept on screen.
+ *
+ * A created link used to exist only in the clipboard and in a toast that was
+ * gone in three seconds. Anyone who looked away lost it with no way back.
+ */
+function showLink(url, container, label) {
+  container.querySelector('.sg-linkout')?.remove();
+
+  const field = h('input', {
+    class: 'sg-linkout__url',
+    type: 'text',
+    readonly: true,
+    value: url,
+    'aria-label': 'Link',
+  });
+  const row = h('div', { class: 'sg-linkout' }, [
+    h('p', { class: 'sg-linkout__label', text: label }),
+    field,
+    h('div', { class: 'sg-linkout__row' }, [
+      h('button', {
+        class: 'sg-share__btn',
+        type: 'button',
+        text: 'Copy',
+        onclick: async () => {
+          field.select();
+          try {
+            await navigator.clipboard.writeText(url);
+            toast('Link copied');
+          } catch {
+            // Already on screen and selected; there is nothing left to offer.
+          }
+        },
+      }),
+      h('a', { class: 'sg-share__btn', href: url, target: '_blank', rel: 'noopener', text: 'Open' }),
+    ]),
+  ]);
+  container.appendChild(row);
+  field.focus();
+  field.select();
+  return row;
+}
+
+/**
+ * Saves the card as a file the shopper actually has.
+ *
+ * Returns false when the browser will not hand over a file — mobile Safari
+ * among them — and then the card is opened so it can be saved by hand. The
+ * caller says which of the two happened; neither claims to be the other.
+ */
+async function downloadCard(url, filename) {
+  try {
+    const response = await fetch(url, { credentials: 'omit' });
+    if (!response.ok) throw new Error(String(response.status));
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const link = h('a', { href, download: filename });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 10000);
+    return true;
+  } catch {
+    window.open(url, '_blank', 'noopener');
+    return false;
+  }
 }
 
 // ── Quick buy ───────────────────────────────────────────────────
@@ -700,19 +795,25 @@ async function sharePicks(list, asVote) {
     void track.push(asVote ? 'picks_vote_created' : 'picks_created', {});
     if (status) status.textContent = '';
 
+    // The link stays on screen either way. It used to live only in the
+    // clipboard and in a toast that vanished in three seconds: a shopper who
+    // looked away had made a link they could no longer reach.
+    const panel = document.querySelector('.sg-sheet__panel') || document.body;
+    showLink(url, panel, asVote ? 'Send this to ask your friends' : 'Send this to share your picks');
+
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title: asVote ? 'Which one?' : 'My picks', url });
         return;
       } catch {
-        // Fall through to copying.
+        // The shopper closed the device sheet. The link is still on screen.
       }
     }
     try {
       await navigator.clipboard.writeText(url);
       toast('Link copied. Send it to whoever you like.');
     } catch {
-      window.prompt('Copy this link', url);
+      // Refused. The link is on screen and selected already.
     }
   } catch {
     if (status) status.textContent = 'We could not make that link. Please try again.';
@@ -769,7 +870,11 @@ function renderCard(post, gallery, format, open) {
         h('button', {
           class: 'sg-feed-actions__buy',
           type: 'button',
-          text: gallery.showQuickBuy ? 'Add to cart' : 'View',
+          // The card says SOLD OUT one line above this button. Offering to add
+          // it to a cart anyway is a promise the shop cannot keep, and the
+          // sheet has always known better — the feed did not.
+          text: !post.available ? 'Sold out' : gallery.showQuickBuy ? 'Add to cart' : 'View',
+          disabled: !post.available,
           onclick: () => open(post),
         }),
       ]),
@@ -792,9 +897,16 @@ function renderStoryRail(gallery, posts, format) {
     // than opened onto the whole catalogue.
     const inStory = (story.productIds || []).map((id) => byId.get(id)).filter(Boolean);
     if (inStory.length === 0) continue;
+
+    // Most shops never set a collection image, and a row of blank grey circles
+    // is the least inviting thing a gallery can open with. The first product
+    // in the collection is a truthful stand-in: it is what the shopper is
+    // about to see anyway, and it costs nothing — the photograph is already in
+    // this payload.
+    const cover = story.imageUrl || inStory.find((post) => post.image?.url)?.image?.url || null;
     const bubble = h('span', { class: 'sg-story__bubble' }, [
-      story.imageUrl
-        ? h('img', { class: 'sg-story__img', src: story.imageUrl, alt: '', loading: 'lazy', decoding: 'async' })
+      cover
+        ? h('img', { class: 'sg-story__img', src: cover, alt: '', loading: 'lazy', decoding: 'async' })
         : h('span', { class: 'sg-story__placeholder', 'aria-hidden': 'true' }),
     ]);
 
