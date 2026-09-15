@@ -87,15 +87,21 @@ describe('entitlements are closed by default', () => {
     expect(result.reason).toBeNull();
   });
 
-  it('reserves Growth features for Growth', () => {
-    expect(entitlementsFor(live({ planId: 'basic' })).canUseAttribution).toBe(false);
-    expect(entitlementsFor(live({ planId: 'growth' })).canUseAttribution).toBe(true);
-    expect(entitlementsFor(live({ planId: 'growth' })).canUseMultipleGalleries).toBe(true);
+  it('unlocks no feature the product has not built, on any plan', () => {
+    // Multiple galleries is contradicted by the one-per-shop unique index, and
+    // attribution needs read_orders, which the app does not request. Neither is
+    // advertised any more, so neither may be granted — including to a shop
+    // still on the withdrawn Growth charge.
+    for (const planId of ['basic', 'growth', 'pro', null] as const) {
+      const ent = entitlementsFor(live({ planId }));
+      expect(ent.canUseAttribution, `${planId} must not get attribution`).toBe(false);
+      expect(ent.canUseMultipleGalleries, `${planId} must not get galleries`).toBe(false);
+    }
   });
 
-  it('a plan Shopify reports but we do not sell grants no Growth feature', () => {
-    // planIdFromName returns null for anything that is not Basic or Growth, and
-    // an unrecognised plan must not quietly unlock the most expensive features.
+  it('a plan Shopify reports but we do not sell still publishes', () => {
+    // A withdrawn or unrecognised plan is still a subscription Shopify says is
+    // active: the merchant is paying, so the gallery keeps serving.
     const unknown = entitlementsFor(live({ planId: null }));
     expect(unknown.canPublish).toBe(true);
     expect(unknown.canUseAttribution).toBe(false);

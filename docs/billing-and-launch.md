@@ -21,9 +21,9 @@ charges, which is everything staging needs.
 
 | Plan | Price | Trial |
 |---|---|---|
-| Basic | $29 / month | 14 days |
-| Growth | $79 / month | 14 days |
-| Pro | $149 / month | announced, **not on sale** — the API refuses to subscribe to it |
+| Basic | $9.99 / month | 14 days |
+| Growth | $19.99 / month | announced, **not on sale** — no difference from Basic is implemented yet |
+| Pro | $49.99 / month | announced, **not on sale** — the API refuses to subscribe to it |
 
 ### No real charge can happen by accident
 

@@ -159,10 +159,24 @@ describe('F2: reading the subscription back from Shopify', () => {
 
   it('maps subscription names back to plans, and gives up rather than guessing', () => {
     expect(planIdFromName('Sillages Basic')).toBe('basic');
+    // Growth is off sale, and a shop still on it must still be recognised —
+    // answering null would drop a paying merchant to "no plan". What a shop may
+    // *start* is decided by startSubscription, which is tested separately.
     expect(planIdFromName('sillages growth')).toBe('growth');
-    expect(planIdFromName('Sillages Pro')).toBeNull(); // not on sale, so not a plan we bill
+    expect(planIdFromName('Sillages Pro')).toBe('pro');
     expect(planIdFromName('Something else')).toBeNull();
     expect(planIdFromName('')).toBeNull();
+  });
+
+  it('refuses to start a plan that is not on sale, whatever its name maps to', async () => {
+    const { startSubscription } = await import('../services/billing/shopifyBilling.js');
+
+    expect(startSubscription('shop.myshopify.com', 'basic').ok).toBe(true);
+    for (const withdrawn of ['growth', 'pro']) {
+      const result = startSubscription('shop.myshopify.com', withdrawn);
+      expect(result.ok, `${withdrawn} must not be subscribable`).toBe(false);
+      if (!result.ok) expect(result.reason).toBe('plan_not_available');
+    }
   });
 
   it('cancels a subscription and reports whether Shopify accepted it', async () => {

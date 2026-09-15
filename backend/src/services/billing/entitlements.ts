@@ -105,8 +105,19 @@ export function entitlementsFor(
 
   return {
     canPublish: true,
-    canUseMultipleGalleries: planId === 'growth',
-    canUseAttribution: planId === 'growth',
+    // Both of these are permanently closed, and that is the honest answer
+    // rather than an oversight.
+    //
+    // Multiple galleries: `gallery_configs_one_per_connection_idx` enforces one
+    // gallery per shop, so no plan can grant a second one.
+    // Revenue attribution: it needs `read_orders`, which the app deliberately
+    // does not request.
+    //
+    // They were tied to `planId === 'growth'`, which sold two features that do
+    // not exist. Growth is off sale until they do; until then no subscription,
+    // including an old $79 one, unlocks them.
+    canUseMultipleGalleries: false,
+    canUseAttribution: false,
     planId,
     status: sub.status,
     isTest: sub.isTest,

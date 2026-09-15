@@ -183,20 +183,10 @@ export default function Performance() {
             </>
           )}
 
-          {data?.plan?.attributionAvailable === false && (
-            <Card style={{ marginBottom: 20 }}>
-              <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
-                <strong>Revenue attribution is part of Growth.</strong> On Basic you see what shoppers did in the
-                gallery. Growth also shows which orders and how much revenue the gallery is responsible for.
-              </p>
-            </Card>
-          )}
-
           <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.6, margin: 0 }}>
-            Orders are credited to the gallery when a shopper who used it goes on to buy — exactly, when the cart
-            carried the gallery session, or by matching a purchased variant they interacted with in the previous
-            seven days. Revenue is reported by the storefront pixel and is not read from your Shopify orders, so
-            treat it as an indication rather than as your accounts. Nothing here identifies a shopper.
+            These are gallery interactions: what shoppers viewed, saved, shared and added to the cart. Sillages does
+            not read your orders, so it does not report which orders or how much revenue the gallery produced —
+            compare these numbers against your own Shopify reports. Nothing here identifies a shopper.
           </p>
         </>
       )}

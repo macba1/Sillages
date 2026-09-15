@@ -147,9 +147,9 @@ frontend `/plan` screen.
 
 | Plan | Price | Status |
 |---|---|---|
-| Basic | $29 / month | available |
-| Growth | $79 / month | available |
-| Pro | $149 / month | coming soon — shown, not subscribable |
+| Basic | $9.99 / month | available |
+| Growth | $19.99 / month | coming soon — shown, not subscribable |
+| Pro | $49.99 / month | coming soon — shown, not subscribable |
 
 Billing provider is `shopify_billing`. Stripe is not part of the
 `social_gallery` flow. The legacy plan definitions (`lib/stripe.ts`,
@@ -194,7 +194,7 @@ Quick checks:
 
 ```bash
 curl -s localhost:3001/health            # {"status":"ok","productMode":"social_gallery",...}
-curl -s localhost:3001/api/plans         # Basic $29, Growth $79, Pro coming soon
+curl -s localhost:3001/api/plans         # Basic $9.99; Growth and Pro coming soon
 curl -s localhost:3001/api/tower         # {"error":"Not found","code":"FEATURE_NOT_AVAILABLE_IN_PRODUCT_MODE"}
 curl -s -o /dev/null -w '%{http_code}\n' localhost:3001/api/shopify/connection   # 401 — still mounted
 ```

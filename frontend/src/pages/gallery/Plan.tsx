@@ -39,22 +39,20 @@ interface PlansResponse {
 }
 
 const FEATURE_LABELS: Record<string, string> = {
-  one_gallery: 'One gallery',
-  three_styles: 'Three looks',
+  one_gallery: 'One social gallery',
+  three_styles: 'Three visual styles',
+  social_stories: 'Social Stories',
   automatic_catalog_sync: 'Automatic catalogue sync',
-  shoppable_variants: 'Shoppable variants',
+  shoppable_variants: 'Shoppable product variants',
   save_and_share: 'Save and share',
-  essential_metrics: 'Essential metrics',
+  essential_metrics: 'Essential interaction metrics',
+  // Planned, not on sale. Shown only under "coming soon".
   multiple_galleries: 'Several galleries',
-  revenue_attribution: 'Revenue attribution',
-  automatic_reordering: 'Automatic reordering',
-  design_experiments: 'Design experiments',
-  higher_volume: 'Higher volume',
+  higher_limits: 'Higher limits',
   multiple_storefronts: 'Several storefronts',
   advanced_rules: 'Advanced rules',
   priority_support: 'Priority support',
 };
-
 /**
  * Billing runs through Shopify, so a charge appears on the merchant's Shopify
  * invoice. Until the app is reviewed and billing is deliberately switched live,
@@ -175,7 +173,7 @@ export default function Plan() {
                 <span style={{ fontFamily: T.font, fontWeight: 700, fontSize: 17, color: T.ink }}>{plan.name}</span>
                 {plan.priceUsd !== null && (
                   <span style={{ fontSize: 14, color: T.body }}>
-                    ${plan.priceUsd}/{plan.interval}
+                    ${plan.priceUsd.toFixed(2)}/{plan.interval}
                   </span>
                 )}
               </div>

@@ -2,7 +2,7 @@ import { env } from '../../config/env.js';
 import { createCatalogClient, type CatalogClient } from '../../lib/shopifyCatalog.js';
 import {
   SOCIAL_GALLERY_PLANS,
-  getAvailableSocialGalleryPlans,
+  getAllSocialGalleryPlans,
   isSocialGalleryPlanId,
   type SocialGalleryPlan,
   type SocialGalleryPlanId,
@@ -91,7 +91,7 @@ export function managedPricingUrl(shopDomain: string): string {
  */
 export function startSubscription(shopDomain: string, planId: unknown): StartSubscriptionResult {
   if (!isSocialGalleryPlanId(String(planId))) {
-    return { ok: false, status: 400, reason: 'unknown_plan', message: 'Choose Basic or Growth.' };
+    return { ok: false, status: 400, reason: 'unknown_plan', message: 'Choose Basic.' };
   }
 
   const plan: SocialGalleryPlan = SOCIAL_GALLERY_PLANS[String(planId) as SocialGalleryPlanId];
@@ -157,11 +157,18 @@ export async function cancelSubscription(
  * Covers both shapes: "Sillages Growth", the name the old Billing API charges
  * were created with, and "Growth" or "growth", the display name and handle a
  * Shopify App Pricing plan carries.
+ *
+ * Reads EVERY plan, not only the ones on sale. Recognising a subscription and
+ * selling one are different questions: Shopify can report a plan we have
+ * withdrawn — a merchant on the old $79 Growth charge, say — and answering
+ * `null` for them would drop a paying shop to "no plan". Whether a plan can be
+ * *started* is decided by `startSubscription`, which requires
+ * `status: 'available'`.
  */
 export function planIdFromName(name: string): SocialGalleryPlanId | null {
   const normalised = String(name ?? '').trim().toLowerCase();
   if (!normalised) return null;
-  for (const plan of getAvailableSocialGalleryPlans()) {
+  for (const plan of getAllSocialGalleryPlans()) {
     if (normalised === plan.id) return plan.id;
     if (normalised.includes(plan.name.toLowerCase())) return plan.id;
   }

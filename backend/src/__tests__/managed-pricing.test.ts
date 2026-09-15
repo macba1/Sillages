@@ -120,7 +120,6 @@ describe('signing up on the page Shopify hosts', () => {
     const ent = await entitlementsForShop(SHOP, deps(shopifySays({ name: 'Basic' })));
 
     expect(ent.planId).toBe('basic');
-    expect(ent.canUseAttribution).toBe(false);
   });
 });
 
@@ -150,9 +149,9 @@ describe('the free trial', () => {
 
 // ===========================================================================
 describe('changing plan', () => {
-  it('moving Basic to Growth unlocks the Growth-only feature', async () => {
+  it('follows the merchant onto the plan Shopify reports', async () => {
     subscriptions.setLive(SHOP, 'basic');
-    expect((await entitlementsForShop(SHOP, deps())).canUseAttribution).toBe(false);
+    expect((await entitlementsForShop(SHOP, deps())).planId).toBe('basic');
 
     await handleSubscriptionUpdate(
       SHOP.shopDomain,
@@ -161,7 +160,10 @@ describe('changing plan', () => {
     );
 
     const ent = await entitlementsForShop(SHOP, deps());
-    expect(ent).toMatchObject({ planId: 'growth', canPublish: true, canUseAttribution: true });
+    expect(ent).toMatchObject({ planId: 'growth', canPublish: true });
+    // Growth is off sale and grants nothing extra; a shop Shopify still reports
+    // on it keeps publishing and gains no unbuilt feature.
+    expect(ent.canUseAttribution).toBe(false);
   });
 
   it('the cancellation of the replaced plan does not take the gallery down', async () => {

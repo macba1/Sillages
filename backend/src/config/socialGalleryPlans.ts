@@ -41,14 +41,18 @@ export const SOCIAL_GALLERY_PLANS: Readonly<Record<SocialGalleryPlanId, SocialGa
   basic: {
     id: 'basic',
     name: 'Basic',
-    priceUsd: 29,
+    priceUsd: 9.99,
     currency: 'USD',
     interval: 'month',
     status: 'available',
     trialDays: 14,
+    // Every feature listed here is implemented and has been exercised end to
+    // end. Basic is the whole product as it exists today, deliberately: a plan
+    // may not advertise anything a merchant cannot actually do.
     features: [
       'one_gallery',
       'three_styles',
+      'social_stories',
       'automatic_catalog_sync',
       'shoppable_variants',
       'save_and_share',
@@ -56,33 +60,40 @@ export const SOCIAL_GALLERY_PLANS: Readonly<Record<SocialGalleryPlanId, SocialGa
     ],
   },
   growth: {
+    // Growth is NOT on sale. It previously advertised multiple galleries,
+    // revenue attribution, automatic reordering and design experiments; none of
+    // those exist. `multiple_galleries` is actively contradicted by the
+    // `gallery_configs_one_per_connection_idx` unique index, which enforces one
+    // gallery per shop.
+    //
+    // A plan that charges for features the product does not have is a plan a
+    // merchant pays for and receives nothing from, so it stays `coming_soon`
+    // until the difference is built and tested. Only what is genuinely planned
+    // is listed, and none of it is billable while this is `coming_soon`.
     id: 'growth',
     name: 'Growth',
-    priceUsd: 79,
+    priceUsd: 19.99,
     currency: 'USD',
     interval: 'month',
-    status: 'available',
+    status: 'coming_soon',
     trialDays: 14,
     features: [
       'multiple_galleries',
-      'revenue_attribution',
-      'automatic_reordering',
-      'design_experiments',
+      'higher_limits',
     ],
   },
   pro: {
-    // Future tier: price approved at $149/month, but `status: 'coming_soon'`
-    // keeps it out of `getAvailableSocialGalleryPlans()`, so it can be shown
-    // and never subscribed to until the Billing sprint enables it.
+    // Future tier. `status: 'coming_soon'` keeps it out of
+    // `getAvailableSocialGalleryPlans()`, so it can be shown and never
+    // subscribed to. It is deliberately absent from Shopify App Pricing too.
     id: 'pro',
     name: 'Pro',
-    priceUsd: 149,
+    priceUsd: 49.99,
     currency: 'USD',
     interval: 'month',
     status: 'coming_soon',
     trialDays: 0,
     features: [
-      'higher_volume',
       'multiple_storefronts',
       'advanced_rules',
       'priority_support',
@@ -90,7 +101,7 @@ export const SOCIAL_GALLERY_PLANS: Readonly<Record<SocialGalleryPlanId, SocialGa
   },
 };
 
-/** Plans a merchant can actually subscribe to today: Basic and Growth. */
+/** Plans a merchant can actually subscribe to today: Basic only. */
 export function getAvailableSocialGalleryPlans(): SocialGalleryPlan[] {
   return SOCIAL_GALLERY_PLAN_IDS
     .map((id) => SOCIAL_GALLERY_PLANS[id])

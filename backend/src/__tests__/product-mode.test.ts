@@ -329,25 +329,55 @@ describe('Test 5: legacy background jobs', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Test 6: new product plan configuration', () => {
-  it('returns Basic at $29 and Growth at $79 as the available plans', async () => {
+  it('offers Basic at $9.99 as the only subscribable plan', async () => {
     const { getAvailableSocialGalleryPlans } = await import('../config/socialGalleryPlans.js');
 
     const available = getAvailableSocialGalleryPlans();
-    expect(available.map((p) => p.id)).toEqual(['basic', 'growth']);
-    expect(available.find((p) => p.id === 'basic')?.priceUsd).toBe(29);
-    expect(available.find((p) => p.id === 'growth')?.priceUsd).toBe(79);
+    expect(available.map((p) => p.id)).toEqual(['basic']);
+    expect(available[0].priceUsd).toBe(9.99);
+    expect(available[0].trialDays).toBe(14);
     for (const plan of available) {
       expect(plan.currency).toBe('USD');
       expect(plan.interval).toBe('month');
     }
   });
 
-  it('keeps Pro at $149 but not subscribable', async () => {
+  it('keeps Growth at $19.99 off sale until its difference exists', async () => {
     const { SOCIAL_GALLERY_PLANS, getAvailableSocialGalleryPlans } = await import(
       '../config/socialGalleryPlans.js'
     );
 
-    expect(SOCIAL_GALLERY_PLANS.pro.priceUsd).toBe(149);
+    expect(SOCIAL_GALLERY_PLANS.growth.priceUsd).toBe(19.99);
+    expect(SOCIAL_GALLERY_PLANS.growth.status).toBe('coming_soon');
+    expect(getAvailableSocialGalleryPlans().map((p) => p.id)).not.toContain('growth');
+  });
+
+  it('advertises nothing the product cannot do', async () => {
+    const { SOCIAL_GALLERY_PLANS, getAvailableSocialGalleryPlans } = await import(
+      '../config/socialGalleryPlans.js'
+    );
+
+    // These were sold on Growth and none of them exist. `multiple_galleries` is
+    // contradicted outright by the one-gallery-per-shop unique index, and
+    // revenue attribution needs read_orders, which the app does not request.
+    const UNBUILT = ['revenue_attribution', 'automatic_reordering', 'design_experiments', 'higher_volume'];
+
+    for (const plan of getAvailableSocialGalleryPlans()) {
+      for (const feature of plan.features) {
+        expect(UNBUILT, `${plan.id} advertises ${feature}`).not.toContain(feature);
+      }
+    }
+    // And they are gone from the configuration entirely, not merely unsold.
+    const everyFeature = Object.values(SOCIAL_GALLERY_PLANS).flatMap((p) => p.features);
+    for (const feature of UNBUILT) expect(everyFeature).not.toContain(feature);
+  });
+
+  it('keeps Pro at $49.99 but not subscribable', async () => {
+    const { SOCIAL_GALLERY_PLANS, getAvailableSocialGalleryPlans } = await import(
+      '../config/socialGalleryPlans.js'
+    );
+
+    expect(SOCIAL_GALLERY_PLANS.pro.priceUsd).toBe(49.99);
     expect(SOCIAL_GALLERY_PLANS.pro.status).toBe('coming_soon');
     // "coming soon" must never leak into the subscribable set.
     expect(getAvailableSocialGalleryPlans().map((p) => p.id)).not.toContain('pro');
@@ -368,11 +398,11 @@ describe('Test 6: new product plan configuration', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.billingProvider).toBe('shopify_billing');
-      expect(body.plans.map((p: { id: string }) => p.id)).toEqual(['basic', 'growth']);
-      expect(body.plans.map((p: { priceUsd: number }) => p.priceUsd)).toEqual([29, 79]);
-      expect(body.upcomingPlans.map((p: { id: string }) => p.id)).toEqual(['pro']);
-      expect(body.upcomingPlans[0].priceUsd).toBe(149);
-      expect(body.upcomingPlans[0].status).toBe('coming_soon');
+      expect(body.plans.map((p: { id: string }) => p.id)).toEqual(['basic']);
+      expect(body.plans.map((p: { priceUsd: number }) => p.priceUsd)).toEqual([9.99]);
+      expect(body.upcomingPlans.map((p: { id: string }) => p.id)).toEqual(['growth', 'pro']);
+      expect(body.upcomingPlans.map((p: { priceUsd: number }) => p.priceUsd)).toEqual([19.99, 49.99]);
+      for (const plan of body.upcomingPlans) expect(plan.status).toBe('coming_soon');
     });
   });
 });

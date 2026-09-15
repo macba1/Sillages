@@ -23,8 +23,8 @@ export default function TermsGallery() {
 
       <Section title="Plans, trials and billing">
         <p>
-          Basic is $29 per month and Growth is $79 per month, each with a 14-day free trial. Pro is announced but not
-          yet on sale.
+          Basic is $9.99 per month, with a 14-day free trial. It includes the whole product. Growth and Pro are
+          announced but not yet on sale, and cannot be subscribed to.
         </p>
         <p>
           Billing runs through Shopify. You approve every charge in your Shopify admin before it starts, it appears on
