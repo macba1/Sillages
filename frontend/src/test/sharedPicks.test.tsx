@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
-const API = 'https://api.example.test/api';
+const API = 'https://api.example.test';
 
 const PAYLOAD = {
   mode: 'vote',
@@ -58,7 +58,7 @@ describe('a shared list opens for the friend it was sent to', () => {
     const url = String(fetchMock.mock.calls[0][0]);
     // The base the rest of the app uses. A bare "/api/..." is served by the
     // static site and comes back as HTML.
-    expect(url).toBe(`${API}/public/picks/abc123`);
+    expect(url).toBe(`${API}/api/public/picks/abc123`);
 
     await waitFor(() => expect(screen.getByText('A snowboard')).toBeTruthy());
   });

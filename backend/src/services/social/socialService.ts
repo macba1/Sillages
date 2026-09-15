@@ -59,7 +59,7 @@ export interface SocialEvent {
  */
 async function writeEvent(event: SocialEvent): Promise<void> {
   try {
-    await supabase.from('gallery_events').insert({
+    const { error } = await supabase.from('gallery_events').insert({
       connection_id: event.connectionId,
       session_id: event.sessionId,
       event_type: event.type,
@@ -68,8 +68,14 @@ async function writeEvent(event: SocialEvent): Promise<void> {
       occurred_at: new Date().toISOString(),
       dedupe_key: `${event.type}:${event.sessionId}:${Date.now()}`,
     });
-  } catch {
-    // Measurement never blocks the thing being measured.
+
+    // Measurement never blocks the thing being measured — but it is said out
+    // loud. Swallowing this in silence is how every one of these events came
+    // to be refused by a stale check constraint for a whole release without
+    // anyone noticing: the features worked, and Performance read zero.
+    if (error) console.warn(`[social] event ${event.type} not recorded: ${error.message}`);
+  } catch (err) {
+    console.warn(`[social] event ${event.type} not recorded: ${(err as Error).message}`);
   }
 }
 

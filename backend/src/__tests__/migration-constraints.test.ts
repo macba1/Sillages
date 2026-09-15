@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { GALLERY_EVENT_TYPES } from '../services/events/eventTypes.js';
 import {
   GALLERY_FRAMES,
   GALLERY_LAYOUTS,
@@ -54,6 +55,9 @@ describe('the columns accept every value the product can produce', () => {
     ['gallery_configs', 'gallery_configs_layout_check', 'layout', GALLERY_LAYOUTS],
     ['gallery_configs', 'gallery_configs_frame_check', 'frame', GALLERY_FRAMES],
     ['gallery_configs', 'gallery_configs_status_check', 'status', GALLERY_STATUSES],
+    // The one that bit hardest: six of these were refused on insert, so the
+    // features they measure reported zero while working perfectly.
+    ['gallery_events', 'gallery_events_event_type_check', 'event_type', GALLERY_EVENT_TYPES],
   ];
 
   for (const [table, constraint, column, values] of cases) {

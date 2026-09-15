@@ -10,12 +10,12 @@ import { useNoIndex } from '../preview/useNoIndex';
  *
  * Written as a relative `/api/...` at first, which on the hosted frontend is
  * answered by the static site with its own index.html: the JSON parse failed
- * and every shared link told its visitor it had expired. The rest of the app
- * goes through the axios client, which has always had the base URL; this page
- * is plain fetch because it must work with no session at all, so it needs the
- * same base spelled out.
+ * and every shared link told its visitor it had expired. Spelled out here
+ * exactly as the axios client spells it — base plus a path that starts with
+ * `/api` — because a second, nearly-right copy of the rule is how the first
+ * mistake happened.
  */
-const API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+const API = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 interface PicksPayload {
   mode: 'list' | 'vote';
@@ -67,7 +67,7 @@ export default function SharedPicks() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch(`${API}/public/picks/${encodeURIComponent(token)}`, {
+      const response = await fetch(`${API}/api/public/picks/${encodeURIComponent(token)}`, {
         headers: { Accept: 'application/json' },
       });
       if (!response.ok) throw new Error(String(response.status));
@@ -96,7 +96,7 @@ export default function SharedPicks() {
       /* storage refused */
     }
     try {
-      const response = await fetch(`${API}/public/picks/${encodeURIComponent(token)}/vote`, {
+      const response = await fetch(`${API}/api/public/picks/${encodeURIComponent(token)}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId, voterKey }),
