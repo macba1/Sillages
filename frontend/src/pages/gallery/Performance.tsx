@@ -51,7 +51,7 @@ export default function Performance() {
   return (
     <GalleryPage
       title="Performance"
-      intro="What shoppers did with your gallery, and the revenue it is credited with."
+      intro="What shoppers did with your gallery: views, saves, shares and add-to-cart."
       progress={progress}
       error={error ?? g.error}
       onDismissError={g.clearError}

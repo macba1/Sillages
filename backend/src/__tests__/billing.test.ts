@@ -84,7 +84,7 @@ describe('F1: the product never creates a charge', () => {
     expect(result).toEqual({
       ok: true,
       planId: 'basic',
-      pricingPageUrl: 'https://admin.shopify.com/store/demo-shop/charges/sillages/pricing_plans',
+      pricingPageUrl: 'https://admin.shopify.com/store/demo-shop/charges/sillages-1/pricing_plans',
     });
   });
 

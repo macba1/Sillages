@@ -108,7 +108,7 @@ export default function Plan() {
   return (
     <GalleryPage
       title="Plan"
-      intro="Basic and Growth include a 14-day free trial. Billing runs through Shopify, so it appears on your Shopify invoice."
+      intro="Basic includes a 14-day free trial. Billing runs through Shopify, so it appears on your Shopify invoice."
       error={error}
       loading={loading}
     >

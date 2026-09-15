@@ -62,7 +62,15 @@ export type StartSubscriptionResult =
  * hosted pricing URL. Overridable so a differently-named app can reuse this.
  */
 export function appHandle(): string {
-  return process.env.SHOPIFY_APP_HANDLE || 'sillages';
+  // Shopify's app handle, which is NOT the App Store listing slug. The listing
+  // lives at apps.shopify.com/sillages, but the installed app is addressed as
+  // `sillages-1` — visible in a store's admin at
+  // /settings/apps/app_installations/app/sillages-1.
+  //
+  // Getting this wrong is silent: /charges/<handle>/pricing_plans redirects to
+  // Settings > Apps instead of erroring, so the merchant lands on a list of
+  // apps with no explanation and no way to choose a plan.
+  return process.env.SHOPIFY_APP_HANDLE || 'sillages-1';
 }
 
 /** `shop.myshopify.com` -> `shop`, which is what admin URLs use. */

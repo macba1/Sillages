@@ -69,6 +69,19 @@ beforeEach(() => {
 });
 
 // ===========================================================================
+describe('the page Shopify hosts', () => {
+  it('addresses the app by its installed handle, not the listing slug', async () => {
+    const { managedPricingUrl } = await import('../services/billing/shopifyBilling.js');
+
+    // apps.shopify.com/sillages is the listing; the installed app is
+    // `sillages-1`. Shopify redirects a wrong handle to Settings > Apps
+    // silently, so a merchant would just land on a list of apps.
+    expect(managedPricingUrl('demo-shop.myshopify.com'))
+      .toBe('https://admin.shopify.com/store/demo-shop/charges/sillages-1/pricing_plans');
+  });
+});
+
+// ===========================================================================
 describe('installing without a plan', () => {
   it('cannot publish, and is told why', async () => {
     const ent = await entitlementsForShop(SHOP, deps(shopifySays(null)));

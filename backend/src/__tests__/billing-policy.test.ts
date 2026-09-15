@@ -162,7 +162,7 @@ describe('development can only ever create a test charge', () => {
     expect(result).toMatchObject({ ok: true });
     if (result.ok) {
       expect(result.pricingPageUrl).toBe(
-        'https://admin.shopify.com/store/shop/charges/sillages/pricing_plans',
+        'https://admin.shopify.com/store/shop/charges/sillages-1/pricing_plans',
       );
     }
   });
