@@ -242,6 +242,8 @@ export interface PicksView {
   frame: string;
   filterIntensity: number;
   showBranding: boolean;
+  /** The shop's currency code, so a shared price says what it is. */
+  currency: string | null;
   products: PublicPost[];
   /** Product id → votes. Empty for a plain list. */
   votes: Record<number, number>;
@@ -281,6 +283,7 @@ export async function readPicks(token: string, deps: SocialDeps = {}): Promise<P
     frame: gallery.frame,
     filterIntensity: gallery.filterIntensity,
     showBranding: gallery.showBranding,
+    currency: deps.shopName ? null : (await lookUpShop(shopDomain)).currency,
     products,
     votes: record.mode === 'vote' ? await store.tally(token) : {},
     expiresAt: record.expiresAt,

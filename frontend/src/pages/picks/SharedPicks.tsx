@@ -24,6 +24,8 @@ interface PicksPayload {
   frame: GalleryFrame;
   filterIntensity: number;
   showBranding: boolean;
+  /** The shop's currency code. Null when the shop never recorded one. */
+  currency: string | null;
   products: PublicPost[];
   votes: Record<number, number>;
   expiresAt: string;
@@ -165,7 +167,11 @@ export default function SharedPicks() {
                 <div style={{ ...frame, position: 'relative', overflow: 'hidden' }}>
                   <div
                     style={{
-                      aspectRatio: '1 / 1',
+                      // Taller than square, and the whole photograph inside it.
+                      // A square `cover` crop of a product shot shows only the
+                      // middle: two snowboards arrived here as two black
+                      // squares, which is no basis for choosing between them.
+                      aspectRatio: '4 / 5',
                       borderRadius: Math.max(2, frame.borderRadius - 2),
                       overflow: 'hidden',
                       background: 'rgba(42,31,20,0.06)',
@@ -177,7 +183,7 @@ export default function SharedPicks() {
                         alt={post.image.altText ?? post.title}
                         loading="lazy"
                         decoding="async"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', filter, display: 'block' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', filter, display: 'block' }}
                       />
                     )}
                   </div>
@@ -187,6 +193,7 @@ export default function SharedPicks() {
                   <div style={{ fontSize: 14, color: T.muted, marginTop: 2 }}>
                     {post.priceMin}
                     {post.priceMax && post.priceMax !== post.priceMin ? ` – ${post.priceMax}` : ''}
+                    {data.currency ? ` ${data.currency}` : ''}
                   </div>
                 </div>
               </a>
