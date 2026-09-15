@@ -32,7 +32,7 @@ import {
   type PicksRecord,
   type PicksStore,
 } from '../services/social/picksService.js';
-import { escapeXml, isAllowedImageUrl, overlaySvg, wrap } from '../services/social/shareCard.js';
+import { escapeXml, isAllowedImageUrl, overlaySvg, trimUrl, wrap } from '../services/social/shareCard.js';
 import { entitlementsFor, type ShopSubscription } from '../services/billing/entitlements.js';
 import { castPickVote, createPicks, deletePicks, readPicks } from '../services/social/socialService.js';
 import type { PublicGallery, PublicPost } from '../services/gallery/galleryTypes.js';
@@ -213,6 +213,36 @@ describe('the shareable card', () => {
     });
 
     expect(svg).not.toContain('Sillages');
+  });
+
+  it('draws its text with attributes, not a stylesheet', () => {
+    // librsvg — the renderer behind sharp — ignores the `font` shorthand in a
+    // <style> block. Declaring it that way drew every line at the default size:
+    // legible in a desktop preview and unreadable on the phone the card is for.
+    const svg = overlaySvg({
+      post: post(1),
+      shopName: 'Shop',
+      productUrl: 'https://demo.myshopify.com/products/p-1',
+      tagline: 'Shop this look',
+      showBranding: true,
+      style: 'warm',
+      intensity: 100,
+      priceLabel: '20.00',
+    });
+
+    expect(svg).not.toContain('<style>');
+    expect(svg).toMatch(/font-size="\d+"/);
+    expect(svg).toMatch(/font-family="[^"]+"/);
+  });
+
+  it('shortens the address so it does not run under the mark', () => {
+    expect(trimUrl('https://demo.myshopify.com/products/p-1', 60)).toBe('demo.myshopify.com/products/p-1');
+
+    const long = trimUrl('https://a-very-long-shop-name.myshopify.com/products/a-very-long-product-handle', 34);
+    expect(long).toHaveLength(34);
+    expect(long.endsWith('…')).toBe(true);
+    // The host survives: it is the part that tells a stranger whose shop it is.
+    expect(long.startsWith('a-very-long-shop-name')).toBe(true);
   });
 
   it('breaks a long title instead of letting it run off the card', () => {

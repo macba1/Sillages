@@ -62,6 +62,18 @@ export function isAllowedImageUrl(raw: string | null | undefined): boolean {
   return ALLOWED_IMAGE_HOSTS.has(url.hostname.toLowerCase());
 }
 
+/**
+ * Shortens the product address so it fits on one line beside the mark.
+ *
+ * The scheme is already gone; what is dropped next is the tail of the path,
+ * because the host is the part that tells a stranger which shop this is.
+ */
+export function trimUrl(raw: string, max: number): string {
+  const bare = String(raw).replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (bare.length <= max) return bare;
+  return `${bare.slice(0, Math.max(1, max - 1))}…`;
+}
+
 /** XML-escapes text on its way into the SVG overlay. */
 export function escapeXml(value: string): string {
   return String(value)
@@ -155,42 +167,59 @@ async function loadPhoto(url: string, fetchImpl: typeof fetch): Promise<Buffer |
  * photograph nobody chose for its bottom third.
  */
 export function overlaySvg(input: ShareCardInput): string {
-  const title = wrap(input.post.title, 26, 2).map(escapeXml);
+  const title = wrap(input.post.title, 24, 2).map(escapeXml);
   const shop = escapeXml(input.shopName);
   const price = escapeXml(input.priceLabel);
   const tagline = escapeXml(input.tagline);
-  const link = escapeXml(input.productUrl.replace(/^https?:\/\//, ''));
+  // The address is there to be read off a phone screen, not to be complete.
+  // A long handle would otherwise run under the Sillages mark on the same line.
+  const link = escapeXml(trimUrl(input.productUrl, input.showBranding ? 34 : 52));
+
+  // Presentation attributes, not a stylesheet.
+  //
+  // The renderer behind sharp is librsvg, which does not apply the `font`
+  // shorthand from a <style> block. Declaring it that way produced a card
+  // where every line was drawn at the default size — legible on a desktop
+  // preview and unreadable on the phone the card is actually made for.
+  const FONT = 'DejaVu Sans, Helvetica, Arial, sans-serif';
+  const text = (
+    x: number,
+    y: number,
+    size: number,
+    weight: number,
+    opacity: number,
+    content: string,
+    anchor = 'start',
+    spacing = 0,
+  ) =>
+    `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" font-weight="${weight}" ` +
+    `fill="#ffffff" fill-opacity="${opacity}" text-anchor="${anchor}"` +
+    (spacing ? ` letter-spacing="${spacing}"` : '') +
+    `>${content}</text>`;
 
   const titleLines = title
-    .map((line, i) => `<text x="72" y="${1444 + i * 84}" class="t">${line}</text>`)
+    .map((line, i) => text(76, 1400 + i * 92, 74, 700, 1, line))
     .join('');
 
   const mark = input.showBranding
-    ? `<text x="1008" y="1836" class="mark" text-anchor="end">made with Sillages</text>`
+    ? text(1004, 1848, 28, 400, 0.52, 'made with Sillages', 'end')
     : '';
 
   return `<svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="veil" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0.52" stop-color="#000" stop-opacity="0"/>
-      <stop offset="0.76" stop-color="#000" stop-opacity="0.58"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0.86"/>
+      <stop offset="0.40" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="0.60" stop-color="#000000" stop-opacity="0.45"/>
+      <stop offset="0.78" stop-color="#000000" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.94"/>
     </linearGradient>
-    <style>
-      .t { font: 600 66px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; }
-      .p { font: 500 50px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; opacity: 0.94; }
-      .s { font: 600 34px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; letter-spacing: 3px; opacity: 0.86; }
-      .tag { font: 500 34px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; opacity: 0.78; }
-      .url { font: 400 30px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; opacity: 0.66; }
-      .mark { font: 400 26px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #fff; opacity: 0.5; }
-    </style>
   </defs>
   <rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}" fill="url(#veil)"/>
-  <text x="72" y="1330" class="s">${shop.toUpperCase()}</text>
+  ${text(76, 1280, 36, 700, 0.88, shop.toUpperCase(), 'start', 4)}
   ${titleLines}
-  <text x="72" y="1630" class="p">${price}</text>
-  <text x="72" y="1712" class="tag">${tagline}</text>
-  <text x="72" y="1836" class="url">${link}</text>
+  ${text(76, 1606, 56, 600, 0.96, price)}
+  ${text(76, 1690, 36, 400, 0.82, tagline)}
+  ${text(76, 1848, 30, 400, 0.66, link)}
   ${mark}
 </svg>`;
 }
