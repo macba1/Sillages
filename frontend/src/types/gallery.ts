@@ -4,15 +4,26 @@
  * ever sees public storefront data plus its own settings.
  */
 
-export const GALLERY_STYLES = ['original', 'warm', 'film'] as const;
+export const GALLERY_STYLES = ['original', 'warm', 'film', 'soft', 'vintage', 'flash'] as const;
 export type GalleryStyle = (typeof GALLERY_STYLES)[number];
+
+export const GALLERY_LAYOUTS = ['grid', 'polaroid', 'feed', 'stories'] as const;
+export type GalleryLayout = (typeof GALLERY_LAYOUTS)[number];
+
+export const GALLERY_FRAMES = ['none', 'clean', 'polaroid', 'film', 'card'] as const;
+export type GalleryFrame = (typeof GALLERY_FRAMES)[number];
 
 export type GalleryStatus = 'draft' | 'published' | 'disabled';
 
 export interface GalleryConfig {
   id: string;
   collectionId: string | null;
+  layout: GalleryLayout;
   style: GalleryStyle;
+  filterIntensity: number;
+  frame: GalleryFrame;
+  shareTagline: string | null;
+  hideBranding: boolean;
   showStories: boolean;
   showQuickBuy: boolean;
   postsLimit: number;
@@ -74,7 +85,10 @@ export interface GalleryPreview {
   shop: string;
   active: boolean;
   version: number;
+  layout: GalleryLayout;
   style: GalleryStyle;
+  filterIntensity: number;
+  frame: GalleryFrame;
   heading: string | null;
   showStories: boolean;
   showQuickBuy: boolean;
@@ -123,7 +137,10 @@ export interface CatalogStatus {
 export const STYLE_LABELS: Record<GalleryStyle, { name: string; description: string }> = {
   original: { name: 'Original', description: 'Your photos exactly as they are.' },
   warm: { name: 'Warm', description: 'A gently warmer, richer tone.' },
-  film: { name: 'Film', description: 'Soft contrast on a printed white frame.' },
+  film: { name: 'Film', description: 'Soft contrast, like a printed photograph.' },
+  soft: { name: 'Soft', description: 'Light lifted into the shadows. Airy.' },
+  vintage: { name: 'Vintage', description: 'Faded warmth, kept in a drawer.' },
+  flash: { name: 'Flash', description: 'Brighter and crisper, like direct light.' },
 };
 
 // ── Performance (Sprint 4) ──────────────────────────────────────────────────
@@ -163,6 +180,12 @@ export interface Entitlements {
   canPublish: boolean;
   canUseMultipleGalleries: boolean;
   canUseAttribution: boolean;
+  /** The looks this plan may actually serve. Decided on the server. */
+  allowedStyles: readonly GalleryStyle[];
+  allowedFrames: readonly GalleryFrame[];
+  canRemoveBranding: boolean;
+  canUseSharedLists: boolean;
+  canUseFriendVotes: boolean;
   planId: 'basic' | 'growth' | 'pro' | null;
   status: 'none' | 'pending' | 'active' | 'declined' | 'expired' | 'frozen' | 'cancelled';
   isTest: boolean;

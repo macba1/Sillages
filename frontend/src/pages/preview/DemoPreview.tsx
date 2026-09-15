@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../lib/api';
-import { STYLE_TOKENS, T } from '../../components/gallery/styleTokens';
+import { T, filterFor } from '../../components/gallery/styleTokens';
 import type { GalleryStyle } from '../../types/gallery';
 import { useNoIndex } from './useNoIndex';
 
@@ -106,8 +106,7 @@ export default function DemoPreview() {
   }
 
   const proposal = data.proposals.find((p) => p.style === selected) ?? data.proposals[0];
-  const tokens = STYLE_TOKENS[proposal.style];
-
+  
   return (
     <Frame>
       <p style={eyebrow}>{data.shopDomain}</p>
@@ -175,7 +174,7 @@ export default function DemoPreview() {
       )}
 
       <div style={{ border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, background: '#fff', marginBottom: 28 }}>
-        {view === 'before' ? <BeforeGrid posts={proposal.posts} /> : <AfterGrid posts={proposal.posts} tokens={tokens} />}
+        {view === 'before' ? <BeforeGrid posts={proposal.posts} /> : <AfterGrid posts={proposal.posts} style={proposal.style} />}
       </div>
 
       {/* Install */}
@@ -243,17 +242,17 @@ function BeforeGrid({ posts }: { posts: ProposalPost[] }) {
 }
 
 /** The same products as a gallery. */
-function AfterGrid({ posts, tokens }: { posts: ProposalPost[]; tokens: (typeof STYLE_TOKENS)[GalleryStyle] }) {
+function AfterGrid({ posts, style }: { posts: ProposalPost[]; style: GalleryStyle }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
       {posts.slice(0, 12).map((post) => (
-        <article key={post.id} style={{ background: tokens.cardBg, borderRadius: tokens.radius, padding: tokens.pad }}>
-          <div style={{ aspectRatio: '1 / 1', borderRadius: Math.max(2, tokens.radius - 2), overflow: 'hidden', background: '#F2EEE9' }}>
+        <article key={post.id} style={{ background: 'transparent', borderRadius: 12, padding: 0 }}>
+          <div style={{ aspectRatio: '1 / 1', borderRadius: Math.max(2, 12 - 2), overflow: 'hidden', background: '#F2EEE9' }}>
             <img
               src={post.imageUrl}
               alt={post.alt ?? post.title}
               loading="lazy"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', filter: tokens.filter, display: 'block' }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', filter: filterFor(style, 100), display: 'block' }}
             />
           </div>
           <div style={{ padding: '8px 2px 0' }}>

@@ -5,6 +5,13 @@ import { validateShopDomain } from '../lib/shopify.js';
 import { composePublicGallery } from '../services/gallery/galleryService.js';
 import { inactiveGallery } from '../services/gallery/galleryTypes.js';
 import { ingestEventBatch, ingestPurchase } from '../services/events/eventIngestion.js';
+import {
+  castPickVote,
+  composeShareCard,
+  createPicks,
+  deletePicks,
+  readPicks,
+} from '../services/social/socialService.js';
 
 const router = Router();
 
@@ -54,9 +61,35 @@ router.options('/gallery/:shopDomain', publicCors, (_req, res) => {
   res.status(204).end();
 });
 
-router.options(['/events', '/purchase'], publicCors, (_req, res) => {
+router.options(['/events', '/purchase', '/picks'], publicCors, (_req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.status(204).end();
+});
+
+router.options(['/picks/:token', '/picks/:token/vote'], publicCors, (_req, res) => {
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.status(204).end();
+});
+
+/**
+ * Writes are rarer than reads and cost more, so they get a tighter ceiling of
+ * their own: making links and voting are the two things worth flooding.
+ */
+const socialWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
+});
+
+/** Drawing a card is the most expensive thing here, so it is the most bounded. */
+const cardLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests' },
 });
 
 // GET /api/public/gallery/:shopDomain
@@ -151,6 +184,138 @@ router.post(
         return;
       }
       res.status(202).json({ attributed: result.outcome.attributed });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/public/share-card/:shopDomain/:productId.jpg
+//
+// The vertical card a shopper sends a friend, drawn from the shop's own
+// published photograph. Everything in it is already public.
+router.get(
+  '/share-card/:shopDomain/:productId.jpg',
+  publicCors,
+  cardLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const shopDomain = String(req.params.shopDomain ?? '').toLowerCase();
+      const productId = Number(req.params.productId);
+
+      if (!validateShopDomain(shopDomain) || !Number.isSafeInteger(productId) || productId <= 0) {
+        res.status(404).end();
+        return;
+      }
+
+      const card = await composeShareCard(shopDomain, productId);
+      if (!card) {
+        // A card that cannot be drawn is not an error the shopper should see:
+        // the storefront hides the preview and every other way of sharing
+        // still works.
+        res.status(404).end();
+        return;
+      }
+
+      // Long cache: the card is a function of catalogue data and settings, and
+      // a republish changes the URL nothing — so a stale window keeps it cheap
+      // while a price change reaches the card within the hour.
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.send(card);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/public/picks — turn saved products into a link
+router.post(
+  '/picks',
+  publicCors,
+  socialWriteLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const shopDomain = String(body.shop ?? '').toLowerCase();
+      if (!validateShopDomain(shopDomain)) {
+        res.status(400).json({ error: 'unknown_shop' });
+        return;
+      }
+
+      const result = await createPicks(shopDomain, body.productIds, body.mode);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.reason });
+        return;
+      }
+
+      res.status(201).json(result.value);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /api/public/picks/:token — read a shared list, and its votes
+router.get(
+  '/picks/:token',
+  publicCors,
+  storefrontLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const view = await readPicks(String(req.params.token ?? ''));
+      if (!view) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      // Never cached and never indexed: a shared list is private-by-obscurity,
+      // and a search engine holding a copy would defeat that entirely.
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      res.json(view);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/public/picks/:token/vote — one tap, one opinion
+router.post(
+  '/picks/:token/vote',
+  publicCors,
+  socialWriteLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const result = await castPickVote(
+        String(req.params.token ?? ''),
+        body.productId,
+        body.voterKey,
+      );
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.reason });
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(result.value);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// DELETE /api/public/picks/:token — the creator's device removes its own list
+router.delete(
+  '/picks/:token',
+  publicCors,
+  socialWriteLimiter,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const key = String(req.header('X-Sillages-Owner') ?? '');
+      const removed = await deletePicks(String(req.params.token ?? ''), key);
+      // The same answer either way: whether a token exists is not something an
+      // anonymous caller gets to learn by deleting at it.
+      res.status(removed ? 204 : 404).end();
     } catch (err) {
       next(err);
     }
