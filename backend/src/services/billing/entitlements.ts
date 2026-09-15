@@ -1,5 +1,13 @@
 import { supabase } from '../../lib/supabase.js';
 import { isSocialGalleryPlanId, type SocialGalleryPlanId } from '../../config/socialGalleryPlans.js';
+import {
+  BASIC_FRAMES,
+  BASIC_STYLES,
+  GALLERY_FRAMES,
+  GALLERY_STYLES,
+  type GalleryFrame,
+  type GalleryStyle,
+} from '../gallery/galleryTypes.js';
 
 const LOG = '[entitlements]';
 
@@ -42,6 +50,21 @@ export interface Entitlements {
   /** Growth-only features. */
   canUseMultipleGalleries: boolean;
   canUseAttribution: boolean;
+  /**
+   * The looks this shop may actually serve.
+   *
+   * Listed rather than computed at each call site so there is one place that
+   * decides, and so the Design screen can grey out what a plan does not
+   * include using the same answer the storefront is served with.
+   */
+  allowedStyles: readonly GalleryStyle[];
+  allowedFrames: readonly GalleryFrame[];
+  /** Growth removes the small Sillages mark from the shareable card. */
+  canRemoveBranding: boolean;
+  /** Growth: turn saved products into a shareable link. */
+  canUseSharedLists: boolean;
+  /** Growth: let friends vote between saved products. */
+  canUseFriendVotes: boolean;
   planId: SocialGalleryPlanId | null;
   status: SubscriptionStatus;
   isTest: boolean;
@@ -118,10 +141,39 @@ export function entitlementsFor(
     // including an old $79 one, unlocks them.
     canUseMultipleGalleries: false,
     canUseAttribution: false,
+    ...socialFeatures(planId),
     planId,
     status: sub.status,
     isTest: sub.isTest,
     reason: null,
+  };
+}
+
+/**
+ * What each plan unlocks on the storefront.
+ *
+ * Decided here, on the server, from the subscription. The storefront is told
+ * the answer so it can hide what it cannot offer, but every endpoint behind
+ * these re-checks: a shopper who calls the shared-list endpoint directly on a
+ * Basic shop is refused there, not in the browser.
+ */
+function socialFeatures(planId: SocialGalleryPlanId | null): {
+  allowedStyles: readonly GalleryStyle[];
+  allowedFrames: readonly GalleryFrame[];
+  canRemoveBranding: boolean;
+  canUseSharedLists: boolean;
+  canUseFriendVotes: boolean;
+} {
+  // Growth and above. An unrecognised plan is treated as Basic, never as more:
+  // a withdrawn or unknown charge must not open the paid half of the product.
+  const growth = planId === 'growth' || planId === 'pro';
+
+  return {
+    allowedStyles: growth ? GALLERY_STYLES : BASIC_STYLES,
+    allowedFrames: growth ? GALLERY_FRAMES : BASIC_FRAMES,
+    canRemoveBranding: growth,
+    canUseSharedLists: growth,
+    canUseFriendVotes: growth,
   };
 }
 
@@ -130,6 +182,13 @@ function denied(sub: ShopSubscription, reason: string): Entitlements {
     canPublish: false,
     canUseMultipleGalleries: false,
     canUseAttribution: false,
+    // A shop that may not publish serves nothing, so the lists are the
+    // smallest possible rather than the plan's.
+    allowedStyles: BASIC_STYLES,
+    allowedFrames: BASIC_FRAMES,
+    canRemoveBranding: false,
+    canUseSharedLists: false,
+    canUseFriendVotes: false,
     planId: isSocialGalleryPlanId(String(sub.planId)) ? sub.planId : null,
     status: sub.status,
     isTest: sub.isTest,

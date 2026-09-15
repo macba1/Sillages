@@ -39,7 +39,12 @@ import type { CatalogStatus, GalleryConfig, GalleryPreview } from '../types/gall
 const CONFIG: GalleryConfig = {
   id: 'g1',
   collectionId: null,
+  layout: 'grid',
   style: 'original',
+  filterIntensity: 100,
+  frame: 'none',
+  shareTagline: null,
+  hideBranding: false,
   showStories: true,
   showQuickBuy: true,
   postsLimit: 60,
@@ -73,7 +78,10 @@ const PREVIEW: GalleryPreview = {
   shop: 'dev.myshopify.com',
   active: false,
   version: 0,
+  layout: 'grid',
   style: 'original',
+  filterIntensity: 100,
+  frame: 'none',
   heading: null,
   showStories: true,
   showQuickBuy: true,
@@ -135,9 +143,19 @@ beforeEach(() => {
 describe('C5: the four onboarding steps track real progress', () => {
   const PAYING = {
     canPublish: true, canUseMultipleGalleries: true, canUseAttribution: true,
+  allowedStyles: ['original', 'warm', 'film'] as const,
+  allowedFrames: ['none', 'clean'] as const,
+  canRemoveBranding: false,
+  canUseSharedLists: false,
+  canUseFriendVotes: false,
     planId: 'growth' as const, status: 'active' as const, isTest: false, reason: null,
   };
-  const NO_PLAN = { ...PAYING, canPublish: false, canUseAttribution: false, planId: null, status: 'none' as const, reason: 'Choose a plan to publish your gallery.' };
+  const NO_PLAN = { ...PAYING, canPublish: false, canUseAttribution: false,
+  allowedStyles: ['original', 'warm', 'film'] as const,
+  allowedFrames: ['none', 'clean'] as const,
+  canRemoveBranding: false,
+  canUseSharedLists: false,
+  canUseFriendVotes: false, planId: null, status: 'none' as const, reason: 'Choose a plan to publish your gallery.' };
 
   it('walks from a fresh install to a published gallery', () => {
     expect(onboardingProgress(null, null, null, PAYING).currentStep).toBe(1);
@@ -213,19 +231,45 @@ describe('C1: choosing what the gallery shows', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('C2: choosing a look', () => {
-  it('offers exactly the three styles and saves the choice', async () => {
+  it('offers every treatment, and greys out the ones this plan does not include', async () => {
     mockApi();
     renderPage(<Design />);
 
     await screen.findByText('Original');
-    expect(screen.getByText('Warm')).toBeInTheDocument();
-    expect(screen.getByText('Film')).toBeInTheDocument();
+    for (const name of ['Warm', 'Film', 'Soft', 'Vintage', 'Flash']) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
 
     const styleRadios = screen.getAllByRole('radio').filter((r) => (r as HTMLInputElement).name === 'gallery-style');
-    expect(styleRadios).toHaveLength(3);
+    expect(styleRadios).toHaveLength(6);
+
+    // The fixture is a Basic shop: the three extra treatments are shown so the
+    // merchant knows they exist, and disabled so they cannot be chosen.
+    expect(styleRadios.filter((r) => (r as HTMLInputElement).disabled)).toHaveLength(3);
 
     fireEvent.click(styleRadios[1]);
     await waitFor(() => expect(put).toHaveBeenCalledWith('/api/gallery', { style: 'warm' }));
+  });
+
+  it('offers the four arrangements and saves the choice', async () => {
+    mockApi();
+    renderPage(<Design />);
+    await screen.findByText('Social Grid');
+
+    const layoutRadios = screen.getAllByRole('radio').filter((r) => (r as HTMLInputElement).name === 'gallery-layout');
+    expect(layoutRadios).toHaveLength(4);
+
+    fireEvent.click(layoutRadios[1]);
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/api/gallery', { layout: 'polaroid' }));
+  });
+
+  it('dials the treatment down without touching the photographs', async () => {
+    mockApi();
+    renderPage(<Design />);
+    await screen.findByText('Original');
+
+    const slider = screen.getByLabelText('Strength') as HTMLInputElement;
+    expect(slider).toBeDisabled(); // nothing to dial down on Original
   });
 
   it('saves a heading only when it changed', async () => {

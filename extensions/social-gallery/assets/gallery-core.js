@@ -6,11 +6,38 @@
  * thing, so they are tested rather than eyeballed.
  */
 
-/** The three looks the merchant can choose from. */
-export const STYLES = ['original', 'warm', 'film'];
+/** Photo treatments the merchant can choose from. */
+export const STYLES = ['original', 'warm', 'film', 'soft', 'vintage', 'flash'];
+
+/** How the products are arranged. */
+export const LAYOUTS = ['grid', 'polaroid', 'feed', 'stories'];
+
+/** What is drawn around each photograph. */
+export const FRAMES = ['none', 'clean', 'polaroid', 'film', 'card'];
 
 export function styleClass(style) {
   return STYLES.includes(style) ? `sg--${style}` : 'sg--original';
+}
+
+export function layoutClass(layout) {
+  return LAYOUTS.includes(layout) ? `sg-layout--${layout}` : 'sg-layout--grid';
+}
+
+export function frameClass(frame) {
+  return FRAMES.includes(frame) ? `sg-frame--${frame}` : 'sg-frame--none';
+}
+
+/**
+ * Filter strength as the 0–1 multiplier the stylesheet expects.
+ *
+ * Anything unusable becomes 1 — the filter as designed — rather than 0, so a
+ * malformed value shows the look the merchant chose instead of silently
+ * turning their whole gallery back to plain photographs.
+ */
+export function filterAmount(intensity) {
+  const n = Number(intensity);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0, n / 100));
 }
 
 /** Where the storefront reads its gallery from. */
@@ -64,6 +91,31 @@ export function selectVariant(post, chosen) {
       }),
     ) || null
   );
+}
+
+/**
+ * Which values of one option can still be bought, given the others.
+ *
+ * Used to strike through a size that is sold out in the colour on screen,
+ * rather than letting a shopper pick it and be told no at the last step.
+ */
+export function availableValues(post, groupName, chosen) {
+  const variants = post.variants || [];
+  const others = Object.entries(chosen || {}).filter(([name]) => name !== groupName);
+  const usable = new Set();
+
+  for (const variant of variants) {
+    if (!variant.available) continue;
+    const options = variant.options || [];
+    const matchesOthers = others.every(([name, value]) => {
+      const option = options.find((o) => o.name === name);
+      return !option || option.value === value;
+    });
+    if (!matchesOthers) continue;
+    const mine = options.find((o) => o.name === groupName);
+    if (mine) usable.add(mine.value);
+  }
+  return usable;
 }
 
 /** The default selection when a post is opened: the first variant in stock. */
@@ -182,6 +234,30 @@ export function shareLinks(post, origin, hasNativeShare = false) {
     whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}`,
     native: hasNativeShare ? { title: post.title, url } : null,
   };
+}
+
+/**
+ * Where the shareable card for one product is drawn.
+ *
+ * The card is a 1080×1920 image Sillages renders on the server from the
+ * product photograph the shop already publishes. Everything the URL carries is
+ * already public; nothing about the shopper is in it.
+ */
+export function shareCardUrl(apiBase, shopDomain, productId) {
+  const base = String(apiBase || '').replace(/\/+$/, '');
+  return `${base}/api/public/share-card/${encodeURIComponent(shopDomain)}/${Number(productId)}.jpg`;
+}
+
+/** Saved products, in the order the shopper saved them, as full posts. */
+export function savedPosts(posts, savedIds) {
+  const ids = savedIds instanceof Set ? savedIds : new Set(savedIds || []);
+  const byId = new Map((posts || []).map((post) => [post.id, post]));
+  const out = [];
+  for (const id of ids) {
+    const post = byId.get(id);
+    if (post) out.push(post);
+  }
+  return out;
 }
 
 /**

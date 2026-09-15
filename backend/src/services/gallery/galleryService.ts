@@ -10,7 +10,12 @@ import {
 } from '../billing/entitlements.js';
 import { readSubscription } from '../billing/shopifyBilling.js';
 import {
+  DEFAULT_SETTINGS,
+  DEFAULT_SHARE_TAGLINE,
+  clampIntensity,
   inactiveGallery,
+  isGalleryFrame,
+  isGalleryLayout,
   isGalleryStyle,
   type GalleryConfig,
   type GallerySettings,
@@ -82,15 +87,6 @@ export async function entitlementsForShop(
   return entitlementsFor(confirmed, deps.now);
 }
 
-const DEFAULT_SETTINGS: GallerySettings = {
-  collectionId: null,
-  style: 'original',
-  showStories: true,
-  showQuickBuy: true,
-  postsLimit: 60,
-  heading: null,
-};
-
 /**
  * Normalises whatever the client sent into settings we are willing to store.
  * Anything unrecognised falls back to the default rather than reaching the
@@ -116,7 +112,18 @@ export function normaliseSettings(input: unknown, base: GallerySettings = DEFAUL
         : typeof raw.collectionId === 'string' && raw.collectionId.length > 0
           ? raw.collectionId
           : base.collectionId,
+    layout: isGalleryLayout(raw.layout) ? raw.layout : base.layout,
     style: isGalleryStyle(raw.style) ? raw.style : base.style,
+    filterIntensity:
+      raw.filterIntensity === undefined ? base.filterIntensity : clampIntensity(raw.filterIntensity),
+    frame: isGalleryFrame(raw.frame) ? raw.frame : base.frame,
+    // Same "null means clear it" rule as the heading.
+    shareTagline: Object.prototype.hasOwnProperty.call(raw, 'shareTagline')
+      ? typeof raw.shareTagline === 'string' && raw.shareTagline.trim().length > 0
+        ? raw.shareTagline.trim().slice(0, 40)
+        : null
+      : base.shareTagline,
+    hideBranding: typeof raw.hideBranding === 'boolean' ? raw.hideBranding : base.hideBranding,
     showStories: typeof raw.showStories === 'boolean' ? raw.showStories : base.showStories,
     showQuickBuy: typeof raw.showQuickBuy === 'boolean' ? raw.showQuickBuy : base.showQuickBuy,
     postsLimit: Number.isFinite(postsLimit) ? Math.min(250, Math.max(1, Math.trunc(postsLimit))) : base.postsLimit,
@@ -250,10 +257,21 @@ export async function composePublicGallery(
     active: true,
     version: config.version,
     ingestToken: issueIngestToken(shopDomain),
-    style: config.style,
+    layout: config.layout,
+    style: entitlements.allowedStyles.includes(config.style) ? config.style : 'original',
+    filterIntensity: config.filterIntensity,
+    frame: entitlements.allowedFrames.includes(config.frame) ? config.frame : 'none',
     heading: config.heading,
     showStories: config.showStories,
     showQuickBuy: config.showQuickBuy,
+    shareTagline: config.shareTagline || DEFAULT_SHARE_TAGLINE,
+    // The merchant's wish only counts if their plan grants it. A Basic shop
+    // that once had Growth keeps the setting but gets the mark back.
+    showBranding: !(config.hideBranding && entitlements.canRemoveBranding),
+    features: {
+      sharedLists: entitlements.canUseSharedLists,
+      friendVotes: entitlements.canUseFriendVotes,
+    },
     stories,
     posts,
   };
@@ -262,10 +280,15 @@ export async function composePublicGallery(
 function toSettings(config: GalleryConfig): GallerySettings {
   return {
     collectionId: config.collectionId,
+    layout: config.layout,
     style: config.style,
+    filterIntensity: config.filterIntensity,
+    frame: config.frame,
     showStories: config.showStories,
     showQuickBuy: config.showQuickBuy,
     postsLimit: config.postsLimit,
     heading: config.heading,
+    shareTagline: config.shareTagline,
+    hideBranding: config.hideBranding,
   };
 }

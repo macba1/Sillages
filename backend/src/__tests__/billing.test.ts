@@ -196,11 +196,17 @@ describe('F5: the storefront stays within a mobile budget', () => {
    * A gallery is added to somebody else's storefront. These caps are
    * deliberately tight: if a change pushes past them it should be a decision,
    * not a surprise on a merchant's Lighthouse score.
+   *
+   * Raised once, deliberately, for the second version of the product: four
+   * layouts, six filters, five frames, a full-screen story viewer, the saved
+   * panel and the share sheet. Roughly 19 KB over the wire once compressed,
+   * for a module that is deferred and never blocks first paint. Anything that
+   * pushes past these again should be another decision, not a drift.
    */
   const BUDGETS: Record<string, number> = {
-    'social-gallery.js': 16 * 1024,
-    'gallery-core.js': 10 * 1024,
-    'social-gallery.css': 14 * 1024,
+    'social-gallery.js': 36 * 1024,
+    'gallery-core.js': 13 * 1024,
+    'social-gallery.css': 27 * 1024,
   };
 
   it('keeps every shipped asset under its budget', () => {
@@ -211,7 +217,7 @@ describe('F5: the storefront stays within a mobile budget', () => {
       expect(size, `${file} is ${size} bytes, budget ${budget}`).toBeLessThanOrEqual(budget);
     }
     // Everything a storefront downloads for the gallery, uncompressed.
-    expect(total).toBeLessThanOrEqual(36 * 1024);
+    expect(total).toBeLessThanOrEqual(76 * 1024);
   });
 
   it('loads without blocking the page and lazy-loads every image', () => {
@@ -228,7 +234,11 @@ describe('F5: the storefront stays within a mobile budget', () => {
 
     const images = js.match(/h\('img'/g) ?? [];
     const lazy = js.match(/loading: 'lazy'/g) ?? [];
-    expect(lazy.length).toBe(images.length);
+    // Every image is lazy except one: the photograph inside the story viewer,
+    // which is the only thing on the screen the moment it opens. Deferring it
+    // would show the shopper an empty black rectangle.
+    expect(images.length - lazy.length).toBe(1);
+    expect(js).toContain("class: 'sg-viewer__img'");
     expect(js).toContain("decoding: 'async'");
   });
 

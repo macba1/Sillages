@@ -46,9 +46,12 @@ const FEATURE_LABELS: Record<string, string> = {
   shoppable_variants: 'Shoppable product variants',
   save_and_share: 'Save and share',
   essential_metrics: 'Essential interaction metrics',
-  // Planned, not on sale. Shown only under "coming soon".
-  multiple_galleries: 'Several galleries',
-  higher_limits: 'Higher limits',
+  // Growth. Every one of these is enforced on the server.
+  all_looks: 'All six treatments and five frames',
+  shared_lists: 'Shareable picks',
+  friend_votes: 'Ask your friends',
+  unbranded_card: 'Share cards without the Sillages mark',
+  // Pro. Planned, not built.
   multiple_storefronts: 'Several storefronts',
   advanced_rules: 'Advanced rules',
   priority_support: 'Priority support',

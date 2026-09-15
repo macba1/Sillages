@@ -1,6 +1,11 @@
 import { supabase } from '../../lib/supabase.js';
 import type { ShopContext } from '../catalog/catalogStore.js';
 import {
+  DEFAULT_SETTINGS,
+  FILTER_INTENSITY_DEFAULT,
+  clampIntensity,
+  isGalleryFrame,
+  isGalleryLayout,
   type GalleryConfig,
   type GallerySettings,
   type GalleryStatus,
@@ -10,6 +15,9 @@ import {
   type PublicVariant,
   numericShopifyId,
 } from './galleryTypes.js';
+
+/** How many products one story carries. A story is a glance, not a catalogue. */
+const STORY_PRODUCTS_LIMIT = 20;
 
 /**
  * Reads and writes gallery configuration, and the catalogue rows the storefront
@@ -37,7 +45,12 @@ interface ConfigRow {
   account_id: string;
   connection_id: string;
   collection_id: string | null;
+  layout: string | null;
   style: string;
+  filter_intensity: number | null;
+  frame: string | null;
+  share_tagline: string | null;
+  hide_branding: boolean | null;
   show_stories: boolean;
   show_quick_buy: boolean;
   posts_limit: number;
@@ -54,7 +67,14 @@ function toConfig(row: ConfigRow): GalleryConfig {
     accountId: row.account_id,
     connectionId: row.connection_id,
     collectionId: row.collection_id,
+    // Read defensively: a row written before the layout migration has nulls,
+    // and it must render exactly as it did then rather than not at all.
+    layout: isGalleryLayout(row.layout) ? row.layout : DEFAULT_SETTINGS.layout,
     style: row.style as GalleryConfig['style'],
+    filterIntensity: clampIntensity(row.filter_intensity ?? FILTER_INTENSITY_DEFAULT),
+    frame: isGalleryFrame(row.frame) ? row.frame : DEFAULT_SETTINGS.frame,
+    shareTagline: row.share_tagline,
+    hideBranding: row.hide_branding === true,
     showStories: row.show_stories,
     showQuickBuy: row.show_quick_buy,
     postsLimit: row.posts_limit,
@@ -69,11 +89,16 @@ function toConfig(row: ConfigRow): GalleryConfig {
 function toSettings(config: GalleryConfig): GallerySettings {
   return {
     collectionId: config.collectionId,
+    layout: config.layout,
     style: config.style,
+    filterIntensity: config.filterIntensity,
+    frame: config.frame,
     showStories: config.showStories,
     showQuickBuy: config.showQuickBuy,
     postsLimit: config.postsLimit,
     heading: config.heading,
+    shareTagline: config.shareTagline,
+    hideBranding: config.hideBranding,
   };
 }
 
@@ -289,7 +314,7 @@ export const supabaseGalleryStore: GalleryStore = {
   async loadStories(connectionId: string, limit: number): Promise<PublicStory[]> {
     const { data, error } = await supabase
       .from('catalog_collections')
-      .select('shopify_id, title, handle, image_url')
+      .select('id, shopify_id, title, handle, image_url')
       .eq('connection_id', connectionId)
       .is('deleted_at', null)
       .order('title', { ascending: true })
@@ -297,7 +322,36 @@ export const supabaseGalleryStore: GalleryStore = {
 
     if (error || !data) return [];
 
-    return data
+    const rows = data as Record<string, unknown>[];
+
+    // One query for every collection's membership rather than one per story:
+    // a shop with twelve collections would otherwise make twelve round trips
+    // before the storefront could draw anything.
+    const { data: links } = await supabase
+      .from('catalog_collection_products')
+      .select('collection_id, product_id, position, catalog_products(shopify_id, status, deleted_at)')
+      .in('collection_id', rows.map((row) => row.id as string))
+      .order('position', { ascending: true })
+      .limit(limit * STORY_PRODUCTS_LIMIT);
+
+    const byCollection = new Map<string, number[]>();
+    for (const link of (links ?? []) as Record<string, unknown>[]) {
+      const product = link.catalog_products as { shopify_id?: string; status?: string; deleted_at?: string } | null;
+      // Same rule as the grid: a draft or archived product must never reach a
+      // storefront, and a story is a storefront surface like any other.
+      if (!product || product.status !== 'ACTIVE' || product.deleted_at) continue;
+
+      const productId = numericShopifyId(product.shopify_id);
+      if (productId === null) continue;
+
+      const key = link.collection_id as string;
+      const list = byCollection.get(key) ?? [];
+      if (list.length >= STORY_PRODUCTS_LIMIT) continue;
+      list.push(productId);
+      byCollection.set(key, list);
+    }
+
+    return rows
       .map((row) => {
         const id = numericShopifyId(row.shopify_id as string);
         if (id === null) return null;
@@ -307,6 +361,7 @@ export const supabaseGalleryStore: GalleryStore = {
           handle: row.handle as string,
           url: `/collections/${row.handle as string}`,
           imageUrl: (row.image_url as string | null) ?? null,
+          productIds: byCollection.get(row.id as string) ?? [],
         };
       })
       .filter((story): story is PublicStory => story !== null);

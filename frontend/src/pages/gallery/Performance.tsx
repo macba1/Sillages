@@ -160,20 +160,49 @@ export default function Performance() {
             <Stat label="Variants chosen" value={String(totals.variantSelects)} />
           </div>
 
+          <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>
+            Stories
+          </h2>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+            <Stat label="Opened" value={String(totals.storyOpens)} />
+            <Stat label="Read to the end" value={String(totals.storyCompletions)} />
+            <Stat
+              label="Finished"
+              value={totals.storyOpens > 0 ? `${Math.round((totals.storyCompletions / totals.storyOpens) * 100)}%` : '—'}
+            />
+          </div>
+
+          <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>
+            How shoppers passed it on
+          </h2>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+            <Stat label="Copied a link" value={String(totals.shareChannels.link)} />
+            <Stat label="WhatsApp" value={String(totals.shareChannels.whatsapp)} />
+            <Stat label="Device share sheet" value={String(totals.shareChannels.native)} />
+            <Stat label="Saved the card" value={String(totals.shareChannels.other)} />
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+            <Stat label="Lists shared" value={String(totals.picksCreated)} />
+            <Stat label="Lists opened" value={String(totals.picksVisits)} />
+            <Stat label="Friend votes" value={String(totals.friendVotes)} />
+          </div>
+
           {data.topProducts.length > 0 && (
             <>
               <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>
-                Most added to cart
+                What shoppers liked most
               </h2>
               <div style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
                 {data.topProducts.map((product) => {
                   const post = g.preview?.posts.find((p) => p.id === product.productId);
                   return (
-                    <Card key={product.productId} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span style={{ flex: 1, fontSize: 14, color: T.ink, fontFamily: T.font, fontWeight: 500 }}>
+                    <Card key={product.productId} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 160px', fontSize: 14, color: T.ink, fontFamily: T.font, fontWeight: 500 }}>
                         {post?.title ?? `Product ${product.productId}`}
                       </span>
                       <span style={{ fontSize: 13, color: T.muted }}>{product.opens} opened</span>
+                      <span style={{ fontSize: 13, color: T.muted }}>{product.saves} saved</span>
+                      <span style={{ fontSize: 13, color: T.muted }}>{product.shares} shared</span>
                       <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{product.addToCarts} added</span>
                     </Card>
                   );

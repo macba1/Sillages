@@ -34,6 +34,7 @@ import Plan from './pages/gallery/Plan';
 
 // Public before/after generator (Sprint 5) — no account required
 import DemoForm from './pages/preview/DemoForm';
+import SharedPicks from './pages/picks/SharedPicks';
 import DemoPreview from './pages/preview/DemoPreview';
 import PrivacyGallery from './pages/legal/PrivacyGallery';
 import TermsGallery from './pages/legal/TermsGallery';
@@ -126,6 +127,10 @@ function SocialGalleryRoutes() {
       {/* Public: the before/after a shop owner is sent. No account needed. */}
       <Route path="/demo" element={<DemoForm />} />
       <Route path="/demo/:token" element={<DemoPreview />} />
+
+      {/* Public: somebody's saved picks, opened by a friend. No account, and
+          deliberately not indexed — the link is the only way in. */}
+      <Route path="/picks/:token" element={<SharedPicks />} />
     </>
   );
 }
