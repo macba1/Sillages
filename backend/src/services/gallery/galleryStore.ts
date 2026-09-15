@@ -5,6 +5,7 @@ import {
   FILTER_INTENSITY_DEFAULT,
   clampIntensity,
   isGalleryFrame,
+  type DisabledReason,
   isGalleryLayout,
   type GalleryConfig,
   type GallerySettings,
@@ -56,7 +57,13 @@ export interface GalleryStore {
   getByConnection(connectionId: string): Promise<GalleryConfig | null>;
   getPublishedByShopDomain(shopDomain: string): Promise<{ config: GalleryConfig; connectionId: string } | null>;
   upsertSettings(ctx: ShopContext, settings: GallerySettings): Promise<GalleryConfig>;
-  setStatus(configId: string, status: GalleryStatus, version?: number): Promise<GalleryConfig | null>;
+  setStatus(
+    configId: string,
+    status: GalleryStatus,
+    version?: number,
+    /** Only read when disabling. Defaults to the merchant's own decision. */
+    reason?: DisabledReason,
+  ): Promise<GalleryConfig | null>;
   saveVersion(config: GalleryConfig): Promise<void>;
   listVersions(configId: string): Promise<{ version: number; snapshot: GallerySettings; publishedAt: string }[]>;
   getVersion(configId: string, version: number): Promise<GallerySettings | null>;
@@ -84,6 +91,7 @@ interface ConfigRow {
   version: number;
   published_at: string | null;
   disabled_at: string | null;
+  disabled_reason: string | null;
 }
 
 function toConfig(row: ConfigRow): GalleryConfig {
@@ -108,6 +116,9 @@ function toConfig(row: ConfigRow): GalleryConfig {
     version: row.version,
     publishedAt: row.published_at,
     disabledAt: row.disabled_at,
+    disabledReason: row.disabled_reason === 'plan' || row.disabled_reason === 'merchant'
+      ? row.disabled_reason
+      : null,
   };
 }
 
@@ -192,14 +203,23 @@ export const supabaseGalleryStore: GalleryStore = {
     return toConfig(data as ConfigRow);
   },
 
-  async setStatus(configId: string, status: GalleryStatus, version?: number): Promise<GalleryConfig | null> {
+  async setStatus(
+    configId: string,
+    status: GalleryStatus,
+    version?: number,
+    reason: DisabledReason = 'merchant',
+  ): Promise<GalleryConfig | null> {
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = { status };
     if (status === 'published') {
       patch.disabled_at = null;
+      patch.disabled_reason = null;
       if (version !== undefined) patch.version = version;
     }
-    if (status === 'disabled') patch.disabled_at = now;
+    if (status === 'disabled') {
+      patch.disabled_at = now;
+      patch.disabled_reason = reason;
+    }
 
     const { data, error } = await supabase
       .from('gallery_configs')

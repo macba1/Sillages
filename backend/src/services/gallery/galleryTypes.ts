@@ -36,6 +36,16 @@ export const BASIC_FRAMES: readonly GalleryFrame[] = ['none', 'clean'];
 export const GALLERY_STATUSES = ['draft', 'published', 'disabled'] as const;
 export type GalleryStatus = (typeof GALLERY_STATUSES)[number];
 
+/**
+ * Who turned a gallery off.
+ *
+ * `merchant` is a deliberate decision and is never undone for them. `plan` is
+ * our own doing — the subscription stopped, so the paid feature stopped — and
+ * is put back when the subscription returns. Null on a disabled gallery means
+ * it predates this distinction and is read as the merchant's decision.
+ */
+export type DisabledReason = 'merchant' | 'plan';
+
 export function isGalleryStyle(value: unknown): value is GalleryStyle {
   return typeof value === 'string' && (GALLERY_STYLES as readonly string[]).includes(value);
 }
@@ -111,6 +121,7 @@ export interface GalleryConfig extends GallerySettings {
   version: number;
   publishedAt: string | null;
   disabledAt: string | null;
+  disabledReason: DisabledReason | null;
 }
 
 // ── Public storefront payload ───────────────────────────────────────────────

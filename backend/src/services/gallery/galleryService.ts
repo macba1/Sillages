@@ -194,9 +194,39 @@ export async function disableGallery(ctx: ShopContext, deps: GalleryDeps = {}): 
   const current = await store.getByConnection(ctx.connectionId);
   if (!current) return null;
 
-  const disabled = await store.setStatus(current.id, 'disabled');
+  // The merchant's own decision, which is never undone on their behalf.
+  const disabled = await store.setStatus(current.id, 'disabled', undefined, 'merchant');
   console.log(`${LOG} ${ctx.shopDomain}: disabled`);
   return disabled;
+}
+
+/**
+ * Puts back a gallery that we — not the merchant — switched off when the plan
+ * stopped.
+ *
+ * Upgrading a plan replaces the subscription: Shopify activates the new charge
+ * and cancels the old one, in whatever order the webhooks happen to arrive.
+ * When the cancellation lands first the shop momentarily has no live plan and
+ * the gallery is switched off; the activation that follows restored the plan
+ * but left the storefront dark. A merchant who had just paid more found their
+ * gallery off, with nothing on screen explaining it.
+ *
+ * So whenever a live plan is observed — by webhook or by the Plan screen asking
+ * Shopify — a gallery disabled for that reason goes back on at the same
+ * version. A gallery the merchant turned off is left alone.
+ */
+export async function resumeGalleryAfterPlanReturn(
+  connectionId: string,
+  deps: Pick<GalleryDeps, 'store'> = {},
+): Promise<boolean> {
+  const store = deps.store ?? supabaseGalleryStore;
+  const config = await store.getByConnection(connectionId);
+  if (!config || config.status !== 'disabled' || config.disabledReason !== 'plan') return false;
+
+  const restored = await store.setStatus(config.id, 'published');
+  if (!restored) return false;
+  console.log(`${LOG} ${connectionId}: plan returned — gallery put back at v${restored.version}`);
+  return true;
 }
 
 /** Restores a previously published version and publishes it as a new version. */

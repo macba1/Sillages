@@ -11,7 +11,8 @@ import {
   readSubscription,
   startSubscription,
 } from '../services/billing/shopifyBilling.js';
-import { supabaseSubscriptionStore } from '../services/billing/entitlements.js';
+import { entitlementsFor, supabaseSubscriptionStore } from '../services/billing/entitlements.js';
+import { resumeGalleryAfterPlanReturn } from '../services/gallery/galleryService.js';
 import { getAvailableSocialGalleryPlans } from '../config/socialGalleryPlans.js';
 
 const router = Router();
@@ -42,7 +43,7 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       // the local mirror is only ever written by a webhook, and a merchant
       // whose approval webhook was missed would keep paying while the product
       // told them they had no plan.
-      await supabaseSubscriptionStore.upsert({
+      const mirrored = {
         connectionId: shop.connectionId,
         accountId: shop.accountId,
         shopifyGid: subscription?.id ?? null,
@@ -51,7 +52,16 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
         isTest: subscription?.test ?? true,
         trialEndsAt: null,
         currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
-      });
+      };
+      await supabaseSubscriptionStore.upsert(mirrored);
+
+      // A gallery we switched off when a plan lapsed goes back on as soon as a
+      // live plan is seen again. Doing it here as well as in the webhook means
+      // a merchant who upgrades and comes straight back finds their storefront
+      // already on, without waiting for a webhook that may have raced.
+      if (entitlementsFor(mirrored).canPublish) {
+        await resumeGalleryAfterPlanReturn(shop.connectionId);
+      }
     } catch {
       // Shopify being unreachable must not blank the screen; say so instead.
       unreachable = true;

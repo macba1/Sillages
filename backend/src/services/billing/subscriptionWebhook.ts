@@ -1,5 +1,6 @@
 import { resolveShopByDomain } from '../catalog/catalogContext.js';
 import { supabaseGalleryStore, type GalleryStore } from '../gallery/galleryStore.js';
+import { resumeGalleryAfterPlanReturn } from '../gallery/galleryService.js';
 import { planIdFromName } from './shopifyBilling.js';
 import {
   entitlementsFor,
@@ -38,7 +39,7 @@ export interface SubscriptionWebhookDeps {
 }
 
 export type SubscriptionWebhookOutcome =
-  | { handled: true; status: SubscriptionStatus; galleryDisabled: boolean }
+  | { handled: true; status: SubscriptionStatus; galleryDisabled: boolean; galleryRestored: boolean }
   | { handled: false; reason: 'unknown_shop' | 'malformed' };
 
 export async function handleSubscriptionUpdate(
@@ -89,7 +90,7 @@ export async function handleSubscriptionUpdate(
 
   if (supersededByUpgrade) {
     console.log(`${LOG} ${shopDomain}: ${status} for a replaced subscription — ignored`);
-    return { handled: true, status, galleryDisabled: false };
+    return { handled: true, status, galleryDisabled: false, galleryRestored: false };
   }
 
   await store.upsert(subscription);
@@ -97,16 +98,24 @@ export async function handleSubscriptionUpdate(
   // The part that matters: if the shop may no longer publish, stop serving.
   const entitlements = entitlementsFor(subscription, now);
   let galleryDisabled = false;
+  let galleryRestored = false;
 
   if (!entitlements.canPublish) {
     const config = await galleryStore.getByConnection(shop.connectionId);
     if (config && config.status === 'published') {
-      await galleryStore.setStatus(config.id, 'disabled');
+      // Marked as ours, not the merchant's, so it can be put back if the plan
+      // returns — which is exactly what an upgrade does.
+      await galleryStore.setStatus(config.id, 'disabled', undefined, 'plan');
       galleryDisabled = true;
       console.log(`${LOG} ${shopDomain}: plan ${status} — gallery disabled`);
     }
+  } else {
+    // The other half of the upgrade race: the cancellation of the old charge
+    // can arrive before the activation of the new one, leaving a paid shop
+    // dark. Seeing a live plan puts our own switch-off back.
+    galleryRestored = await resumeGalleryAfterPlanReturn(shop.connectionId, { store: galleryStore });
   }
 
   console.log(`${LOG} ${shopDomain}: ${status}${subscription.isTest ? ' (test)' : ''}`);
-  return { handled: true, status, galleryDisabled };
+  return { handled: true, status, galleryDisabled, galleryRestored };
 }

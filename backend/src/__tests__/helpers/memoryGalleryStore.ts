@@ -1,6 +1,7 @@
 import type { ShopContext } from '../../services/catalog/catalogStore.js';
 import type { GalleryStore } from '../../services/gallery/galleryStore.js';
 import type {
+  DisabledReason,
   GalleryConfig,
   GallerySettings,
   GalleryStatus,
@@ -111,22 +112,32 @@ export class MemoryGalleryStore implements GalleryStore {
       version: 0,
       publishedAt: null,
       disabledAt: null,
+      disabledReason: null,
       ...settings,
     };
     this.configs.push(created);
     return created;
   }
 
-  async setStatus(configId: string, status: GalleryStatus, version?: number): Promise<GalleryConfig | null> {
+  async setStatus(
+    configId: string,
+    status: GalleryStatus,
+    version?: number,
+    reason: DisabledReason = 'merchant',
+  ): Promise<GalleryConfig | null> {
     const config = this.configs.find((c) => c.id === configId);
     if (!config) return null;
     config.status = status;
     if (status === 'published') {
       config.publishedAt = new Date().toISOString();
       config.disabledAt = null;
+      config.disabledReason = null;
       if (version !== undefined) config.version = version;
     }
-    if (status === 'disabled') config.disabledAt = new Date().toISOString();
+    if (status === 'disabled') {
+      config.disabledAt = new Date().toISOString();
+      config.disabledReason = reason;
+    }
     return config;
   }
 

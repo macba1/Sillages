@@ -20,7 +20,7 @@ vi.mock('../lib/supabase.js', () => ({ supabase: { from: () => { throw new Error
 
 import { entitlementsFor, NO_SUBSCRIPTION, type ShopSubscription } from '../services/billing/entitlements.js';
 import { handleSubscriptionUpdate } from '../services/billing/subscriptionWebhook.js';
-import { composePublicGallery, publishGallery, saveGallery } from '../services/gallery/galleryService.js';
+import { composePublicGallery, disableGallery, publishGallery, saveGallery } from '../services/gallery/galleryService.js';
 import { SOCIAL_GALLERY_WEBHOOK_TOPICS } from '../services/catalog/catalogWebhookSetup.js';
 import { MemoryGalleryStore } from './helpers/memoryGalleryStore.js';
 import { MemorySubscriptionStore } from './helpers/memorySubscriptionStore.js';
@@ -180,8 +180,13 @@ describe('losing the plan takes the feature away', () => {
       { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
     );
 
-    expect(outcome).toEqual({ handled: true, status: 'cancelled', galleryDisabled: true });
-    expect((await store.getByConnection(SHOP.connectionId))?.status).toBe('disabled');
+    expect(outcome).toEqual({
+      handled: true, status: 'cancelled', galleryDisabled: true, galleryRestored: false,
+    });
+    const disabled = await store.getByConnection(SHOP.connectionId);
+    expect(disabled?.status).toBe('disabled');
+    // Ours, not the merchant's: recorded so the plan returning can undo it.
+    expect(disabled?.disabledReason).toBe('plan');
   });
 
   it('keeps the gallery on when an upgrade cancels the previous subscription', async () => {
@@ -209,6 +214,60 @@ describe('losing the plan takes the feature away', () => {
     expect((await store.getByConnection(SHOP.connectionId))?.status).toBe('published');
     expect((await subscriptions.get(SHOP.connectionId))?.planId).toBe('growth');
     expect((await subscriptions.get(SHOP.connectionId))?.status).toBe('active');
+  });
+
+  it('puts the gallery back when the upgrade webhooks arrive in the other order', async () => {
+    // What actually happened on the test store. Shopify replaces a
+    // subscription by activating the new charge and cancelling the old one,
+    // and the two webhooks race. When the CANCELLED lands first it is the
+    // subscription the shop is still on, so the guard above cannot help: the
+    // shop momentarily has no plan and the gallery is switched off. The ACTIVE
+    // that follows restored the plan and left the storefront dark — a merchant
+    // who had just paid more found their gallery off.
+    subscriptions.setLive(SHOP, 'basic'); // gid .../1
+    await saveGallery(SHOP, {}, deps());
+    await publishGallery(SHOP, deps());
+    const version = (await store.getByConnection(SHOP.connectionId))?.version;
+
+    const cancelled = await handleSubscriptionUpdate(
+      SHOP.shopDomain,
+      { app_subscription: { admin_graphql_api_id: 'gid://shopify/AppSubscription/1', name: 'Sillages Basic', status: 'CANCELLED', test: false } },
+      { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
+    );
+    expect(cancelled).toMatchObject({ galleryDisabled: true });
+
+    const activated = await handleSubscriptionUpdate(
+      SHOP.shopDomain,
+      { app_subscription: { admin_graphql_api_id: 'gid://shopify/AppSubscription/2', name: 'Sillages Growth', status: 'ACTIVE', test: false } },
+      { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
+    );
+
+    expect(activated).toMatchObject({ handled: true, galleryRestored: true });
+    const restored = await store.getByConnection(SHOP.connectionId);
+    expect(restored?.status).toBe('published');
+    expect(restored?.disabledReason).toBeNull();
+    // Put back where it was, not republished as something new.
+    expect(restored?.version).toBe(version);
+    expect((await composePublicGallery(SHOP.shopDomain, deps())).active).toBe(true);
+  });
+
+  it('leaves a gallery the merchant turned off alone when a plan arrives', async () => {
+    // The mirror image: turning the gallery off is a decision, and paying for
+    // a plan is not permission to undo it.
+    subscriptions.setLive(SHOP, 'basic');
+    await saveGallery(SHOP, {}, deps());
+    await publishGallery(SHOP, deps());
+    await disableGallery(SHOP, deps());
+    expect((await store.getByConnection(SHOP.connectionId))?.disabledReason).toBe('merchant');
+
+    const outcome = await handleSubscriptionUpdate(
+      SHOP.shopDomain,
+      { app_subscription: { admin_graphql_api_id: 'gid://shopify/AppSubscription/2', name: 'Sillages Growth', status: 'ACTIVE', test: false } },
+      { store: subscriptions, galleryStore: store, resolveShop: async () => RESOLVED },
+    );
+
+    expect(outcome).toMatchObject({ handled: true, galleryRestored: false });
+    expect((await store.getByConnection(SHOP.connectionId))?.status).toBe('disabled');
   });
 
   it('records every status Shopify can send', async () => {
