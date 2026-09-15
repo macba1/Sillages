@@ -57,6 +57,52 @@ beforeEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+describe('every setting reaches a column', () => {
+  it('writes each field of GallerySettings, with nothing quietly missing', async () => {
+    const { settingsToRow } = await import('../services/gallery/galleryStore.js');
+    const { DEFAULT_SETTINGS } = await import('../services/gallery/galleryTypes.js');
+
+    // A setting left out of the write payload does not fail: the row keeps its
+    // old value and the API answers 200 with it. The merchant presses an
+    // option, the screen snaps back, and nothing says why. This shipped once.
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      collectionId: 'c-1',
+      layout: 'feed' as const,
+      style: 'vintage' as const,
+      filterIntensity: 40,
+      frame: 'polaroid' as const,
+      shareTagline: 'Get the look',
+      hideBranding: true,
+      showStories: false,
+      showQuickBuy: false,
+      postsLimit: 12,
+      heading: 'Shop the look',
+    };
+
+    const row = settingsToRow(settings);
+
+    // Nothing is undefined, which is how a missing column looks from here.
+    for (const [column, value] of Object.entries(row)) {
+      expect(value, `${column} is missing from the write payload`).not.toBeUndefined();
+    }
+
+    // And the count matches: one column per setting, so adding a setting
+    // without a column fails here rather than in a merchant's browser.
+    expect(Object.keys(row)).toHaveLength(Object.keys(settings).length);
+
+    expect(row).toMatchObject({
+      layout: 'feed',
+      style: 'vintage',
+      filter_intensity: 40,
+      frame: 'polaroid',
+      share_tagline: 'Get the look',
+      hide_branding: true,
+    });
+  });
+});
+
 describe('B7: publish, disable and revert', () => {
   it('a new shop starts with an unpublished gallery that renders nothing', async () => {
     const gallery = await composePublicGallery(SHOP_A.shopDomain, deps());

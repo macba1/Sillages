@@ -16,6 +16,31 @@ import {
   numericShopifyId,
 } from './galleryTypes.js';
 
+/**
+ * Settings as database columns.
+ *
+ * Exported so a test can assert that every field of `GallerySettings` reaches a
+ * column. The first version of the layouts release shipped without `layout`,
+ * `frame`, `filter_intensity`, `share_tagline` or `hide_branding` in the write
+ * payload: reads were correct, writes were dropped, and the API answered 200
+ * with the unchanged row. Nothing failed loudly enough to notice.
+ */
+export function settingsToRow(settings: GallerySettings): Record<string, unknown> {
+  return {
+    collection_id: settings.collectionId,
+    layout: settings.layout,
+    style: settings.style,
+    filter_intensity: settings.filterIntensity,
+    frame: settings.frame,
+    share_tagline: settings.shareTagline,
+    hide_branding: settings.hideBranding,
+    show_stories: settings.showStories,
+    show_quick_buy: settings.showQuickBuy,
+    posts_limit: settings.postsLimit,
+    heading: settings.heading,
+  };
+}
+
 /** How many products one story carries. A story is a glance, not a catalogue. */
 const STORY_PRODUCTS_LIMIT = 20;
 
@@ -139,15 +164,14 @@ export const supabaseGalleryStore: GalleryStore = {
   async upsertSettings(ctx: ShopContext, settings: GallerySettings): Promise<GalleryConfig> {
     const existing = await this.getByConnection(ctx.connectionId);
 
+    // Every field of GallerySettings, deliberately exhaustive: a column left
+    // out here does not fail, it silently keeps its old value. The merchant
+    // presses an option, the screen snaps back, and nothing anywhere says why.
+    // `settingsToRow` is shared with the test that pins the two together.
     const payload = {
       account_id: ctx.accountId,
       connection_id: ctx.connectionId,
-      collection_id: settings.collectionId,
-      style: settings.style,
-      show_stories: settings.showStories,
-      show_quick_buy: settings.showQuickBuy,
-      posts_limit: settings.postsLimit,
-      heading: settings.heading,
+      ...settingsToRow(settings),
     };
 
     const query = existing
