@@ -94,16 +94,27 @@ function ownerKeyMatches(token: string, provided: string): boolean {
   return timingSafeEqual(expected, given);
 }
 
-/** The shop's own name, for the card. Falls back to the domain. */
-async function lookUpShopName(shopDomain: string): Promise<string> {
+/**
+ * The shop's own name and currency, for the card.
+ *
+ * The currency matters: the card is an image sent to someone who is not
+ * looking at the store, and `1025.00` beside a snowboard could be dollars,
+ * euros or anything else. The name falls back to the domain.
+ */
+async function lookUpShop(shopDomain: string): Promise<{ name: string; currency: string | null }> {
   const { data } = await supabase
     .from('shopify_connections')
-    .select('shop_name')
+    .select('shop_name, shop_currency')
     .eq('shop_domain', shopDomain)
     .maybeSingle();
 
-  const name = (data as { shop_name?: string | null } | null)?.shop_name;
-  return name && name.trim().length > 0 ? name.trim() : shopDomain.replace(/\.myshopify\.com$/i, '');
+  const row = data as { shop_name?: string | null; shop_currency?: string | null } | null;
+  const name = row?.shop_name;
+  const currency = row?.shop_currency;
+  return {
+    name: name && name.trim().length > 0 ? name.trim() : shopDomain.replace(/\.myshopify\.com$/i, ''),
+    currency: currency && currency.trim().length > 0 ? currency.trim().toUpperCase() : null,
+  };
 }
 
 async function lookUpConnectionId(shopDomain: string): Promise<string | null> {
@@ -143,17 +154,19 @@ export async function composeShareCard(
   const post = gallery.posts.find((p) => p.id === productId);
   if (!post) return null;
 
-  const name = await (deps.shopName ?? lookUpShopName)(shopDomain);
+  const shop = deps.shopName
+    ? { name: await deps.shopName(shopDomain), currency: null }
+    : await lookUpShop(shopDomain);
 
   return renderShareCard({
     post,
-    shopName: name,
+    shopName: shop.name,
     productUrl: `https://${shopDomain}${post.url}`,
     tagline: gallery.shareTagline,
     showBranding: gallery.showBranding,
     style: gallery.style,
     intensity: gallery.filterIntensity,
-    priceLabel: priceRange(post),
+    priceLabel: priceRange(post, shop.currency),
   });
 }
 

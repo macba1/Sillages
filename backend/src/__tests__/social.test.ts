@@ -34,6 +34,7 @@ import {
 } from '../services/social/picksService.js';
 import { escapeXml, isAllowedImageUrl, overlaySvg, trimUrl, wrap } from '../services/social/shareCard.js';
 import { ensureShareCardFont } from '../services/social/fonts.js';
+import { priceRange } from '../services/social/priceRange.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { entitlementsFor, type ShopSubscription } from '../services/billing/entitlements.js';
@@ -435,5 +436,23 @@ describe('the card has a font to draw with', () => {
     const dir = /<dir>(.*)<\/dir>/.exec(conf)?.[1] ?? '';
     expect(existsSync(join(dir, 'DejaVuSans.ttf')), `no font in ${dir}`).toBe(true);
     expect(existsSync(join(dir, 'LICENSE')), 'the font ships without its licence').toBe(true);
+  });
+});
+
+// ===========================================================================
+describe('the price on the card says which currency it is', () => {
+  const post = (min: string | null, max: string | null = null) =>
+    ({ priceMin: min, priceMax: max }) as PublicPost;
+
+  it('prints the shop currency beside the number', () => {
+    // The card is an image someone opens away from the store. "1025.00" on its
+    // own could be dollars, euros or yen.
+    expect(priceRange(post('1025.00'), 'USD')).toBe('1025.00 USD');
+    expect(priceRange(post('19.00', '49.00'), 'EUR')).toBe('19.00 – 49.00 EUR');
+  });
+
+  it('prints the digits alone rather than inventing a currency', () => {
+    expect(priceRange(post('1025.00'), null)).toBe('1025.00');
+    expect(priceRange(post(null), 'USD')).toBe('');
   });
 });

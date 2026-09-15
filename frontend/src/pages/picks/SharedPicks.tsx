@@ -5,6 +5,18 @@ import { T, filterFor, frameStyle } from '../../components/gallery/styleTokens';
 import type { GalleryFrame, GalleryStyle, PublicPost } from '../../types/gallery';
 import { useNoIndex } from '../preview/useNoIndex';
 
+/**
+ * The backend, not this page's own origin.
+ *
+ * Written as a relative `/api/...` at first, which on the hosted frontend is
+ * answered by the static site with its own index.html: the JSON parse failed
+ * and every shared link told its visitor it had expired. The rest of the app
+ * goes through the axios client, which has always had the base URL; this page
+ * is plain fetch because it must work with no session at all, so it needs the
+ * same base spelled out.
+ */
+const API = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+
 interface PicksPayload {
   mode: 'list' | 'vote';
   shop: string;
@@ -55,7 +67,7 @@ export default function SharedPicks() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch(`/api/public/picks/${encodeURIComponent(token)}`, {
+      const response = await fetch(`${API}/public/picks/${encodeURIComponent(token)}`, {
         headers: { Accept: 'application/json' },
       });
       if (!response.ok) throw new Error(String(response.status));
@@ -84,7 +96,7 @@ export default function SharedPicks() {
       /* storage refused */
     }
     try {
-      const response = await fetch(`/api/public/picks/${encodeURIComponent(token)}/vote`, {
+      const response = await fetch(`${API}/public/picks/${encodeURIComponent(token)}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId, voterKey }),
