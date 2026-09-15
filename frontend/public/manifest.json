@@ -1,8 +1,8 @@
 {
-  "name": "Sillages — AI Growth for Shopify",
+  "name": "Sillages: Social Gallery",
   "short_name": "Sillages",
-  "description": "AI-powered growth platform for Shopify stores",
-  "start_url": "/dashboard",
+  "description": "Turns a Shopify catalogue into a social, shoppable gallery",
+  "start_url": "/collections",
   "display": "standalone",
   "background_color": "#F5F0E8",
   "theme_color": "#2C2417",
