@@ -72,6 +72,17 @@ export default function Publish() {
           </div>
         </div>
 
+        {/*
+          * Storefronts cache the published gallery for a minute so a shopper
+          * never waits on us. That means a merchant who publishes or turns the
+          * gallery off and looks at their shop straight away still sees what
+          * was there before, and reasonably concludes the button did nothing.
+          * Saying so costs one line and saves that conclusion.
+          */}
+        <p style={{ margin: '12px 0 0', fontSize: 13, color: T.muted }}>
+          Your storefront picks changes up within a minute. A page you already have open needs a refresh.
+        </p>
+
         {nothingToShow && (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: T.danger }}>
             There is nothing to publish yet. Sync your catalogue, or pick a collection that has products.
