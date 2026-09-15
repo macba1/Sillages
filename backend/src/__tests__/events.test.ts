@@ -458,6 +458,58 @@ describe('D1-D3: saving, sharing and the event queue in the browser', () => {
     expect(sent).toHaveLength(2);
   });
 
+  it('sends what is queued on a timer, not only when the batch fills up', async () => {
+    // A shopper who browses, saves and shares but never adds to cart produces
+    // far fewer than maxBatch events. Without the timer those events sat in
+    // memory and "Saved" and "Shared" stayed at zero.
+    const sent: unknown[][] = [];
+    let fire: (() => void) | null = null;
+
+    const queue = (core.createEventQueue as unknown as (o: unknown) => {
+      push: (t: string, f?: unknown) => Promise<void>;
+      flush: () => Promise<void>;
+      size: number;
+    })({
+      send: (events: unknown[]) => { sent.push(events); },
+      maxBatch: 20,
+      flushMs: 5000,
+      schedule: (fn: () => void) => { fire = fn; return 1; },
+      unschedule: () => { fire = null; },
+    });
+
+    await queue.push('save', { productId: 1 });
+    await queue.push('share', { productId: 1 });
+    expect(sent, 'nothing is sent synchronously').toHaveLength(0);
+    expect(fire, 'a flush must be scheduled').not.toBeNull();
+
+    fire!();
+    await Promise.resolve();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toHaveLength(2);
+    expect(queue.size).toBe(0);
+  });
+
+  it('cancels a pending timer when something else flushes first', async () => {
+    const sent: unknown[][] = [];
+    let cancelled = false;
+
+    const queue = (core.createEventQueue as unknown as (o: unknown) => {
+      push: (t: string, f?: unknown) => Promise<void>;
+      flush: () => Promise<void>;
+    })({
+      send: (events: unknown[]) => { sent.push(events); },
+      maxBatch: 20,
+      schedule: () => 7,
+      unschedule: () => { cancelled = true; },
+    });
+
+    await queue.push('save', { productId: 1 });
+    await queue.flush();
+
+    expect(sent).toHaveLength(1);
+    expect(cancelled, 'a flushed queue must not fire its timer as well').toBe(true);
+  });
+
   it('drops a failed send rather than blocking the storefront', async () => {
     const queue = (core.createEventQueue as unknown as (o: unknown) => {
       push: (t: string) => Promise<void>; flush: () => Promise<void>;

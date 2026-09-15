@@ -188,11 +188,27 @@ export function shareLinks(post, origin, hasNativeShare = false) {
  * Batches events and sends them at most every `flushMs`, or as soon as
  * `maxBatch` pile up.
  *
+ * The timer matters more than it looks. Without it the queue only emptied
+ * at `maxBatch` or on an explicit flush, so a shopper who browsed, saved and
+ * shared — but did not add to cart — had every one of those events sitting in
+ * memory, and "Saved" and "Shared" stayed at zero on a gallery people were
+ * actually using.
+ *
  * Measurement must never slow a storefront down, so nothing is sent
  * synchronously and a failed send is dropped rather than retried forever.
+ * `schedule` is injectable so tests do not have to wait on real time.
  */
-export function createEventQueue({ send, now = () => Date.now(), maxBatch = 20, random }) {
+export function createEventQueue({
+  send,
+  now = () => Date.now(),
+  maxBatch = 20,
+  flushMs = 5000,
+  schedule = (fn, ms) => (typeof setTimeout === 'function' ? setTimeout(fn, ms) : null),
+  unschedule = (handle) => { if (handle !== null && typeof clearTimeout === 'function') clearTimeout(handle); },
+  random,
+}) {
   let queue = [];
+  let timer = null;
 
   function push(type, fields = {}) {
     queue.push({
@@ -202,10 +218,15 @@ export function createEventQueue({ send, now = () => Date.now(), maxBatch = 20, 
       ...fields,
     });
     if (queue.length >= maxBatch) return flush();
+    if (timer === null && flushMs > 0) {
+      timer = schedule(() => { timer = null; void flush(); }, flushMs);
+    }
     return Promise.resolve();
   }
 
   function flush() {
+    unschedule(timer);
+    timer = null;
     if (queue.length === 0) return Promise.resolve();
     const batch = queue;
     queue = [];

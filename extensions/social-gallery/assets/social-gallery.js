@@ -414,7 +414,13 @@ async function boot(root) {
     });
     void track.push('gallery_view', { meta: { style: gallery.style } });
     // Anything still queued when the shopper leaves is sent with keepalive.
-    window.addEventListener('pagehide', () => void track.flush(), { once: true });
+    // Not `once`: a page can be hidden and shown again (tab switches, and the
+    // back/forward cache), and each of those is a chance to lose a batch.
+    // `visibilitychange` fires where `pagehide` does not on mobile Safari.
+    window.addEventListener('pagehide', () => void track.flush());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') void track.flush();
+    });
   }
 
   root.classList.add(styleClass(gallery.style));
