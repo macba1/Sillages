@@ -110,10 +110,9 @@ export default function Performance() {
       {data?.measurement && data.measurement.gallery && !data.measurement.checkout && (
         <Card style={{ marginBottom: 20 }}>
           <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
-            <strong>Checkout and purchases are not being measured yet.</strong> Everything below covers what shoppers
-            did inside the gallery. Orders and revenue need the Sillages storefront pixel, which is not switched on
-            for your store — so "Orders credited" and "Revenue credited" will stay at zero until it is. That is a
-            missing measurement, not a sign that nobody bought anything.
+            <strong>These are gallery interactions, not sales.</strong> Sillages reads your products, never your
+            orders, so it cannot tell you which orders the gallery produced. Compare these numbers against your own
+            Shopify reports.
           </p>
         </Card>
       )}

@@ -45,13 +45,16 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       entitlementsForShop(shop),
     ]);
 
-    // The funnel a merchant actually asks about: did looking turn into buying?
+    // What shoppers did inside the gallery. The funnel deliberately stops at
+    // the cart: purchases would need the storefront pixel, which is not
+    // shipped, and a "Purchases 0" row reads as "nobody bought" rather than
+    // "this is not measured".
     const funnel = [
       { step: 'Gallery views', count: totals.galleryViews },
       { step: 'Products opened', count: totals.postOpens },
       { step: 'Variants chosen', count: totals.variantSelects },
       { step: 'Added to cart', count: totals.addToCarts },
-      { step: 'Purchases', count: totals.purchases },
+      ...(entitlements.canUseAttribution ? [{ step: 'Purchases', count: totals.purchases }] : []),
     ];
 
     // Two different things are measured by two different mechanisms, and only
