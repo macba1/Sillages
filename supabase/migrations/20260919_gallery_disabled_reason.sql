@@ -14,16 +14,8 @@
 -- Additive and nullable: existing rows keep behaving exactly as before, and a
 -- null reason on a disabled gallery is read as the merchant's own decision.
 
-alter table public.gallery_configs
-  add column if not exists disabled_reason text;
+alter table public.gallery_configs add column if not exists disabled_reason text;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'gallery_configs_disabled_reason_check'
-  ) then
-    alter table public.gallery_configs
-      add constraint gallery_configs_disabled_reason_check
-      check (disabled_reason is null or disabled_reason in ('merchant', 'plan'));
-  end if;
-end $$;
+alter table public.gallery_configs drop constraint if exists gallery_configs_disabled_reason_check;
+
+alter table public.gallery_configs add constraint gallery_configs_disabled_reason_check check (disabled_reason is null or disabled_reason in ('merchant', 'plan'));
