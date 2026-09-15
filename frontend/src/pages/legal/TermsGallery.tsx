@@ -19,6 +19,16 @@ export default function TermsGallery() {
         <p>
           We do not modify your products, your prices, your inventory or your orders. We only read them.
         </p>
+        <p>
+          The photo treatments and frames change how your photographs are shown, never the files themselves. Your
+          images in Shopify are untouched, and turning a treatment off restores the original exactly. The shareable
+          card is drawn from those same published photographs and is not stored in your store.
+        </p>
+        <p>
+          On Growth, shoppers can turn their saved products into a link and ask friends to pick between them. Those
+          links carry product ids and nothing about any person, expire after ninety days, and are never indexed.
+          Votes are an informal poll, not a verified one, and we present them that way.
+        </p>
       </Section>
 
       <Section title="Plans, trials and billing">

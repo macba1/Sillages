@@ -151,6 +151,14 @@ export interface PublicStory {
   handle: string;
   url: string;
   imageUrl: string | null;
+  /**
+   * Shopify product ids in this collection, in the merchant's own order.
+   *
+   * Carried so the story viewer shows the collection a shopper tapped rather
+   * than the whole catalogue. Bounded, and already public: the same ids are on
+   * the collection page of the storefront.
+   */
+  productIds: number[];
 }
 
 export interface PublicGallery {

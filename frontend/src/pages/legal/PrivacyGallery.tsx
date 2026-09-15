@@ -34,7 +34,10 @@ export default function PrivacyGallery() {
         <p>So you can see whether the gallery is working, we record:</p>
         <ul>
           <li>that a gallery was viewed, and which products were seen, opened and configured</li>
-          <li>saves, shares and adds to cart</li>
+          <li>saves, shares and adds to cart, and which way a share was sent</li>
+          <li>that a story was opened, and whether it was read to the end</li>
+          <li>that a shopper turned their saved products into a shared link, that the link was opened, and that
+              somebody voted on it</li>
           <li>that a checkout started and that an order completed, with its total</li>
         </ul>
         <p>
@@ -55,9 +58,36 @@ export default function PrivacyGallery() {
 
       <Section title="Cookies and local storage">
         <p>
-          We set no cookies. The gallery stores two things in the shopper's own browser: the random session
-          identifier above, and the list of products they saved. Both stay on their device and are readable only by
-          that store's gallery.
+          We set no cookies. The gallery stores three things in the shopper's own browser: the random session
+          identifier above, the list of products they saved, and — if they open a shared link and vote on it — a
+          random voter key. All three stay on their device.
+        </p>
+      </Section>
+
+      <Section title="Shared picks, and asking friends">
+        <p>
+          A shopper can turn the products they saved into a link and send it to someone. That link points at a page
+          holding the product ids they chose, the store they came from, and nothing else. There is no name, no email,
+          no account, no profile, no comments and no messages — there is nowhere in our database to put any of them.
+        </p>
+        <p>
+          When the link is a question — “which one?” — a visitor can tap one product. That tap is stored against a
+          random string their own browser generated, used for nothing except stopping the same browser from voting
+          twice. It is not a fingerprint and is not derived from their device, their network or anything about them.
+          We describe the result as an informal poll because that is exactly what it is.
+        </p>
+        <p>
+          Shared links are reachable only through an unguessable token, are never indexed by search engines, are
+          deleted automatically after ninety days, and can be removed sooner by the device that created them.
+        </p>
+      </Section>
+
+      <Section title="The shareable card">
+        <p>
+          When a shopper shares a product we draw a tall image from the photograph your store already publishes, with
+          the product name, its price, your store's name and the address to buy it. It is generated on our servers
+          from your catalogue, cached briefly, and contains nothing about the shopper. We fetch photographs only from
+          Shopify's own content network and from nowhere else.
         </p>
       </Section>
 

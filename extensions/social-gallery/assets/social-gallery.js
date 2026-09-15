@@ -687,7 +687,15 @@ async function sharePicks(list, asVote) {
       }),
     });
     if (!response.ok) throw new Error(String(response.status));
-    const { url } = await response.json();
+    const { url, token, ownerKey } = await response.json();
+    try {
+      // Kept so this browser — and only this browser — can remove the list it
+      // made. It is derived from the token by the server, never stored there.
+      window.localStorage.setItem(`sillages.picks.${token}`, ownerKey);
+    } catch {
+      // Storage refused. The link still works; it simply cannot be deleted
+      // from this device later.
+    }
 
     void track.push(asVote ? 'picks_vote_created' : 'picks_created', {});
     if (status) status.textContent = '';
@@ -771,12 +779,19 @@ function renderCard(post, gallery, format, open) {
   return h('div', { class: 'sg-card' }, children);
 }
 
-function renderStoryRail(gallery, postsByCollection, posts, format) {
+function renderStoryRail(gallery, posts, format) {
   if (!gallery.showStories || gallery.stories.length === 0) return null;
 
+  const byId = new Map(posts.map((post) => [post.id, post]));
   const rail = h('div', { class: 'sg-stories', role: 'list' });
+
   for (const story of gallery.stories) {
-    const inStory = postsByCollection.get(story.id) || posts;
+    // The collection the shopper tapped, in the merchant's own order. A
+    // collection whose products are not in this gallery — a different
+    // collection was chosen, or they are all out of stock — is skipped rather
+    // than opened onto the whole catalogue.
+    const inStory = (story.productIds || []).map((id) => byId.get(id)).filter(Boolean);
+    if (inStory.length === 0) continue;
     const bubble = h('span', { class: 'sg-story__bubble' }, [
       story.imageUrl
         ? h('img', { class: 'sg-story__img', src: story.imageUrl, alt: '', loading: 'lazy', decoding: 'async' })
@@ -868,10 +883,7 @@ async function boot(root) {
   const heading = gallery.heading || root.dataset.heading;
   if (heading) fragment.appendChild(h('h2', { class: 'sg-heading', text: heading }));
 
-  // Stories show the whole set: the payload does not say which product belongs
-  // to which collection, and inventing a split would be worse than showing all.
-  const postsByCollection = new Map();
-  const rail = renderStoryRail(gallery, postsByCollection, posts, format);
+  const rail = renderStoryRail(gallery, posts, format);
   if (rail) fragment.appendChild(rail);
 
   const open = (post) => {
