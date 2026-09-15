@@ -33,6 +33,9 @@ import {
   type PicksStore,
 } from '../services/social/picksService.js';
 import { escapeXml, isAllowedImageUrl, overlaySvg, trimUrl, wrap } from '../services/social/shareCard.js';
+import { ensureShareCardFont } from '../services/social/fonts.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { entitlementsFor, type ShopSubscription } from '../services/billing/entitlements.js';
 import { castPickVote, createPicks, deletePicks, readPicks } from '../services/social/socialService.js';
 import type { PublicGallery, PublicPost } from '../services/gallery/galleryTypes.js';
@@ -415,5 +418,22 @@ describe('removing a list', () => {
         shopDomainFor: async () => 'demo.myshopify.com',
       }),
     ).toBeNull();
+  });
+});
+
+// ===========================================================================
+describe('the card has a font to draw with', () => {
+  it('ships the font rather than assuming the machine has one', () => {
+    // A plain Node container has no fonts at all. Without this the card drew
+    // every character as an empty box — in production only, because the
+    // developer's machine has fonts of its own and looked fine.
+    const family = ensureShareCardFont();
+    expect(family).toBe('DejaVu Sans');
+    expect(process.env.FONTCONFIG_FILE, 'fontconfig was never pointed at it').toBeTruthy();
+
+    const conf = readFileSync(process.env.FONTCONFIG_FILE!, 'utf8');
+    const dir = /<dir>(.*)<\/dir>/.exec(conf)?.[1] ?? '';
+    expect(existsSync(join(dir, 'DejaVuSans.ttf')), `no font in ${dir}`).toBe(true);
+    expect(existsSync(join(dir, 'LICENSE')), 'the font ships without its licence').toBe(true);
   });
 });

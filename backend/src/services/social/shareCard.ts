@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import type { PublicPost } from '../gallery/galleryTypes.js';
+import { ensureShareCardFont } from './fonts.js';
 
 /**
  * Draws the vertical card a shopper sends a friend.
@@ -181,7 +182,9 @@ export function overlaySvg(input: ShareCardInput): string {
   // shorthand from a <style> block. Declaring it that way produced a card
   // where every line was drawn at the default size — legible on a desktop
   // preview and unreadable on the phone the card is actually made for.
-  const FONT = 'DejaVu Sans, Helvetica, Arial, sans-serif';
+  // The family fontconfig was pointed at, with the usual names after it so a
+  // machine that does have system fonts still draws something sensible.
+  const FONT = `${ensureShareCardFont() ?? 'sans-serif'}, Helvetica, Arial, sans-serif`;
   const text = (
     x: number,
     y: number,
@@ -241,6 +244,11 @@ export async function renderShareCard(
 ): Promise<Buffer | null> {
   const source = input.post.image?.url;
   if (!source) return null;
+
+  // Before anything is drawn: fontconfig reads its configuration once, the
+  // first time a font is asked for. Without this the card renders with every
+  // character as an empty box, which is worse than no card at all.
+  if (!ensureShareCardFont()) return null;
 
   const photo = await loadPhoto(source, deps.fetchImpl ?? fetch);
   if (!photo) return null;
