@@ -315,3 +315,34 @@ would have silently dropped every picks visit and friend vote.
 Raised once, deliberately, to 76 KB uncompressed across the three storefront
 files — roughly 19 KB over the wire for a deferred module that never blocks
 first paint.
+
+## What the first real Growth run found
+
+The store was moved to Growth to prove the plan actually buys something. Every
+defect below was found by using the product in production rather than by
+reading the code, and each one had passed a full local test suite.
+
+| What broke | Why nothing caught it | Fix |
+|---|---|---|
+| The gallery went dark seconds after upgrading | Shopify replaces a subscription by activating the new charge and cancelling the old one; when the cancellation lands first the shop briefly has no plan | `disabled_reason`: a gallery we switched off goes back on when a live plan is seen, one the merchant switched off stays off |
+| Soft, Vintage and Flash could not be saved | the check constraint on `style` still listed the three original treatments; the API answered 500 and the admin's radio snapped back with no message | `20260920`, plus a test that reads the migrations and fails when a value the code can produce is missing from its column |
+| Every character on the share card was an empty box | a plain Node container has no fonts; macOS supplies them, so it looked right locally | the font ships with the app and fontconfig is pointed at it at startup |
+| The shared link told every visitor it had expired | the page asked its own origin for `/api/...` and got the static site's index.html | the same base URL the rest of the app uses, pinned by a test |
+| Performance read zero for everything new | six event types were refused by a stale check constraint, and the write swallowed the error in silence | `20260921`, the same drift test, and the write now says what was refused |
+| The price on a shared card read `1025.00` | the currency was promised in a comment and never added | the shop's own currency code, which was already recorded at connection time |
+| Two products to choose between arrived as two black squares | a square `cover` crop of a tall product photograph shows only its middle | 4:5 and the whole photograph, on the picks page only |
+
+Five of the seven are the same mistake: something the code could produce that
+the database would not accept, failing quietly. The drift test in
+`migration-constraints.test.ts` exists to make that class loud.
+
+### Further migrations applied to production
+
+| File | What it does |
+|---|---|
+| `20260919_gallery_disabled_reason.sql` | records who turned a gallery off, so a plan coming back can undo our own switch |
+| `20260920_gallery_style_check_six_treatments.sql` | widens `style` to the six treatments the product offers |
+| `20260921_gallery_events_v2_types.sql` | widens `event_type` to the sixteen events the product emits |
+
+All three widen or add. None rejects a row that was already stored, so rolling
+the code back does not strand the data.
