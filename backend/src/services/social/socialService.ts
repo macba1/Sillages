@@ -27,6 +27,50 @@ const LOG = '[social]';
 export interface SocialDeps {
   picks?: PicksStore;
   gallery?: typeof composePublicGallery;
+  /** Shop lookups, injected so the logic can be tested without a database. */
+  connectionIdFor?: (shopDomain: string) => Promise<string | null>;
+  shopDomainFor?: (connectionId: string) => Promise<string | null>;
+  shopName?: (shopDomain: string) => Promise<string>;
+  /** Injected in tests; defaults to writing straight to gallery_events. */
+  record?: (event: SocialEvent) => Promise<void>;
+}
+
+export interface SocialEvent {
+  connectionId: string;
+  type: 'picks_visit' | 'friend_vote';
+  productId: number | null;
+  /**
+   * The list, not the person.
+   *
+   * Sessions are counted distinctly on the Performance screen, and a visitor
+   * to a shared list has no storefront session. Keying these to the list keeps
+   * the count meaningful — "this link was opened" — without inventing an
+   * identifier for somebody who never visited the shop.
+   */
+  sessionId: string;
+}
+
+/**
+ * Writes one event from our own pages.
+ *
+ * Storefront events arrive through the signed ingest endpoint. These two do
+ * not: they happen on a Sillages page, where there is no storefront token, so
+ * they are written here after the work they describe actually succeeded.
+ */
+async function writeEvent(event: SocialEvent): Promise<void> {
+  try {
+    await supabase.from('gallery_events').insert({
+      connection_id: event.connectionId,
+      session_id: event.sessionId,
+      event_type: event.type,
+      product_id: event.productId,
+      source: 'gallery',
+      occurred_at: new Date().toISOString(),
+      client_event_id: `${event.type}:${event.sessionId}:${Date.now()}`,
+    });
+  } catch {
+    // Measurement never blocks the thing being measured.
+  }
 }
 
 type Failure = { ok: false; status: 400 | 403 | 404 | 429; reason: string };
@@ -51,7 +95,7 @@ function ownerKeyMatches(token: string, provided: string): boolean {
 }
 
 /** The shop's own name, for the card. Falls back to the domain. */
-async function shopName(shopDomain: string): Promise<string> {
+async function lookUpShopName(shopDomain: string): Promise<string> {
   const { data } = await supabase
     .from('shopify_connections')
     .select('shop_name')
@@ -62,13 +106,22 @@ async function shopName(shopDomain: string): Promise<string> {
   return name && name.trim().length > 0 ? name.trim() : shopDomain.replace(/\.myshopify\.com$/i, '');
 }
 
-async function connectionIdFor(shopDomain: string): Promise<string | null> {
+async function lookUpConnectionId(shopDomain: string): Promise<string | null> {
   const { data } = await supabase
     .from('shopify_connections')
     .select('id')
     .eq('shop_domain', shopDomain)
     .maybeSingle();
   return (data as { id?: string } | null)?.id ?? null;
+}
+
+async function lookUpShopDomain(connectionId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('shopify_connections')
+    .select('shop_domain')
+    .eq('id', connectionId)
+    .maybeSingle();
+  return (data as { shop_domain?: string } | null)?.shop_domain ?? null;
 }
 
 // ── The shareable card ──────────────────────────────────────────
@@ -90,7 +143,7 @@ export async function composeShareCard(
   const post = gallery.posts.find((p) => p.id === productId);
   if (!post) return null;
 
-  const name = await shopName(shopDomain);
+  const name = await (deps.shopName ?? lookUpShopName)(shopDomain);
 
   return renderShareCard({
     post,
@@ -140,7 +193,7 @@ export async function createPicks(
     return { ok: false, status: 400, reason: 'invalid_picks' };
   }
 
-  const connectionId = await connectionIdFor(shopDomain);
+  const connectionId = await (deps.connectionIdFor ?? lookUpConnectionId)(shopDomain);
   if (!connectionId) return { ok: false, status: 404, reason: 'not_found' };
 
   const token = newPicksToken();
@@ -183,13 +236,7 @@ export async function readPicks(token: string, deps: SocialDeps = {}): Promise<P
   const record = await store.getByToken(token);
   if (!record) return null;
 
-  const { data } = await supabase
-    .from('shopify_connections')
-    .select('shop_domain')
-    .eq('id', record.connectionId)
-    .maybeSingle();
-
-  const shopDomain = (data as { shop_domain?: string } | null)?.shop_domain;
+  const shopDomain = await (deps.shopDomainFor ?? lookUpShopDomain)(record.connectionId);
   if (!shopDomain) return null;
 
   const gallery: PublicGallery = await (deps.gallery ?? composePublicGallery)(shopDomain);
@@ -200,6 +247,13 @@ export async function readPicks(token: string, deps: SocialDeps = {}): Promise<P
   const byId = new Map(gallery.posts.map((post) => [post.id, post]));
   const products = record.productIds.map((id) => byId.get(id)).filter((p): p is PublicPost => Boolean(p));
   if (products.length === 0) return null;
+
+  await (deps.record ?? writeEvent)({
+    connectionId: record.connectionId,
+    type: 'picks_visit',
+    productId: null,
+    sessionId: `picks:${token}`,
+  });
 
   return {
     mode: record.mode,
@@ -238,8 +292,18 @@ export async function castPickVote(
   }
 
   const store = deps.picks ?? supabasePicksStore;
+  const list = await store.getByToken(token);
   const ok = await store.castVote(token, productId, voterKey);
   if (!ok) return { ok: false, status: 404, reason: 'not_found' };
+
+  if (list) {
+    await (deps.record ?? writeEvent)({
+      connectionId: list.connectionId,
+      type: 'friend_vote',
+      productId,
+      sessionId: `picks:${token}`,
+    });
+  }
 
   return { ok: true, value: { votes: await store.tally(token) } };
 }

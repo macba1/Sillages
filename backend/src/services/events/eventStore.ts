@@ -41,6 +41,15 @@ export interface PerformanceTotals {
   shares: number;
   addToCarts: number;
   purchases: number;
+  /** Stories opened, and read all the way to the end. */
+  storyOpens: number;
+  storyCompletions: number;
+  /** Lists a shopper made from their saved products, and visits to them. */
+  picksCreated: number;
+  picksVisits: number;
+  friendVotes: number;
+  /** Where the shares went. Never who sent them. */
+  shareChannels: { link: number; whatsapp: number; native: number; other: number };
   attributedOrders: number;
   attributedRevenue: number;
   currency: string | null;
@@ -53,6 +62,8 @@ export interface TopProduct {
   productId: number;
   opens: number;
   addToCarts: number;
+  saves: number;
+  shares: number;
 }
 
 export interface EventStore {
@@ -103,9 +114,21 @@ async function approximateTotals(connectionId: string, since: string): Promise<P
 
   const counts = new Map<string, number>();
   const sessions = new Set<string>();
+  const channels = { link: 0, whatsapp: 0, native: 0, other: 0 };
+  let completions = 0;
+
   for (const row of events ?? []) {
-    counts.set(row.event_type as string, (counts.get(row.event_type as string) ?? 0) + 1);
+    const type = row.event_type as string;
+    counts.set(type, (counts.get(type) ?? 0) + 1);
     sessions.add(row.session_id as string);
+
+    const meta = (row as { meta?: Record<string, unknown> }).meta ?? {};
+    if (type === 'share') {
+      const channel = String(meta.channel ?? 'other');
+      if (channel === 'link' || channel === 'whatsapp' || channel === 'native') channels[channel] += 1;
+      else channels.other += 1;
+    }
+    if (type === 'story_close' && meta.completed === true) completions += 1;
   }
 
   const { data: attribution } = await supabase
@@ -123,6 +146,12 @@ async function approximateTotals(connectionId: string, since: string): Promise<P
     shares: counts.get('share') ?? 0,
     addToCarts: counts.get('add_to_cart') ?? 0,
     purchases: counts.get('purchase') ?? 0,
+    storyOpens: counts.get('story_open') ?? 0,
+    storyCompletions: completions,
+    picksCreated: (counts.get('picks_created') ?? 0) + (counts.get('picks_vote_created') ?? 0),
+    picksVisits: counts.get('picks_visit') ?? 0,
+    friendVotes: counts.get('friend_vote') ?? 0,
+    shareChannels: channels,
     attributedOrders: attribution?.length ?? 0,
     attributedRevenue: Number((attribution ?? []).reduce((sum, r) => sum + Number(r.amount ?? 0), 0).toFixed(2)),
     currency: ((attribution ?? [])[0]?.currency as string | null) ?? null,
@@ -255,6 +284,19 @@ export const supabaseEventStore: EventStore = {
       addToCarts: Number(e.add_to_carts ?? 0),
       purchases: Number(e.purchases ?? 0),
       sessions: Number(e.sessions ?? 0),
+      // Zero rather than absent when the aggregate predates these columns: a
+      // migration that has not run yet must not blank the whole screen.
+      storyOpens: Number(e.story_opens ?? 0),
+      storyCompletions: Number(e.story_completions ?? 0),
+      picksCreated: Number(e.picks_created ?? 0),
+      picksVisits: Number(e.picks_visits ?? 0),
+      friendVotes: Number(e.friend_votes ?? 0),
+      shareChannels: {
+        link: Number(e.shares_link ?? 0),
+        whatsapp: Number(e.shares_whatsapp ?? 0),
+        native: Number(e.shares_native ?? 0),
+        other: Number(e.shares_other ?? 0),
+      },
       attributedOrders: Number(a.attributed_orders ?? 0),
       attributedRevenue: Number(Number(a.attributed_revenue ?? 0).toFixed(2)),
       currency: (a.currency as string | null) ?? null,
@@ -274,6 +316,8 @@ export const supabaseEventStore: EventStore = {
       productId: Number(row.product_id),
       opens: Number(row.opens),
       addToCarts: Number(row.add_to_carts),
+      saves: Number(row.saves ?? 0),
+      shares: Number(row.shares ?? 0),
     }));
   },
 

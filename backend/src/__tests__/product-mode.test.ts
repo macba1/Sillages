@@ -360,7 +360,15 @@ describe('Test 6: new product plan configuration', () => {
     // These were sold on Growth and none of them exist. `multiple_galleries` is
     // contradicted outright by the one-gallery-per-shop unique index, and
     // revenue attribution needs read_orders, which the app does not request.
-    const UNBUILT = ['revenue_attribution', 'automatic_reordering', 'design_experiments', 'higher_volume'];
+    const UNBUILT = [
+      'revenue_attribution',
+      'automatic_reordering',
+      'design_experiments',
+      'higher_volume',
+      // Contradicted by gallery_configs_one_per_connection_idx: one gallery
+      // per shop is enforced by a unique index, so no plan may promise more.
+      'multiple_galleries',
+    ];
 
     for (const plan of getAvailableSocialGalleryPlans()) {
       for (const feature of plan.features) {

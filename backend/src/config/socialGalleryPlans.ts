@@ -60,16 +60,18 @@ export const SOCIAL_GALLERY_PLANS: Readonly<Record<SocialGalleryPlanId, SocialGa
     ],
   },
   growth: {
-    // Growth is NOT on sale. It previously advertised multiple galleries,
-    // revenue attribution, automatic reordering and design experiments; none of
-    // those exist. `multiple_galleries` is actively contradicted by the
-    // `gallery_configs_one_per_connection_idx` unique index, which enforces one
-    // gallery per shop.
+    // Every feature listed here exists and is enforced server-side in
+    // `entitlementsFor`, not by hiding a button:
     //
-    // A plan that charges for features the product does not have is a plan a
-    // merchant pays for and receives nothing from, so it stays `coming_soon`
-    // until the difference is built and tested. Only what is genuinely planned
-    // is listed, and none of it is billable while this is `coming_soon`.
+    //   all_looks       three more treatments and three more frames
+    //   shared_lists    "Share my picks" turns saved products into a link
+    //   friend_votes    the same link, as a question friends answer
+    //   unbranded_card  the shareable card without the Sillages mark
+    //
+    // Deliberately absent: multiple galleries. It was advertised here once and
+    // is contradicted outright by `gallery_configs_one_per_connection_idx`,
+    // which enforces one gallery per shop. A plan may not name something the
+    // database forbids.
     id: 'growth',
     name: 'Growth',
     priceUsd: 19.99,
@@ -78,8 +80,10 @@ export const SOCIAL_GALLERY_PLANS: Readonly<Record<SocialGalleryPlanId, SocialGa
     status: 'coming_soon',
     trialDays: 14,
     features: [
-      'multiple_galleries',
-      'higher_limits',
+      'all_looks',
+      'shared_lists',
+      'friend_votes',
+      'unbranded_card',
     ],
   },
   pro: {

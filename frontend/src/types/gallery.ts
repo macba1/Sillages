@@ -153,6 +153,12 @@ export interface PerformanceTotals {
   shares: number;
   addToCarts: number;
   purchases: number;
+  storyOpens: number;
+  storyCompletions: number;
+  picksCreated: number;
+  picksVisits: number;
+  friendVotes: number;
+  shareChannels: { link: number; whatsapp: number; native: number; other: number };
   attributedOrders: number;
   attributedRevenue: number;
   currency: string | null;
@@ -171,7 +177,7 @@ export interface PerformanceResponse {
   approximate?: boolean;
   totals: PerformanceTotals;
   funnel: { step: string; count: number }[];
-  topProducts: { productId: number; opens: number; addToCarts: number }[];
+  topProducts: { productId: number; opens: number; addToCarts: number; saves: number; shares: number }[];
 }
 
 // ── Entitlements (what this shop's plan allows) ─────────────────────────────
