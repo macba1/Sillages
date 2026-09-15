@@ -247,3 +247,71 @@ of the app configuration and removing it would need `--allow-deletes`, but it
 is never activated: that needs `write_pixels`, which the app does not request.
 The store's own app page shows **Extensions: 1 active**.
 
+## Social gallery v2 — 15 September 2026
+
+The gallery stopped being a product grid with a heart on it.
+
+### What a merchant chooses now
+
+Three independent decisions, each previewed on their own photographs:
+
+| | Options |
+|---|---|
+| Arrangement | Social Grid, Polaroid Wall, Social Feed, Story Gallery |
+| Treatment | Original, Warm, Film, Soft, Vintage, Flash — with a strength slider |
+| Border | None, Clean, Polaroid, Film print, Social card |
+
+Treatments are presentation only. Every value is written against `--sg-k`, the
+merchant's strength as a 0–1 multiplier, so the slider dials the whole
+treatment down to the untouched photograph at zero. The files in Shopify are
+never modified, which is what makes "turn it off" mean exactly that.
+
+### What a shopper can do
+
+- Open a **story** full screen: progress bars, tap halves to move, swipe down
+  to leave, arrows and Escape on a keyboard. It pauses whenever they are doing
+  something — reading a variant, or on another tab.
+- **Save** anything, with an undo instead of a dialog, and find it again in a
+  panel that only appears once something is saved.
+- **Share** a product as a 1080×1920 card drawn from the shop's own photograph,
+  through the device's share sheet, WhatsApp, a copied link, or by saving the
+  card.
+- On Growth: turn saved products into a **shared link**, or into a **question**
+  friends answer with one tap.
+
+### What is enforced on the server
+
+`entitlementsFor` decides `allowedStyles`, `allowedFrames`, `canRemoveBranding`,
+`canUseSharedLists` and `canUseFriendVotes` from the subscription. The storefront
+is told the answer so it can hide what it cannot offer; `composePublicGallery`
+coerces a treatment or frame the plan does not include back to the default, and
+`createPicks` refuses a Basic shop that calls the endpoint directly. An
+unrecognised plan is treated as Basic, never as more.
+
+### Privacy
+
+There is nowhere in `gallery_picks` or `gallery_pick_votes` to put a person: no
+name, no email, no account, no comments, no messages, no profile. A vote is
+keyed to a random string the voter's own browser generated, used only to stop
+that browser voting twice. Lists expire after ninety days, are never indexed,
+and the device that made one can delete it with a key derived from the token.
+
+### Migrations applied to production
+
+| File | What it does |
+|---|---|
+| `20260916_gallery_layouts_filters_frames.sql` | five additive columns, each defaulting to what a gallery already looked like |
+| `20260917_shared_picks_and_votes.sql` | two new tables, RLS service-role only, plus `purge_expired_picks()` |
+| `20260918_social_metrics.sql` | rebuilds both aggregates with the social counters |
+
+The third failed on its first run — it selected `product_id`, which is the
+function's own OUT parameter rather than a column — and rolled back cleanly:
+both aggregates were still the old shape afterwards and no data was touched.
+The same wrong column names were in the server-side event writer, where they
+would have silently dropped every picks visit and friend vote.
+
+### Asset budget
+
+Raised once, deliberately, to 76 KB uncompressed across the three storefront
+files — roughly 19 KB over the wire for a deferred module that never blocks
+first paint.

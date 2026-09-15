@@ -148,7 +148,7 @@ frontend `/plan` screen.
 | Plan | Price | Status |
 |---|---|---|
 | Basic | $9.99 / month | available |
-| Growth | $19.99 / month | coming soon — shown, not subscribable |
+| Growth | $19.99 / month | coming soon — all treatments and frames, shared picks, friend votes, unbranded share card |
 | Pro | $49.99 / month | coming soon — shown, not subscribable |
 
 Billing provider is `shopify_billing`. Stripe is not part of the
