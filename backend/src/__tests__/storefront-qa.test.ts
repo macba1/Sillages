@@ -92,13 +92,14 @@ describe('what the shopper sees while it loads, and what the theme cannot break'
 });
 
 describe('a keyboard can be used, and heard', () => {
-  it('draws its own focus ring, because the theme clears the browser one', () => {
-    // Measured on a real storefront: outline-style computed to `none` on every
-    // control in the gallery. Themes ship a blanket `*:focus { outline: 0 }`
-    // and, inside their document, that rule wins.
+  it('draws its own focus ring, which is the only visible one in the viewer', () => {
+    // Measured on a real storefront with the tab focused: the theme's ring is
+    // rgba(0,0,0,0.5), which is invisible on the viewer's #0b0a0c. In the grid
+    // the theme's ring was already fine — carrying our own is insurance
+    // against the many themes that clear it outright.
     expect(css).toContain(':focus-visible');
     expect(css).toMatch(/\[data-sillages-gallery\] :focus-visible[\s\S]{0,200}outline: 2px solid/);
-    // The viewer is near-black, so the same ring would disappear into it.
+    // The measured case: a white ring, because a dark one vanishes there.
     expect(css).toMatch(/\.sg-viewer :focus-visible\s*\{[^}]*outline-color: #fff/);
   });
 

@@ -893,12 +893,17 @@ html.sg-locked { overflow: hidden; }
 
 /* ── Keyboard focus ─────────────────────────────────────────── */
 /*
- * Themes routinely clear the focus ring with a blanket `*:focus { outline: 0 }`,
- * and because the gallery lives inside the theme's document that rule won the
- * cascade: a keyboard user could move through the whole gallery without ever
- * seeing where they were. Declared here so the ring is ours, not the theme's.
+ * The ring is ours rather than the theme's, for one measured reason and one
+ * precautionary one.
  *
- * Two rings, so it reads on a pale photograph and on a near-black frame alike.
+ * Measured: inside the story viewer the theme's own ring is rgba(0,0,0,0.5) on
+ * a #0b0a0c background — black on black, invisible. The white ring below is the
+ * only thing a keyboard user has to go on there.
+ *
+ * Precautionary: on the theme this was tested against the ring was already
+ * visible in the grid. Plenty of themes clear it with a blanket
+ * `*:focus { outline: 0 }`, and inside their document that rule would win, so
+ * the gallery carries its own rather than depending on the shop's taste.
  */
 [data-sillages-gallery] :focus-visible,
 .sg-sheet :focus-visible,
