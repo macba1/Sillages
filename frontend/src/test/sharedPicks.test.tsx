@@ -70,4 +70,20 @@ describe('a shared list opens for the friend it was sent to', () => {
 
     await waitFor(() => expect(screen.getByText(/expired/i)).toBeTruthy());
   });
+
+  it('puts an opaque ground behind a product that has not painted yet', async () => {
+    // The film frame is near-black. A translucent tint over it resolved to
+    // black, so the page a friend opens was two black rectangles until the
+    // photographs arrived — and the letterboxing stayed dark afterwards.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(PAYLOAD), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    await renderAt('abc123');
+
+    const image = await screen.findByAltText('A snowboard');
+    const box = image.parentElement as HTMLElement;
+    expect(box.style.background).toBe('rgb(255, 253, 250)');
+  });
 });

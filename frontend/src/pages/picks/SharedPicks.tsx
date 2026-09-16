@@ -174,7 +174,11 @@ export default function SharedPicks() {
                       aspectRatio: '4 / 5',
                       borderRadius: Math.max(2, frame.borderRadius - 2),
                       overflow: 'hidden',
-                      background: 'rgba(42,31,20,0.06)',
+                      // Opaque, not a tint. A translucent ground over the film
+                      // frame resolved to the frame's own near-black, so a
+                      // product that had not painted yet was a black hole and
+                      // one that had floated in a dark box.
+                      background: T.surface,
                     }}
                   >
                     {post.image?.url && (
