@@ -90,3 +90,28 @@ describe('what the shopper sees while it loads, and what the theme cannot break'
     expect(js).toContain("story.imageUrl || inStory.find((post) => post.image?.url)?.image?.url");
   });
 });
+
+describe('a keyboard can be used, and heard', () => {
+  it('draws its own focus ring, because the theme clears the browser one', () => {
+    // Measured on a real storefront: outline-style computed to `none` on every
+    // control in the gallery. Themes ship a blanket `*:focus { outline: 0 }`
+    // and, inside their document, that rule wins.
+    expect(css).toContain(':focus-visible');
+    expect(css).toMatch(/\[data-sillages-gallery\] :focus-visible[\s\S]{0,200}outline: 2px solid/);
+    // The viewer is near-black, so the same ring would disappear into it.
+    expect(css).toMatch(/\.sg-viewer :focus-visible\s*\{[^}]*outline-color: #fff/);
+  });
+
+  it('leaves the story bubble a button', () => {
+    // role="listitem" sat on the button itself, which replaces the button role:
+    // a screen reader announced "list item" and nothing pressable.
+    expect(js).not.toMatch(/class: 'sg-story', type: 'button', role: 'listitem'/);
+    expect(js).toContain("h('span', { class: 'sg-stories__item', role: 'listitem' }, [button])");
+  });
+
+  it('moves focus into an overlay and hands it back', () => {
+    // Opening a full-screen story used to leave focus on the page behind it.
+    expect(js).toContain("viewer.querySelector('.sg-viewer__close')?.focus()");
+    expect(js).toMatch(/if \(returnFocusTo && returnFocusTo\.isConnected\) returnFocusTo\.focus\(\);/);
+  });
+});

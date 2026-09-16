@@ -205,14 +205,19 @@ describe('F5: the storefront stays within a mobile budget', () => {
    * storefront found: a link that stays on screen after it is made, a card
    * that downloads as a file instead of navigating away, a clipboard refusal
    * that no longer blocks the page with window.prompt, and a story bubble
-   * that falls back to its first product. Measured at ~21 KB gzipped for all
+   * that falls back to its first product.
+   *
+   * Raised a third time, by 1 KB of CSS, for a focus ring of our own. Themes
+   * clear the ring with a blanket `*:focus { outline: 0 }`, and inside their
+   * document that rule won: a keyboard user could cross the whole gallery
+   * without ever seeing where they were. Measured at ~21 KB gzipped for all
    * three files, on a module that is deferred and never blocks first paint.
    * Anything that pushes past these again should be another decision.
    */
   const BUDGETS: Record<string, number> = {
     'social-gallery.js': 40 * 1024,
     'gallery-core.js': 13 * 1024,
-    'social-gallery.css': 27 * 1024,
+    'social-gallery.css': 29 * 1024,
   };
 
   it('keeps every shipped asset under its budget', () => {
@@ -223,7 +228,7 @@ describe('F5: the storefront stays within a mobile budget', () => {
       expect(size, `${file} is ${size} bytes, budget ${budget}`).toBeLessThanOrEqual(budget);
     }
     // Everything a storefront downloads for the gallery, uncompressed.
-    expect(total).toBeLessThanOrEqual(80 * 1024);
+    expect(total).toBeLessThanOrEqual(82 * 1024);
   });
 
   it('loads without blocking the page and lazy-loads every image', () => {
@@ -274,14 +279,17 @@ describe('F5: the storefront stays within a mobile budget', () => {
     // judged as if they were.
     const isKeyframeStep = (value: string) => /^(from|to|\d+%(\s*,\s*\d+%)*)$/.test(value);
 
-    const selectors = css
+    // Comments are stripped first: one of them contains a comma, and the
+    // naive split below would otherwise read half a sentence as a selector.
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    const selectors = withoutComments
       .split('}')
       .map((block) => block.split('{')[0].trim())
       .filter(
         (selector) =>
           selector &&
           !selector.startsWith('@') &&
-          !selector.startsWith('/*') &&
           !isKeyframeStep(selector),
       );
 

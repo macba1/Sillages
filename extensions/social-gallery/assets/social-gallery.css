@@ -175,6 +175,11 @@
   -webkit-overflow-scrolling: touch;
 }
 .sg-stories::-webkit-scrollbar { display: none; }
+/*
+ * The list item is a wrapper now, so that the button inside can stay a button.
+ * It carries the flex sizing the button used to carry.
+ */
+.sg-stories__item { flex: 0 0 auto; display: block; }
 
 .sg-story {
   flex: 0 0 auto;
@@ -884,6 +889,29 @@ html.sg-locked { overflow: hidden; }
   .sg-grid { grid-template-columns: repeat(4, 1fr); }
   .sg-layout--polaroid .sg-grid { columns: 4; }
   .sg-layout--feed .sg-grid { max-width: 620px; }
+}
+
+/* ── Keyboard focus ─────────────────────────────────────────── */
+/*
+ * Themes routinely clear the focus ring with a blanket `*:focus { outline: 0 }`,
+ * and because the gallery lives inside the theme's document that rule won the
+ * cascade: a keyboard user could move through the whole gallery without ever
+ * seeing where they were. Declared here so the ring is ours, not the theme's.
+ *
+ * Two rings, so it reads on a pale photograph and on a near-black frame alike.
+ */
+[data-sillages-gallery] :focus-visible,
+.sg-sheet :focus-visible,
+.sg-viewer :focus-visible,
+.sg-toast :focus-visible {
+  outline: 2px solid CanvasText;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px Canvas;
+  border-radius: 6px;
+}
+.sg-viewer :focus-visible {
+  outline-color: #fff;
+  box-shadow: 0 0 0 4px rgb(0 0 0 / 70%);
 }
 
 /* ── Reduced motion ─────────────────────────────────────────── */

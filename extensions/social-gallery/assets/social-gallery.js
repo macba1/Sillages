@@ -324,6 +324,8 @@ async function downloadCard(url, filename) {
 // ── Quick buy ───────────────────────────────────────────────────
 
 let sheet = null;
+/** Where focus goes when an overlay closes: the control that opened it. */
+let returnFocusTo = null;
 
 function closeSheet() {
   if (!sheet) return;
@@ -331,6 +333,8 @@ function closeSheet() {
   sheet = null;
   document.documentElement.classList.remove('sg-locked');
   document.removeEventListener('keydown', onSheetKey);
+  if (returnFocusTo && returnFocusTo.isConnected) returnFocusTo.focus();
+  returnFocusTo = null;
 }
 
 function onSheetKey(event) {
@@ -446,8 +450,10 @@ function openSheet(post, gallery, format, context) {
 
   document.addEventListener('keydown', onSheetKey);
   document.documentElement.classList.add('sg-locked');
+  const opener = document.activeElement;
   document.body.appendChild(sheet);
   sheet.querySelector('.sg-sheet__close')?.focus();
+  returnFocusTo = opener instanceof HTMLElement && opener.isConnected ? opener : null;
 }
 
 async function addToCart(variant, button, post) {
@@ -652,6 +658,9 @@ function openViewer(story, posts, gallery, format) {
     document.removeEventListener('visibilitychange', onVisibility);
     viewer.remove();
     document.documentElement.classList.remove('sg-locked');
+    // Back where they were, not at the top of the document.
+    if (returnFocusTo && returnFocusTo.isConnected) returnFocusTo.focus();
+    returnFocusTo = null;
     void track.push('story_close', {
       meta: { position: index, completed: completed || index >= posts.length - 1 },
     });
@@ -678,6 +687,11 @@ function openViewer(story, posts, gallery, format) {
   document.addEventListener('visibilitychange', onVisibility);
   document.documentElement.classList.add('sg-locked');
   document.body.appendChild(viewer);
+  // Without this a keyboard user opening a story is still focused on the page
+  // behind a full-screen overlay: Escape works, Tab goes somewhere invisible.
+  const opener = document.activeElement;
+  viewer.querySelector('.sg-viewer__close')?.focus();
+  returnFocusTo = opener instanceof HTMLElement ? opener : null;
 
   void track.push('story_open', { meta: { position: 0 } });
   paint();
@@ -761,8 +775,10 @@ function openSavedPanel(gallery, posts, format) {
 
   document.addEventListener('keydown', onSheetKey);
   document.documentElement.classList.add('sg-locked');
+  const opener = document.activeElement;
   document.body.appendChild(sheet);
   sheet.querySelector('.sg-sheet__close')?.focus();
+  returnFocusTo = opener instanceof HTMLElement && opener.isConnected ? opener : null;
 }
 
 /** Turns the saved products into a link, and optionally into a question. */
@@ -910,7 +926,11 @@ function renderStoryRail(gallery, posts, format) {
         : h('span', { class: 'sg-story__placeholder', 'aria-hidden': 'true' }),
     ]);
 
-    const button = h('button', { class: 'sg-story', type: 'button', role: 'listitem' }, [
+    // `role="listitem"` used to sit on the button itself, which replaces the
+    // button role: a screen reader announced "list item" and the control no
+    // longer looked like something you could press. The list item is the
+    // wrapper; the button stays a button.
+    const button = h('button', { class: 'sg-story', type: 'button' }, [
       bubble,
       h('span', { class: 'sg-story__title', text: story.title }),
     ]);
@@ -918,7 +938,7 @@ function renderStoryRail(gallery, posts, format) {
       button.classList.add('sg-story--seen');
       openViewer(story, inStory, gallery, format);
     });
-    rail.appendChild(button);
+    rail.appendChild(h('span', { class: 'sg-stories__item', role: 'listitem' }, [button]));
   }
   return rail;
 }
