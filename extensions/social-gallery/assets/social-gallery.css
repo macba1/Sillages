@@ -925,6 +925,9 @@ html.sg-locked { overflow: hidden; }
   .sg-card,
   .sg-toast { animation: none; }
   .sg-card__img,
+  /* The save button scales and tints on press. Small, but it is movement, and
+     the audit that found it listed every animating element on the page. */
+  .sg-save,
   .sg-layout--polaroid .sg-frame { transition: none; }
   .sg-card--skeleton { animation: none; }
   .sg-save--on .sg-save__mark { animation: none; }

@@ -116,3 +116,15 @@ describe('a keyboard can be used, and heard', () => {
     expect(js).toMatch(/if \(returnFocusTo && returnFocusTo\.isConnected\) returnFocusTo\.focus\(\);/);
   });
 });
+
+describe('prefers-reduced-motion covers everything that actually moves', () => {
+  it('names every animating element the storefront was measured to have', () => {
+    // Taken from a live audit of computed styles on the storefront, not from
+    // reading the file: sg-card (animation), sg-card__img, sg-frame and
+    // sg-save (transitions), sg-save__mark (animation).
+    const reduced = /@media \(prefers-reduced-motion: reduce\)([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+    for (const selector of ['.sg-card', '.sg-card__img', '.sg-frame', '.sg-save', '.sg-save__mark', '.sg-toast']) {
+      expect(reduced, `${selector} still moves under reduced motion`).toContain(selector);
+    }
+  });
+});
