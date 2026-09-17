@@ -212,4 +212,6 @@ export interface Placement {
   label: string;
   outcome: string;
   url: string;
+  /** False while the merchant still has to press Add block themselves. */
+  autoPlaced: boolean;
 }

@@ -12,23 +12,37 @@ import {
   PLACEMENTS,
   THEME_EXTENSION_UUID,
   placementsFor,
+  placesBlockAutomatically,
   themeEditorDeepLink,
 } from '../services/gallery/themeDeepLink.js';
 
 const SHOP = 'sillages-storefront-test.myshopify.com';
 
 describe('the theme editor opens with the gallery already in it', () => {
-  it('builds a link Shopify accepts', () => {
+  it('opens the editor on the right template', () => {
     const url = new URL(themeEditorDeepLink(SHOP, 'collection'));
 
     expect(url.host).toBe('admin.shopify.com');
     // `current` rather than a numeric id, so no read_themes scope is needed.
     expect(url.pathname).toBe('/store/sillages-storefront-test/themes/current/editor');
     expect(url.searchParams.get('template')).toBe('collection');
-    expect(url.searchParams.get('addAppBlockId')).toBe(`${THEME_EXTENSION_UUID}/social-gallery`);
-    // A section of its own is the only target that behaves the same in every
-    // Online Store 2.0 theme.
-    expect(url.searchParams.get('target')).toBe('newAppsSection');
+  });
+
+  it('does not ask the editor to insert the block until the id is confirmed', () => {
+    // The first attempt used the id from the storefront's asset URL and the
+    // editor answered "social-gallery not added. There is a problem with the
+    // app block." A wrong id shows the merchant a red banner, which is worse
+    // than one honest click, so the parameter is only sent when it is known.
+    const url = new URL(themeEditorDeepLink(SHOP, 'collection'));
+    if (THEME_EXTENSION_UUID === null) {
+      expect(url.searchParams.get('addAppBlockId')).toBeNull();
+      expect(url.searchParams.get('target')).toBeNull();
+      expect(placesBlockAutomatically()).toBe(false);
+    } else {
+      expect(url.searchParams.get('addAppBlockId')).toBe(`${THEME_EXTENSION_UUID}/social-gallery`);
+      expect(url.searchParams.get('target')).toBe('newAppsSection');
+      expect(placesBlockAutomatically()).toBe(true);
+    }
   });
 
   it('offers the collection template first, because that is the catalogue', () => {
@@ -39,16 +53,19 @@ describe('the theme editor opens with the gallery already in it', () => {
   it('describes each placement by what the merchant gets', () => {
     for (const placement of placementsFor(SHOP)) {
       expect(placement.outcome.length).toBeGreaterThan(30);
-      expect(placement.url).toContain('addAppBlockId=');
+      expect(placement.url).toContain('template=');
       // Not a Shopify term in sight: no "app block", no "section target".
       expect(placement.outcome).not.toMatch(/app block|newAppsSection|template/i);
     }
   });
 
-  it('carries the published extension UUID, not the local one from the toml', () => {
-    // The local `uid` in shopify.extension.toml is not what the editor wants;
-    // the published UUID is the one the storefront loads assets under.
-    expect(THEME_EXTENSION_UUID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  it('holds a real UUID or nothing, never a guess', () => {
+    // The id in the asset URL changes between deployed versions, so it cannot
+    // be the extension's identity. Anything set here has to be verified
+    // against a theme first.
+    if (THEME_EXTENSION_UUID !== null) {
+      expect(THEME_EXTENSION_UUID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    }
   });
 
   it('asks for no new Shopify permission', () => {

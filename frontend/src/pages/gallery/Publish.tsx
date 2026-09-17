@@ -113,8 +113,10 @@ export default function Publish() {
           Put it in your theme
         </h2>
         <p style={{ margin: '0 0 14px', fontSize: 14, color: T.body, lineHeight: 1.6 }}>
-          One click each. Your theme opens with the gallery already in place — press <strong>Save</strong> and it is
-          live. Your theme code is never edited, and removing the block removes the gallery completely.
+          {g.placements[0]?.autoPlaced
+            ? 'Your theme opens with the gallery already in place — press Save and it is live.'
+            : 'Your theme opens on the right page. Press Add block → Sillages social gallery, then Save.'}{' '}
+          Your theme code is never edited, and removing the block removes the gallery completely.
         </p>
 
         {/*
@@ -163,7 +165,7 @@ export default function Publish() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                Open my theme →
+                {placement.autoPlaced ? 'Open my theme →' : 'Open this page in my theme →'}
               </span>
             </a>
           ))}

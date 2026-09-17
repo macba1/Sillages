@@ -18,18 +18,24 @@ import { storeHandle } from '../billing/shopifyBilling.js';
  */
 
 /**
- * The published UUID of the theme app extension.
+ * The UUID the theme editor needs to insert the block by itself.
  *
- * Assigned by Shopify, not by us, and visible in the URL the storefront loads
- * its assets from:
+ * Null on purpose. The first attempt used the id in the storefront's asset URL
+ * (`cdn.shopify.com/extensions/<id>/sillages-NN/assets/...`) and the editor
+ * answered "social-gallery not added. There is a problem with the app block."
+ * That id is not the one the editor wants: it changes between deployed
+ * versions, so it cannot be the extension's stable identity.
  *
- *   cdn.shopify.com/extensions/<uuid>/sillages-NN/assets/social-gallery.js
+ * Until the real one is confirmed against a theme, the link opens the editor on
+ * the right template and the merchant presses Add block once. Two actions
+ * instead of five, and no red banner. Setting this to a verified UUID turns
+ * the last step into nothing without touching anything else.
  *
- * If the extension is ever recreated this changes, and a stale value makes the
- * deep link land the merchant in the theme editor without the block — annoying
- * but not broken, since they can still add it by hand.
+ * The authoritative value is the `type` recorded in the theme's own
+ * `config/settings_data.json` once the block has been added by hand:
+ *   "shopify://apps/<app>/blocks/social-gallery/<uuid>"
  */
-export const THEME_EXTENSION_UUID = '01a0a7f2-51ee-7532-b8c0-5bf150234eee';
+export const THEME_EXTENSION_UUID: string | null = null;
 
 /** The block's file name in `extensions/social-gallery/blocks`, without the suffix. */
 const BLOCK_HANDLE = 'social-gallery';
@@ -45,14 +51,14 @@ export const PLACEMENTS = [
   {
     id: 'collection',
     template: 'collection',
-    label: 'Add it to my collection pages',
+    label: 'Put it on my collection pages',
     /** What the merchant gets, in their words rather than Shopify's. */
     outcome: 'Every collection a shopper opens becomes the gallery, in the design you chose here.',
   },
   {
     id: 'index',
     template: 'index',
-    label: 'Add it to my home page',
+    label: 'Put it on my home page',
     outcome: 'A gallery on the front page. Drag it above your featured products so it is the first thing seen.',
   },
 ] as const;
@@ -71,12 +77,22 @@ export type PlacementId = (typeof PLACEMENTS)[number]['id'];
  */
 export function themeEditorDeepLink(shopDomain: string, template: string): string {
   const handle = storeHandle(shopDomain);
-  const params = new URLSearchParams({
-    template,
-    addAppBlockId: `${THEME_EXTENSION_UUID}/${BLOCK_HANDLE}`,
-    target: 'newAppsSection',
-  });
+  const params = new URLSearchParams({ template });
+
+  // Only ask the editor to insert the block when we know the id it wants. A
+  // wrong id does not degrade quietly: it shows the merchant a red "there is a
+  // problem with the app block" banner, which is worse than one honest click.
+  if (THEME_EXTENSION_UUID) {
+    params.set('addAppBlockId', `${THEME_EXTENSION_UUID}/${BLOCK_HANDLE}`);
+    params.set('target', 'newAppsSection');
+  }
+
   return `https://admin.shopify.com/store/${handle}/themes/current/editor?${params.toString()}`;
+}
+
+/** Whether the editor will place the block, or the merchant still adds it. */
+export function placesBlockAutomatically(): boolean {
+  return THEME_EXTENSION_UUID !== null;
 }
 
 export interface Placement {
@@ -84,6 +100,8 @@ export interface Placement {
   label: string;
   outcome: string;
   url: string;
+  /** False while the merchant still has to press Add block themselves. */
+  autoPlaced: boolean;
 }
 
 /** Every placement, resolved for one shop. */
@@ -93,5 +111,6 @@ export function placementsFor(shopDomain: string): Placement[] {
     label: placement.label,
     outcome: placement.outcome,
     url: themeEditorDeepLink(shopDomain, placement.template),
+    autoPlaced: placesBlockAutomatically(),
   }));
 }
