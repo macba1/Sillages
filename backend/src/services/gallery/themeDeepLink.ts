@@ -20,22 +20,21 @@ import { storeHandle } from '../billing/shopifyBilling.js';
 /**
  * The UUID the theme editor needs to insert the block by itself.
  *
- * Null on purpose. The first attempt used the id in the storefront's asset URL
+ * Read from a theme that has the block, which is the only place it is written
+ * down. Once added, the template records it as:
+ *
+ *   "shopify://apps/sillages/blocks/social-gallery/01a0a189-5c58-7446-930b-9cb04a11a5ef"
+ *
+ * The first attempt used the id from the storefront's asset URL
  * (`cdn.shopify.com/extensions/<id>/sillages-NN/assets/...`) and the editor
  * answered "social-gallery not added. There is a problem with the app block."
- * That id is not the one the editor wants: it changes between deployed
- * versions, so it cannot be the extension's stable identity.
+ * That id changes between deployed versions, so it was never the extension's
+ * identity. This one comes from the theme's own records.
  *
- * Until the real one is confirmed against a theme, the link opens the editor on
- * the right template and the merchant presses Add block once. Two actions
- * instead of five, and no red banner. Setting this to a verified UUID turns
- * the last step into nothing without touching anything else.
- *
- * The authoritative value is the `type` recorded in the theme's own
- * `config/settings_data.json` once the block has been added by hand:
- *   "shopify://apps/<app>/blocks/social-gallery/<uuid>"
+ * If it is ever wrong the merchant still lands on the right template and can
+ * press Add block, which is why the link carries the template either way.
  */
-export const THEME_EXTENSION_UUID: string | null = null;
+export const THEME_EXTENSION_UUID: string | null = '01a0a189-5c58-7446-930b-9cb04a11a5ef';
 
 /** The block's file name in `extensions/social-gallery/blocks`, without the suffix. */
 const BLOCK_HANDLE = 'social-gallery';

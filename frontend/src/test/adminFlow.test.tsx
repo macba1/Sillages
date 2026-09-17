@@ -376,7 +376,12 @@ describe('C4: publish, turn off, restore', () => {
     expect(href).toContain('template=collection');
 
     expect(screen.getByRole('link', { name: /home page/i })).toBeInTheDocument();
-    expect(screen.getByText(/Your theme code is never edited/)).toBeInTheDocument();
+    // Reassurance comes before mechanics: the question a merchant is actually
+    // asking is whether this can break their shop.
+    expect(screen.getByText(/Nothing changes until you press Save/)).toBeInTheDocument();
+    // The page intro says the same thing about turning it off, so scope the
+    // assertion to the reassurance that sits with the buttons.
+    expect(screen.getByText(/nothing is written into your theme/i)).toBeInTheDocument();
   });
 
   it('offers the collection pages before the home page', async () => {

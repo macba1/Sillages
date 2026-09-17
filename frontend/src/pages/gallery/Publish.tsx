@@ -112,11 +112,21 @@ export default function Publish() {
         <h2 style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 8px' }}>
           Put it in your theme
         </h2>
+        {/*
+          * Reassurance first, mechanics second. A merchant clicking a button
+          * that opens their own theme needs to know, before they click, that
+          * nothing happens until they say so. "It cannot break my shop" is the
+          * question being asked, whether or not it is the question typed.
+          */}
+        <p style={{ margin: '0 0 6px', fontSize: 14, color: T.body, lineHeight: 1.6 }}>
+          <strong>Nothing changes until you press Save</strong>, and nothing is written into your theme&rsquo;s code.
+          You are previewing, and you can close the tab at any point. Removing the block later removes the gallery
+          completely and leaves your store exactly as it was.
+        </p>
         <p style={{ margin: '0 0 14px', fontSize: 14, color: T.body, lineHeight: 1.6 }}>
           {g.placements[0]?.autoPlaced
-            ? 'Your theme opens with the gallery already in place — press Save and it is live.'
-            : 'Your theme opens on the right page. Press Add block → Sillages social gallery, then Save.'}{' '}
-          Your theme code is never edited, and removing the block removes the gallery completely.
+            ? 'Your theme opens with the gallery already placed. Look at it, then press Save.'
+            : 'Your theme opens on the right page. Press Add block → Sillages social gallery, then Save.'}
         </p>
 
         {/*
@@ -171,10 +181,24 @@ export default function Publish() {
           ))}
         </div>
 
-        <p style={{ margin: '14px 0 0', fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
-          On your collection pages the gallery arrives as its own section. To let it take the page over completely,
-          hide your theme&rsquo;s own product grid there with the eye icon — optional, and reversible in one click.
-        </p>
+        <div style={{ margin: '14px 0 0', fontSize: 13, color: T.muted, lineHeight: 1.7 }}>
+          <p style={{ margin: 0 }}>
+            The gallery arrives as its own section at the end of the page. Drag it wherever you like — on your home
+            page, above your featured products is where people will actually see it.
+          </p>
+          <p style={{ margin: '6px 0 0' }}>
+            Optional, and reversible in one click: hide your theme&rsquo;s own product grid on the collection page with
+            the eye icon, and the gallery becomes the page.
+          </p>
+          {/*
+            * The merchant already met the red banner once. Naming it in advance
+            * turns a scare into an expected step.
+            */}
+          <p style={{ margin: '6px 0 0' }}>
+            If your theme shows a message instead of placing it, press <strong>Add block</strong> →{' '}
+            <strong>Sillages social gallery</strong>. Same result, one more click.
+          </p>
+        </div>
       </Card>
 
       <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>
