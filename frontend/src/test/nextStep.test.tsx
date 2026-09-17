@@ -55,18 +55,42 @@ describe('every screen in the journey offers the next step', () => {
   });
 
   it('says nothing on the page that is itself the next step', () => {
-    // The page's own buttons are the action; a link to yourself is noise.
+    // The page's own buttons are the action; a link to yourself is noise. And
+    // it must not claim the gallery is live while publishing is outstanding.
     const { container } = at('/publish', progress());
     expect(container.textContent).toBe('');
   });
 
-  it('says nothing once the gallery is live', () => {
-    const { container } = at('/performance', progress({ published: true, complete: true }));
+  it('says nothing on a screen outside the journey', () => {
+    // Performance and the rest keep a forward move once the gallery is live;
+    // a page with no onward move defined stays silent rather than inventing one.
+    const { container } = at('/somewhere-else', progress({ published: true, complete: true }));
     expect(container.textContent).toBe('');
   });
 
   it('names the position in the journey, so the strip and the button agree', () => {
     at('/preview', progress({ planChosen: false, currentStep: 4 }));
     expect(screen.getByText(/step 4 of 5/i)).toBeTruthy();
+  });
+
+  it('keeps a way forward once the gallery is live', () => {
+    // Measured on the live test store: setup complete, the step strip hides
+    // itself, and every screen ended with the product list and nothing else.
+    // That is the state every successful merchant stays in.
+    const live = progress({ published: true, complete: true });
+
+    at('/design', live);
+    expect(screen.getByRole('link', { name: /see your gallery/i }).getAttribute('href')).toBe('/preview');
+    expect(screen.getByText(/your gallery is live/i)).toBeTruthy();
+  });
+
+  it('closes the loop from performance back to the design', () => {
+    at('/performance', progress({ published: true, complete: true }));
+    expect(screen.getByRole('link', { name: /change how it looks/i }).getAttribute('href')).toBe('/design');
+  });
+
+  it('gets a live shop off the pricing page too', () => {
+    at('/plan', progress({ published: true, complete: true }));
+    expect(screen.getByRole('link', { name: /go to your gallery/i }).getAttribute('href')).toBe('/publish');
   });
 });

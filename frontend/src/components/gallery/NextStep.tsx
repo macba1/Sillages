@@ -68,22 +68,56 @@ const JOURNEY: Step[] = [
   },
 ];
 
-/** The first step that is not finished, which is where the merchant is going. */
-function nextStep(progress: OnboardingProgress, currentPath: string): Step | null {
-  const pending = JOURNEY.find((step) => !step.done(progress));
-  if (!pending) return null;
-  // Already on it: the page's own buttons are the action, not a link to itself.
-  if (pending.path === currentPath) return null;
-  return pending;
-}
+/**
+ * Where a merchant goes once the gallery is already live.
+ *
+ * Setup finishes, and then every screen ended with nothing again: the step
+ * strip hides itself when the journey is complete, so a shop with a running
+ * gallery was back to reading the left-hand menu. This keeps one forward move
+ * on every screen for the whole life of the gallery, not just its first hour.
+ */
+const KEEP_GOING: Record<string, { path: string; cta: string; why: string }> = {
+  '/collections': { path: '/design', cta: 'Choose how it looks', why: 'Your catalogue is in. Change the arrangement or the treatment whenever you like.' },
+  '/design': { path: '/preview', cta: 'See your gallery', why: 'Check the change against your own products before it goes out.' },
+  '/preview': { path: '/publish', cta: 'Publish your changes', why: 'What you just looked at is not on your store until you publish it.' },
+  '/publish': { path: '/performance', cta: 'See what shoppers did', why: 'Views, saves, shares and votes, from the gallery itself.' },
+  '/performance': { path: '/design', cta: 'Change how it looks', why: 'A different arrangement or treatment is one click and a republish away.' },
+  '/plan': { path: '/publish', cta: 'Go to your gallery', why: 'Your plan is sorted. Publishing and turning it off both live here.' },
+};
 
 export function NextStep({ progress }: { progress: OnboardingProgress }) {
   const { pathname } = useLocation();
-  const step = nextStep(progress, pathname);
-  if (!step) return null;
+  const pending = JOURNEY.find((s) => !s.done(progress)) ?? null;
+
+  // Setup is finished: keep one forward move on every screen for the rest of
+  // the gallery's life.
+  if (!pending) {
+    const onward = KEEP_GOING[pathname];
+    if (!onward) return null;
+    return <Forward eyebrow="Your gallery is live" why={onward.why} to={onward.path} cta={onward.cta} />;
+  }
+
+  // Standing on the step that is still outstanding: the page's own buttons are
+  // the action. Saying "your gallery is live" here would be a lie, and linking
+  // to this page would be noise.
+  if (pending.path === pathname) return null;
+
+  const step = pending;
 
   const position = JOURNEY.findIndex((s) => s.id === step.id) + 1;
 
+  return (
+    <Forward
+      eyebrow={`Next · step ${position} of ${JOURNEY.length}`}
+      why={step.why}
+      to={step.path}
+      cta={step.cta}
+    />
+  );
+}
+
+/** One primary move, at the end of the page. */
+function Forward({ eyebrow, why, to, cta }: { eyebrow: string; why: string; to: string; cta: string }) {
   return (
     <nav
       aria-label="Next step"
@@ -111,13 +145,13 @@ export function NextStep({ progress }: { progress: OnboardingProgress }) {
             margin: '0 0 4px',
           }}
         >
-          Next · step {position} of {JOURNEY.length}
+          {eyebrow}
         </p>
-        <p style={{ fontSize: 14, color: T.body, margin: 0, lineHeight: 1.5 }}>{step.why}</p>
+        <p style={{ fontSize: 14, color: T.body, margin: 0, lineHeight: 1.5 }}>{why}</p>
       </div>
 
       <Link
-        to={step.path}
+        to={to}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -134,7 +168,7 @@ export function NextStep({ progress }: { progress: OnboardingProgress }) {
           whiteSpace: 'nowrap',
         }}
       >
-        {step.cta}
+        {cta}
         <ArrowRight size={18} aria-hidden="true" />
       </Link>
     </nav>
