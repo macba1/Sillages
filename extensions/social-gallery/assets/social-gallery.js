@@ -977,7 +977,7 @@ async function boot(root) {
 
   let gallery;
   try {
-    const response = await fetch(buildApiUrl(apiBase, shop), {
+    const response = await fetch(buildApiUrl(apiBase, shop, root.dataset.collection), {
       headers: { Accept: 'application/json' },
       credentials: 'omit',
     });

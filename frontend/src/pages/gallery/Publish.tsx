@@ -110,14 +110,30 @@ export default function Publish() {
 
       <Card style={{ marginBottom: 20 }}>
         <h2 style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 8px' }}>
-          One-time step in your theme
+          Where to put it in your theme
         </h2>
         <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
           Open your Shopify admin → <strong>Online Store</strong> → <strong>Themes</strong> →{' '}
-          <strong>Customise</strong>, then <strong>Add block</strong> → <strong>Sillages social gallery</strong> where
-          you want the gallery to appear, and save. You only do this once. Your theme code is never edited, and
-          removing the block removes the gallery completely.
+          <strong>Customise</strong>, then <strong>Add block</strong> → <strong>Sillages social gallery</strong>. Your
+          theme code is never edited, and removing the block removes the gallery completely.
         </p>
+        {/*
+          * The collection template is the point, and it used to go unmentioned.
+          * A merchant put the block low on the home page, looked at their
+          * catalogue, and found it unchanged — because it was.
+          */}
+        <ol style={{ margin: '12px 0 0', paddingLeft: 20, fontSize: 14, color: T.body, lineHeight: 1.7 }}>
+          <li>
+            <strong>Your catalogue.</strong> Switch the template selector at the top to{' '}
+            <strong>Collections → Default collection</strong> and add the block there. Then hide your theme&rsquo;s own
+            product grid in that template. This is the one that changes what shoppers browse: the gallery shows
+            whichever collection they are on, in the design you chose here.
+          </li>
+          <li>
+            <strong>Your home page.</strong> Add it near the top, above your featured products, so it is the first
+            thing a visitor sees rather than something they scroll to.
+          </li>
+        </ol>
       </Card>
 
       <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>

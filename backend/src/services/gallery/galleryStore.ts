@@ -70,6 +70,11 @@ export interface GalleryStore {
   /** Live posts for a gallery, newest catalogue data first. */
   loadPosts(connectionId: string, collectionId: string | null, limit: number): Promise<PublicPost[]>;
   loadStories(connectionId: string, limit: number): Promise<PublicStory[]>;
+  /**
+   * The internal id of one of this shop's collections, found by the handle the
+   * storefront is showing. Null when the shop has no such collection.
+   */
+  collectionIdByHandle(connectionId: string, handle: string): Promise<string | null>;
 }
 
 interface ConfigRow {
@@ -287,6 +292,27 @@ export const supabaseGalleryStore: GalleryStore = {
 
     if (error || !data) return null;
     return data.snapshot as GallerySettings;
+  },
+
+  /**
+   * Scoped to the connection on purpose.
+   *
+   * The handle arrives from the storefront, which means it arrives from the
+   * page's URL, which means a shopper controls it. Looking it up inside this
+   * shop's own collections is what makes that harmless: the worst a made-up
+   * handle can do is not match.
+   */
+  async collectionIdByHandle(connectionId: string, handle: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('catalog_collections')
+      .select('id')
+      .eq('connection_id', connectionId)
+      .eq('handle', handle)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return (data as { id: string }).id;
   },
 
   async loadPosts(connectionId: string, collectionId: string | null, limit: number): Promise<PublicPost[]> {

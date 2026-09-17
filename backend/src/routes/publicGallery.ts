@@ -92,7 +92,21 @@ const cardLimiter = rateLimit({
   message: { error: 'Too many requests' },
 });
 
-// GET /api/public/gallery/:shopDomain
+/**
+ * A Shopify collection handle: lowercase letters, digits and hyphens.
+ *
+ * Checked before it reaches a query so a shopper-controlled URL cannot be used
+ * to probe anything. Anything that fails is dropped rather than rejected: the
+ * gallery still renders, showing the collection the merchant configured.
+ */
+const COLLECTION_HANDLE = /^[a-z0-9][a-z0-9-]{0,254}$/;
+
+function collectionHandleFrom(raw: unknown): string | null {
+  const handle = String(raw ?? '').trim().toLowerCase();
+  return COLLECTION_HANDLE.test(handle) ? handle : null;
+}
+
+// GET /api/public/gallery/:shopDomain?collection=<handle>
 router.get(
   '/gallery/:shopDomain',
   publicCors,
@@ -110,7 +124,11 @@ router.get(
         return;
       }
 
-      const gallery = await composePublicGallery(shopDomain);
+      // Sent by the block when it sits on a collection template, so the
+      // gallery shows the collection the shopper is browsing.
+      const collectionHandle = collectionHandleFrom((req.query as { collection?: unknown }).collection);
+
+      const gallery = await composePublicGallery(shopDomain, {}, { collectionHandle });
 
       // Short cache with a long stale window: the storefront stays fast, and a
       // publish is visible within a minute.

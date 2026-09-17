@@ -17,6 +17,13 @@
   data-api="{{ block.settings.api_base | default: 'https://sillages-production.up.railway.app' }}"
   data-currency="{{ shop.currency }}"
   data-width="{{ block.settings.layout_width | default: 'full' }}"
+  {%- comment -%}
+    On a collection template this is the collection the shopper is looking at,
+    so the gallery shows their catalogue rather than one collection chosen once
+    in Sillages. Absent everywhere else, and the gallery falls back to the
+    merchant's own choice.
+  {%- endcomment -%}
+  {% if collection.handle != blank %}data-collection="{{ collection.handle }}"{% endif %}
   {% if block.settings.heading != blank %}data-heading="{{ block.settings.heading | escape }}"{% endif %}
   {{ block.shopify_attributes }}
 ></div>

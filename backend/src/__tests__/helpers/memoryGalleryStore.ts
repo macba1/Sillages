@@ -191,6 +191,12 @@ export class MemoryGalleryStore implements GalleryStore {
     }));
   }
 
+  /** Handle → id, scoped to the connection, like the real store. */
+  async collectionIdByHandle(connectionId: string, handle: string): Promise<string | null> {
+    const hit = (this.collections.get(connectionId) ?? []).find((c) => c.handle === handle);
+    return hit ? hit.id : null;
+  }
+
   async loadStories(connectionId: string, limit: number): Promise<PublicStory[]> {
     return (this.collections.get(connectionId) ?? []).slice(0, limit).map((collection, index) => ({
       id: 3000 + index,

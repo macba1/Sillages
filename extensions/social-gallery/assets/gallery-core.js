@@ -41,9 +41,12 @@ export function filterAmount(intensity) {
 }
 
 /** Where the storefront reads its gallery from. */
-export function buildApiUrl(apiBase, shopDomain) {
+export function buildApiUrl(apiBase, shopDomain, collectionHandle) {
   const base = String(apiBase || '').replace(/\/+$/, '');
-  return `${base}/api/public/gallery/${encodeURIComponent(shopDomain)}`;
+  const url = `${base}/api/public/gallery/${encodeURIComponent(shopDomain)}`;
+  // Present only on a collection template. It selects which products are
+  // returned; the design always comes from the merchant's saved settings.
+  return collectionHandle ? `${url}?collection=${encodeURIComponent(collectionHandle)}` : url;
 }
 
 /**

@@ -255,9 +255,26 @@ export async function revertGallery(
  * Only published galleries produce content. Everything returned is public
  * storefront data: no account ids, no internal UUIDs, no customer data.
  */
+/**
+ * Which products this render should show.
+ *
+ * `collectionHandle` is the collection the storefront page is displaying. It
+ * is what turns Sillages from "a gallery somewhere on the home page" into the
+ * shop's catalogue: dropped on the collection template, the block shows the
+ * collection the shopper is actually browsing, in the design the merchant
+ * chose once.
+ *
+ * The design always comes from the single saved configuration. Only the set of
+ * products changes.
+ */
+export interface PublicGalleryOptions {
+  collectionHandle?: string | null;
+}
+
 export async function composePublicGallery(
   shopDomain: string,
   deps: GalleryDeps = {},
+  options: PublicGalleryOptions = {},
 ): Promise<PublicGallery> {
   const store = deps.store ?? supabaseGalleryStore;
   const found = await store.getPublishedByShopDomain(shopDomain);
@@ -277,8 +294,18 @@ export async function composePublicGallery(
     return inactiveGallery(shopDomain);
   }
 
+  // The page's own collection wins over the configured one when the shop
+  // really has it. A handle that does not resolve falls back to the merchant's
+  // choice rather than to the whole catalogue: a mistyped or stale URL must not
+  // quietly widen what a gallery shows.
+  let collectionId = config.collectionId;
+  if (options.collectionHandle) {
+    const fromPage = await store.collectionIdByHandle(connectionId, options.collectionHandle);
+    if (fromPage) collectionId = fromPage;
+  }
+
   const [posts, stories] = await Promise.all([
-    store.loadPosts(connectionId, config.collectionId, config.postsLimit),
+    store.loadPosts(connectionId, collectionId, config.postsLimit),
     config.showStories ? store.loadStories(connectionId, STORIES_LIMIT) : Promise.resolve([]),
   ]);
 
