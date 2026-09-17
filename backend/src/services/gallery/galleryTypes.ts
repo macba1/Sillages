@@ -98,13 +98,26 @@ export interface GallerySettings {
   hideBranding: boolean;
 }
 
-/** What a brand-new gallery looks like before the merchant touches anything. */
+/**
+ * What a brand-new gallery looks like before the merchant touches anything.
+ *
+ * It used to be grid + original + no frame, which is a theme's own product grid
+ * with extra steps: a merchant installed Sillages and the first thing they saw
+ * was what they already had. The filters, the frames and the wall of prints
+ * only appeared if they went looking. The default is the demo, and ours was
+ * switched off.
+ *
+ * So it opens on the polaroid wall, warmed, with a thin print edge. Every one
+ * of those three is in the Basic sets on purpose: an ambitious default that
+ * gets coerced back to plain for anyone not on Growth would be a worse first
+ * impression than a modest one that survives.
+ */
 export const DEFAULT_SETTINGS: GallerySettings = {
   collectionId: null,
-  layout: 'grid',
-  style: 'original',
-  filterIntensity: FILTER_INTENSITY_DEFAULT,
-  frame: 'none',
+  layout: 'polaroid',
+  style: 'warm',
+  filterIntensity: 70,
+  frame: 'clean',
   showStories: true,
   showQuickBuy: true,
   postsLimit: 60,

@@ -10,6 +10,14 @@
     "api_base": {
       "label": "API de Sillages",
       "info": "Cámbialo solo si el soporte de Sillages te lo pide."
+    },
+    "layout_width": {
+      "label": "Ancho",
+      "info": "El ancho completo se sale de la sección en la que está, para que la galería se lea como una parte propia de la página.",
+      "options": {
+        "full": "Ancho completo",
+        "contained": "Igual que la sección"
+      }
     }
   }
 }

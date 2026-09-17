@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGallery, onboardingProgress } from '../../hooks/useGallery';
 import { GalleryPage, Button, Card } from '../../components/gallery/GalleryPage';
 import { GalleryPreviewCanvas } from '../../components/gallery/GalleryPreviewCanvas';
+import { BeforeAfter } from '../../components/gallery/BeforeAfter';
 import { FRAME_COPY, LAYOUT_COPY, STYLE_COPY, T, filterFor, frameStyle } from '../../components/gallery/styleTokens';
 import {
   GALLERY_FRAMES,
@@ -59,6 +60,13 @@ export default function Design() {
       onDismissError={g.clearError}
       loading={g.loading}
     >
+      {/*
+        * First thing on the screen: what they have, beside what they would
+        * have. Before this the page opened straight into radio buttons, and
+        * the difference Sillages makes was left to the merchant's imagination.
+        */}
+      <BeforeAfter preview={preview} />
+
       <Section title="Arrangement" hint="How the products sit on the page.">
         <div
           role="radiogroup"

@@ -945,6 +945,24 @@ function renderStoryRail(gallery, posts, format) {
 
 // ── Boot ────────────────────────────────────────────────────────
 
+/**
+ * Keeps the full-width breakout honest.
+ *
+ * The CSS escapes the theme section using `--sg-vw`. It has to be the
+ * document's client width, not `100vw`: on desktop `100vw` includes the
+ * scrollbar, and breaking out by that much hands the merchant a horizontal
+ * scrollbar on their own storefront. Measured here and refreshed on resize.
+ */
+function trackViewportWidth(root) {
+  if (root.dataset.width !== 'full') return;
+  const apply = () => {
+    root.style.setProperty('--sg-vw', `${document.documentElement.clientWidth}px`);
+  };
+  apply();
+  window.addEventListener('resize', apply, { passive: true });
+  window.addEventListener('orientationchange', apply, { passive: true });
+}
+
 async function boot(root) {
   const shop = root.dataset.shop;
   const apiBase = root.dataset.api;
@@ -1047,6 +1065,7 @@ async function boot(root) {
 
   skeleton.remove();
   root.appendChild(fragment);
+  trackViewportWidth(root);
   root.dataset.ready = 'true';
   observeViews(grid, posts);
 }

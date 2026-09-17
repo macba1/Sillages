@@ -10,6 +10,14 @@
     "api_base": {
       "label": "Sillages API",
       "info": "Only change this if Sillages support asks you to."
+    },
+    "layout_width": {
+      "label": "Width",
+      "info": "Full width breaks out of the section it sits in, so the gallery reads as its own part of the page.",
+      "options": {
+        "full": "Full width",
+        "contained": "Match the section around it"
+      }
     }
   }
 }

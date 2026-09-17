@@ -9,9 +9,19 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  BASIC_FRAMES,
+  BASIC_LAYOUTS,
+  BASIC_STYLES,
+  DEFAULT_SETTINGS,
+} from '../services/gallery/galleryTypes.js';
 
 const assets = resolve(__dirname, '../../../extensions/social-gallery/assets');
 const js = readFileSync(resolve(assets, 'social-gallery.js'), 'utf8');
+const block = readFileSync(
+  resolve(__dirname, '../../../extensions/social-gallery/blocks/social-gallery.liquid'),
+  'utf8',
+);
 const css = readFileSync(resolve(assets, 'social-gallery.css'), 'utf8');
 const cardRoute = readFileSync(resolve(__dirname, '../routes/publicGallery.ts'), 'utf8');
 
@@ -126,5 +136,37 @@ describe('prefers-reduced-motion covers everything that actually moves', () => {
     for (const selector of ['.sg-card', '.sg-card__img', '.sg-frame', '.sg-save', '.sg-save__mark', '.sg-toast']) {
       expect(reduced, `${selector} still moves under reduced motion`).toContain(selector);
     }
+  });
+});
+
+describe('the first impression is not the theme grid it replaces', () => {
+  it('opens a new gallery on something a merchant would not already have', () => {
+    // It used to be grid + original + no frame, which is a theme's own product
+    // grid with extra steps. Reported as "el valor que se percibe en diseño y
+    // features sociales es bajísimo" — the defaults were the demo, switched off.
+    expect(DEFAULT_SETTINGS.layout).toBe('polaroid');
+    expect(DEFAULT_SETTINGS.style).not.toBe('original');
+    expect(DEFAULT_SETTINGS.frame).not.toBe('none');
+    expect(DEFAULT_SETTINGS.filterIntensity).toBeGreaterThan(0);
+  });
+
+  it('keeps every default inside the Basic sets, so nothing is coerced away', () => {
+    // An ambitious default that a non-Growth shop has stripped back to plain is
+    // a worse first impression than a modest one that survives.
+    expect(BASIC_LAYOUTS).toContain(DEFAULT_SETTINGS.layout);
+    expect(BASIC_STYLES).toContain(DEFAULT_SETTINGS.style);
+    expect(BASIC_FRAMES).toContain(DEFAULT_SETTINGS.frame);
+  });
+
+  it('claims the width of the page instead of a slot inside a theme section', () => {
+    // The gallery is an app block, so it inherits the width of whatever section
+    // it was dropped into: beside a full-width "Featured products" it read as a
+    // widget. The breakout is measured from clientWidth, never 100vw, which
+    // includes the scrollbar and would cause a horizontal scrollbar.
+    expect(block).toContain("data-width=\"{{ block.settings.layout_width | default: 'full' }}\"");
+    expect(css).toContain("[data-sillages-gallery][data-width='full']");
+    expect(css).toMatch(/margin-inline: calc\(50% - var\(--sg-vw, 100vw\) \/ 2\)/);
+    expect(js).toContain('document.documentElement.clientWidth');
+    expect(js).not.toMatch(/setProperty\('--sg-vw', `\$\{window\.innerWidth\}/);
   });
 });

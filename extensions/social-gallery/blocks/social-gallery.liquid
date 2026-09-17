@@ -16,6 +16,7 @@
   data-shop="{{ shop.permanent_domain }}"
   data-api="{{ block.settings.api_base | default: 'https://sillages-production.up.railway.app' }}"
   data-currency="{{ shop.currency }}"
+  data-width="{{ block.settings.layout_width | default: 'full' }}"
   {% if block.settings.heading != blank %}data-heading="{{ block.settings.heading | escape }}"{% endif %}
   {{ block.shopify_attributes }}
 ></div>
@@ -27,6 +28,17 @@
   "name": "t:names.social_gallery",
   "target": "section",
   "settings": [
+    {
+      "type": "select",
+      "id": "layout_width",
+      "label": "t:settings.layout_width.label",
+      "info": "t:settings.layout_width.info",
+      "default": "full",
+      "options": [
+        { "value": "full", "label": "t:settings.layout_width.options.full" },
+        { "value": "contained", "label": "t:settings.layout_width.options.contained" }
+      ]
+    },
     {
       "type": "text",
       "id": "heading",
