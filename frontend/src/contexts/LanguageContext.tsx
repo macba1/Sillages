@@ -3,6 +3,7 @@ import { translations as en } from '../locales/en';
 import { translations as es } from '../locales/es';
 import type { Translations } from '../locales/en';
 import api from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 export type Lang = 'en' | 'es';
 
@@ -29,17 +30,39 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>(detectLang);
   const initialLoadDone = useRef(false);
 
-  // On mount, fetch language from server if user is authenticated
+  // On mount, fetch the language from the server — but only for someone who
+  // has an account to fetch it for.
+  //
+  // This provider wraps the whole app, so the request also fired on every
+  // public page: the landing page, the privacy and terms pages, and the shared
+  // picks page a shopper's friend opens. With no session that is a 401 in the
+  // visitor's console and a wasted round trip on the page the whole sharing
+  // feature exists to produce. The comment here always said "if authenticated";
+  // the code never checked.
   useEffect(() => {
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
-    api.get('/api/accounts/language').then(({ data }) => {
-      const serverLang = data.language;
-      if (serverLang === 'en' || serverLang === 'es') {
-        localStorage.setItem(STORAGE_KEY, serverLang);
-        setLangState(serverLang);
+
+    let cancelled = false;
+    void (async () => {
+      const { data: session } = await supabase.auth.getSession();
+      if (cancelled || !session.session) return;
+
+      try {
+        const { data } = await api.get('/api/accounts/language');
+        const serverLang = data.language;
+        if (!cancelled && (serverLang === 'en' || serverLang === 'es')) {
+          localStorage.setItem(STORAGE_KEY, serverLang);
+          setLangState(serverLang);
+        }
+      } catch {
+        // Endpoint error: the locally detected language is a fine answer.
       }
-    }).catch(() => { /* not authenticated or endpoint error — use local */ });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setLang = useCallback((l: Lang) => {

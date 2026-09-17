@@ -20,9 +20,13 @@ const PAYLOAD = {
   filterIntensity: 60,
   showBranding: false,
   products: [
-    { id: 1, handle: 'a', title: 'A snowboard', url: '/products/a', image: { url: 'https://cdn.shopify.com/a.jpg', altText: null, width: 10, height: 10 }, priceLabel: '$10.00' },
-    { id: 2, handle: 'b', title: 'B snowboard', url: '/products/b', image: { url: 'https://cdn.shopify.com/b.jpg', altText: null, width: 10, height: 10 }, priceLabel: '$20.00' },
+    // Shaped like the real payload: the server sends priceMin/priceMax and a
+    // shop currency, not a formatted label. The old fixture invented
+    // `priceLabel`, so every price assertion here was vacuous.
+    { id: 1, handle: 'a', title: 'A snowboard', url: '/products/a', image: { url: 'https://cdn.shopify.com/a.jpg', altText: null, width: 10, height: 10 }, priceMin: '10.00', priceMax: null },
+    { id: 2, handle: 'b', title: 'B snowboard', url: '/products/b', image: { url: 'https://cdn.shopify.com/b.jpg', altText: null, width: 10, height: 10 }, priceMin: '20.00', priceMax: null },
   ],
+  currency: 'USD',
   votes: {},
 };
 
@@ -85,5 +89,24 @@ describe('a shared list opens for the friend it was sent to', () => {
     const image = await screen.findByAltText('A snowboard');
     const box = image.parentElement as HTMLElement;
     expect(box.style.background).toBe('rgb(255, 253, 250)');
+  });
+
+  it('names the product in the vote button and the link', async () => {
+    // Measured with an accessibility tree on the live page: two buttons both
+    // read "This one", and the link's name was the image description followed
+    // by "The Multi-managed Snowboard629.95 USD".
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(PAYLOAD), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })));
+
+    await renderAt('abc123');
+
+    await screen.findByText('A snowboard');
+    expect(screen.getByRole('button', { name: 'Pick A snowboard' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pick B snowboard' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'A snowboard, 10.00 USD' })).toBeTruthy();
+    // The visible price and the spoken one come from the same helper.
+    expect(screen.getByText(/10\.00 USD/)).toBeTruthy();
   });
 });

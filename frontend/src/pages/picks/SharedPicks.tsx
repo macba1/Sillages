@@ -32,6 +32,18 @@ interface PicksPayload {
 }
 
 /**
+ * The price as one readable phrase.
+ *
+ * Shared by the visible line and the link's accessible name so the two can
+ * never drift apart.
+ */
+function priceLabel(post: { priceMin: string | null; priceMax: string | null }, currency: string | null): string {
+  const range =
+    post.priceMax && post.priceMax !== post.priceMin ? `${post.priceMin} – ${post.priceMax}` : (post.priceMin ?? '');
+  return currency ? `${range} ${currency}` : range;
+}
+
+/**
  * Somebody's picks, opened by a friend.
  *
  * This is the page the whole sharing feature exists to produce, so it is the
@@ -162,6 +174,12 @@ export default function SharedPicks() {
                 href={`https://${data.shop}${post.url}`}
                 target="_blank"
                 rel="noopener"
+                // Named outright. Left to compute itself from the contents the
+                // name came out as the photograph's alt text followed by
+                // "The Multi-managed Snowboard629.95 USD" — the title and the
+                // price run together, with no separator, after a paragraph of
+                // image description.
+                aria-label={`${post.title}, ${priceLabel(post, data.currency)}`}
                 style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
               >
                 <div style={{ ...frame, position: 'relative', overflow: 'hidden' }}>
@@ -208,6 +226,11 @@ export default function SharedPicks() {
                     type="button"
                     onClick={() => void vote(post.id)}
                     aria-pressed={mine}
+                    // "This one" beside a photograph is clear enough to look
+                    // at and useless to listen to: a screen reader or a voice
+                    // user heard two identical buttons. The visible words stay
+                    // short; the spoken ones name the product.
+                    aria-label={mine ? `Your pick: ${post.title}` : `Pick ${post.title}`}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
