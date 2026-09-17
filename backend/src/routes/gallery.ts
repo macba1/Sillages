@@ -12,6 +12,7 @@ import {
   revertGallery,
   saveGallery,
 } from '../services/gallery/galleryService.js';
+import { placementsFor } from '../services/gallery/themeDeepLink.js';
 import { supabaseGalleryStore } from '../services/gallery/galleryStore.js';
 import { supabaseEventStore } from '../services/events/eventStore.js';
 
@@ -47,7 +48,12 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     // The interface needs to know what this shop may do before offering it.
     const entitlements = await entitlementsForShop(shop);
 
-    res.json({ gallery: config, versions, storefront, entitlements });
+    // One-click placement links. Built here rather than in the browser so the
+    // extension's published UUID lives in one place and cannot drift from the
+    // version that is actually deployed.
+    const placements = placementsFor(shop.shopDomain);
+
+    res.json({ gallery: config, versions, storefront, entitlements, placements });
   } catch (err) {
     next(err);
   }

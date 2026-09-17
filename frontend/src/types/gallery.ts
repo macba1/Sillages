@@ -198,3 +198,18 @@ export interface Entitlements {
   /** Why publishing is unavailable, in words a merchant can act on. */
   reason: string | null;
 }
+
+// ── Placing the block in the theme ──────────────────────────────────────────
+
+/**
+ * A one-click theme-editor link that arrives with the gallery already inserted
+ * into a template. Built by the server so the extension's published UUID lives
+ * in one place. The merchant presses Save; nothing touches the theme before
+ * that.
+ */
+export interface Placement {
+  id: 'collection' | 'index';
+  label: string;
+  outcome: string;
+  url: string;
+}

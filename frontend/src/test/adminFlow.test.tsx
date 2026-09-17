@@ -116,6 +116,22 @@ function mockApi(overrides: {
           gallery: config,
           versions: overrides.versions ?? [],
           storefront: overrides.storefront ?? null,
+          // Shaped like the server's answer: one-click theme links, collection
+          // first, because that is the catalogue a shopper browses.
+          placements: [
+            {
+              id: 'collection',
+              label: 'Add it to my collection pages',
+              outcome: 'Every collection a shopper opens becomes the gallery, in the design you chose here.',
+              url: 'https://admin.shopify.com/store/demo/themes/current/editor?template=collection&addAppBlockId=uuid%2Fsocial-gallery&target=newAppsSection',
+            },
+            {
+              id: 'index',
+              label: 'Add it to my home page',
+              outcome: 'A gallery on the front page. Drag it above your featured products.',
+              url: 'https://admin.shopify.com/store/demo/themes/current/editor?template=index&addAppBlockId=uuid%2Fsocial-gallery&target=newAppsSection',
+            },
+          ],
         },
       };
     }
@@ -347,11 +363,27 @@ describe('C4: publish, turn off, restore', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/gallery/revert', { version: 1 }));
   });
 
-  it('explains the one-time theme step instead of leaving it to support', async () => {
+  it('places the block for the merchant instead of writing them instructions', async () => {
+    // It used to be a five-step instruction, and the collection template — the
+    // step that changes what shoppers browse — was the one buried deepest.
     mockApi();
     renderPage(<Publish />);
-    expect(await screen.findByText(/Add block/)).toBeInTheDocument();
+
+    const collection = await screen.findByRole('link', { name: /collection pages/i });
+    const href = collection.getAttribute('href') ?? '';
+    expect(href).toContain('template=collection');
+    expect(href).toContain('addAppBlockId=');
+
+    expect(screen.getByRole('link', { name: /home page/i })).toBeInTheDocument();
     expect(screen.getByText(/Your theme code is never edited/)).toBeInTheDocument();
+  });
+
+  it('offers the collection pages before the home page', async () => {
+    mockApi();
+    renderPage(<Publish />);
+
+    const links = await screen.findAllByRole('link', { name: /Open my theme/i });
+    expect(links[0].getAttribute('href')).toContain('template=collection');
   });
 });
 

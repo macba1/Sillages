@@ -110,30 +110,69 @@ export default function Publish() {
 
       <Card style={{ marginBottom: 20 }}>
         <h2 style={{ fontFamily: T.font, fontSize: 15, fontWeight: 600, color: T.ink, margin: '0 0 8px' }}>
-          Where to put it in your theme
+          Put it in your theme
         </h2>
-        <p style={{ margin: 0, fontSize: 14, color: T.body, lineHeight: 1.6 }}>
-          Open your Shopify admin → <strong>Online Store</strong> → <strong>Themes</strong> →{' '}
-          <strong>Customise</strong>, then <strong>Add block</strong> → <strong>Sillages social gallery</strong>. Your
-          theme code is never edited, and removing the block removes the gallery completely.
+        <p style={{ margin: '0 0 14px', fontSize: 14, color: T.body, lineHeight: 1.6 }}>
+          One click each. Your theme opens with the gallery already in place — press <strong>Save</strong> and it is
+          live. Your theme code is never edited, and removing the block removes the gallery completely.
         </p>
+
         {/*
-          * The collection template is the point, and it used to go unmentioned.
-          * A merchant put the block low on the home page, looked at their
-          * catalogue, and found it unchanged — because it was.
+          * This used to be a five-step instruction, and the step that mattered
+          * most — the collection template — was the one a merchant was least
+          * likely to find. A shop paying for this should not have to hunt.
           */}
-        <ol style={{ margin: '12px 0 0', paddingLeft: 20, fontSize: 14, color: T.body, lineHeight: 1.7 }}>
-          <li>
-            <strong>Your catalogue.</strong> Switch the template selector at the top to{' '}
-            <strong>Collections → Default collection</strong> and add the block there. Then hide your theme&rsquo;s own
-            product grid in that template. This is the one that changes what shoppers browse: the gallery shows
-            whichever collection they are on, in the design you chose here.
-          </li>
-          <li>
-            <strong>Your home page.</strong> Add it near the top, above your featured products, so it is the first
-            thing a visitor sees rather than something they scroll to.
-          </li>
-        </ol>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {g.placements.map((placement) => (
+            <a
+              key={placement.id}
+              href={placement.url}
+              target="_blank"
+              rel="noopener"
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 12,
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 16px',
+                borderRadius: 12,
+                border: `1px solid ${placement.id === 'collection' ? 'rgba(201,150,74,0.55)' : T.line}`,
+                background: placement.id === 'collection' ? 'rgba(201,150,74,0.08)' : T.surface,
+                textDecoration: 'none',
+                color: T.ink,
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 200 }}>
+                <span style={{ display: 'block', fontFamily: T.font, fontWeight: 600, fontSize: 14 }}>
+                  {placement.label}
+                </span>
+                <span style={{ display: 'block', fontSize: 13, color: T.muted, marginTop: 2, lineHeight: 1.5 }}>
+                  {placement.outcome}
+                </span>
+              </span>
+              <span
+                style={{
+                  fontFamily: T.font,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  padding: '9px 14px',
+                  borderRadius: 999,
+                  background: T.gold,
+                  color: T.ink,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Open my theme →
+              </span>
+            </a>
+          ))}
+        </div>
+
+        <p style={{ margin: '14px 0 0', fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+          On your collection pages the gallery arrives as its own section. To let it take the page over completely,
+          hide your theme&rsquo;s own product grid there with the eye icon — optional, and reversible in one click.
+        </p>
       </Card>
 
       <h2 style={{ fontFamily: T.font, fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 10 }}>

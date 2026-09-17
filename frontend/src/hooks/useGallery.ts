@@ -7,6 +7,7 @@ import type {
   GalleryConfig,
   GalleryPreview,
   GalleryVersion,
+  Placement,
 } from '../types/gallery';
 
 /**
@@ -39,6 +40,8 @@ export interface GalleryState {
   versions: GalleryVersion[];
   storefront: StorefrontStatus | null;
   entitlements: Entitlements | null;
+  /** One-click theme-editor links that arrive with the block already placed. */
+  placements: Placement[];
   collections: Collection[];
   catalog: CatalogStatus | null;
   preview: GalleryPreview | null;
@@ -60,6 +63,7 @@ export function useGallery(): GalleryState {
   const [versions, setVersions] = useState<GalleryVersion[]>([]);
   const [storefront, setStorefront] = useState<StorefrontStatus | null>(null);
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
+  const [placements, setPlacements] = useState<Placement[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalog, setCatalog] = useState<CatalogStatus | null>(null);
   const [preview, setPreview] = useState<GalleryPreview | null>(null);
@@ -72,6 +76,7 @@ export function useGallery(): GalleryState {
           versions: GalleryVersion[];
           storefront: StorefrontStatus | null;
           entitlements: Entitlements | null;
+          placements?: Placement[];
         }>('/api/gallery'),
         api.get<{ collections: Collection[] }>('/api/catalog/collections'),
         api.get<CatalogStatus>('/api/catalog/status'),
@@ -81,6 +86,7 @@ export function useGallery(): GalleryState {
       setVersions(galleryRes.data.versions);
       setStorefront(galleryRes.data.storefront ?? null);
       setEntitlements(galleryRes.data.entitlements ?? null);
+      setPlacements(galleryRes.data.placements ?? []);
       setCollections(collectionsRes.data.collections);
       setCatalog(catalogRes.data);
       setPreview(previewRes.data);
@@ -148,6 +154,7 @@ export function useGallery(): GalleryState {
     versions,
     storefront,
     entitlements,
+    placements,
     collections,
     catalog,
     preview,
