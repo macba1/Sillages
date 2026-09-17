@@ -36,3 +36,4 @@ backend/content-dryrun-*.png
 *.env.shopify
 .vercel
 .env*
+.gstack/

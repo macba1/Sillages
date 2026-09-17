@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../../lib/api';
 import { GalleryPage, Button, Card } from '../../components/gallery/GalleryPage';
 import { T } from '../../components/gallery/styleTokens';
+import { useGallery, onboardingProgress } from '../../hooks/useGallery';
 
 interface Plan {
   id: string;
@@ -105,6 +106,9 @@ export default function Plan() {
     }
   }
 
+  const g = useGallery();
+  const progress = onboardingProgress(g.catalog, g.config, g.preview, g.entitlements);
+
   const current = data?.subscription;
   const all = [...(data?.plans ?? []), ...upcoming];
 
@@ -114,6 +118,10 @@ export default function Plan() {
       intro="Basic includes a 14-day free trial. Billing runs through Shopify, so it appears on your Shopify invoice."
       error={error}
       loading={loading}
+      // Without this the Plan screen was the one place in the journey with no
+      // step strip and no way onward: a merchant chose a plan and was left on
+      // a pricing page with the left-hand menu as their only clue.
+      progress={progress}
     >
       {data && !data.live && (
         <Card style={{ marginBottom: 20, borderColor: 'rgba(201,150,74,0.5)' }}>

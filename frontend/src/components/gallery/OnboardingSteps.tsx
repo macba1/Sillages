@@ -20,7 +20,11 @@ const STEPS = [
 export function OnboardingSteps({ progress }: { progress: OnboardingProgress }) {
   const done = (n: number) =>
     (n === 1 && progress.catalogueReady) ||
-    (n === 2 && progress.stylePreviewed) ||
+    // Step 2 is "a collection and a look is chosen", which is its own flag.
+    // It used to read stylePreviewed, so choosing a look left step 2 unticked
+    // until the merchant also opened Preview — the strip reported a state the
+    // product was not in.
+    (n === 2 && progress.collectionChosen) ||
     (n === 3 && progress.stylePreviewed) ||
     (n === 4 && progress.planChosen) ||
     (n === 5 && progress.published);

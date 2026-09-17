@@ -1,5 +1,6 @@
 import { GalleryShell } from '../layout/GalleryShell';
 import { OnboardingSteps } from './OnboardingSteps';
+import { NextStep } from './NextStep';
 import { T } from './styleTokens';
 import type { OnboardingProgress } from '../../hooks/useGallery';
 
@@ -85,6 +86,13 @@ export function GalleryPage({
         )}
 
         {loading ? <p style={{ color: T.body, fontSize: 14 }}>Loading…</p> : children}
+
+        {/*
+          * The way forward lives at the end of the page, where a merchant
+          * finishes reading. Rendered here rather than per screen so no page
+          * can be built without one.
+          */}
+        {progress && !loading && <NextStep progress={progress} />}
       </div>
     </GalleryShell>
   );
