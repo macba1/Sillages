@@ -18,6 +18,10 @@
         "full": "Ancho completo",
         "contained": "Igual que la sección"
       }
+    },
+    "replace_catalog": {
+      "label": "Sustituir la cuadrícula del tema en las páginas de colección",
+      "info": "En una página de colección la galería muestra los mismos productos que la cuadrícula de tu tema. Déjalo activado y la galería ocupa su lugar. Desactívalo y se muestran las dos."
     }
   }
 }

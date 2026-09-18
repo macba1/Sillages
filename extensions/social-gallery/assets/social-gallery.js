@@ -963,6 +963,48 @@ function trackViewportWidth(root) {
   window.addEventListener('orientationchange', apply, { passive: true });
 }
 
+/**
+ * Stand in for the catalogue instead of sitting beside it.
+ *
+ * On a collection template the theme has already drawn its own product grid,
+ * so adding the gallery gives the shopper the same products twice and makes
+ * this read as a bolted-on widget. The section wrapping the grid is hidden —
+ * never removed — so turning Sillages off brings the catalogue straight back.
+ * Every early return in `boot` happens before this runs, so a gallery that
+ * cannot load never hides the thing it was going to replace.
+ *
+ * The selectors are the names Online Store 2.0 themes give that grid, Dawn and
+ * its descendants first. Filters and sorting go with it: they belong to the
+ * catalogue being replaced.
+ */
+const CATALOGUE_SELECTORS = [
+  '#ProductGridContainer',
+  '#CollectionProductGrid',
+  '#main-collection-product-grid',
+  '[id^="shopify-section-"][id*="main-collection-product-grid"]',
+  '[id^="shopify-section-"][id*="collection-template"]',
+  '[id^="shopify-section-"][id*="product-grid"]',
+  '.collection-grid',
+  '.collection__products',
+];
+
+function replaceThemeCatalogue(root) {
+  // Only on a collection page, and only if the merchant has not said otherwise.
+  if (!root.dataset.collection) return;
+  if (root.dataset.keepCatalog === 'true') return;
+
+  for (const selector of CATALOGUE_SELECTORS) {
+    for (const match of document.querySelectorAll(selector)) {
+      const section = match.closest('[id^="shopify-section-"]') || match;
+      // Never hide the section the gallery itself was dropped into.
+      if (section.contains(root)) continue;
+      if (section.dataset.sillagesReplaced === 'true') continue;
+      section.dataset.sillagesReplaced = 'true';
+      section.style.display = 'none';
+    }
+  }
+}
+
 async function boot(root) {
   const shop = root.dataset.shop;
   const apiBase = root.dataset.api;
@@ -1066,6 +1108,7 @@ async function boot(root) {
   skeleton.remove();
   root.appendChild(fragment);
   trackViewportWidth(root);
+  replaceThemeCatalogue(root);
   root.dataset.ready = 'true';
   observeViews(grid, posts);
 }

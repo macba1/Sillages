@@ -126,7 +126,9 @@ export default function Publish() {
         <p style={{ margin: '0 0 14px', fontSize: 14, color: T.body, lineHeight: 1.6 }}>
           {g.placements[0]?.autoPlaced
             ? 'Your theme opens with the gallery already placed. Look at it, then press Save.'
-            : 'Your theme opens on the right page. Press Add block → Sillages social gallery, then Save.'}
+            : 'Your theme opens on the right page. Press Add block → Sillages social gallery, then Save.'}{' '}
+          Shopify only puts it on your live store once you press <strong>Save</strong> in that editor — this page
+          cannot do it for you, and until you do, your shop is untouched.
         </p>
 
         {/*
@@ -187,8 +189,9 @@ export default function Publish() {
             page, above your featured products is where people will actually see it.
           </p>
           <p style={{ margin: '6px 0 0' }}>
-            Optional, and reversible in one click: hide your theme&rsquo;s own product grid on the collection page with
-            the eye icon, and the gallery becomes the page.
+            On a collection page the gallery takes your theme&rsquo;s product grid&rsquo;s place, so the same products
+            are never listed twice. Your grid is not deleted — turn Sillages off and it comes straight back. To keep
+            both, untick <strong>Replace the theme grid</strong> in the block&rsquo;s settings.
           </p>
           {/*
             * The merchant already met the red banner once. Naming it in advance

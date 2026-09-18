@@ -170,3 +170,38 @@ describe('the first impression is not the theme grid it replaces', () => {
     expect(js).not.toMatch(/setProperty\('--sg-vw', `\$\{window\.innerWidth\}/);
   });
 });
+
+describe('a collection page becomes the catalogue instead of growing a second one', () => {
+  it('hides the theme grid only after its own has drawn', () => {
+    // Every early return in boot() — no shop, a failed fetch, a gallery with
+    // nothing published — happens before this call. A gallery that cannot load
+    // must never take the merchant's catalogue down with it.
+    expect(js).toMatch(/trackViewportWidth\(root\);\n\s*replaceThemeCatalogue\(root\);\n\s*root\.dataset\.ready = 'true';/);
+  });
+
+  it('only does it where the theme drew that grid', () => {
+    // Off a collection template there is no catalogue to replace, and the
+    // gallery is an addition to the page rather than a substitution.
+    expect(js).toMatch(/function replaceThemeCatalogue[\s\S]{0,200}if \(!root\.dataset\.collection\) return;/);
+  });
+
+  it('reads the opt-out as an attribute that is present, never as a false value', () => {
+    // `false | default: true` is true in Liquid, so a checkbox the merchant
+    // unticks cannot be passed through `default` — the block prints the
+    // attribute only when it is explicitly off.
+    expect(block).toContain('{% if block.settings.replace_catalog == false %}data-keep-catalog="true"{% endif %}');
+    expect(js).toContain("if (root.dataset.keepCatalog === 'true') return;");
+  });
+
+  it('hides rather than removes, so turning Sillages off restores the catalogue', () => {
+    // Disabling the gallery makes boot() remove this container before it ever
+    // reaches the replacement, so the section is simply never hidden again.
+    expect(js).not.toMatch(/section\.remove\(\)/);
+    expect(js).toContain("section.dataset.sillagesReplaced = 'true'");
+    expect(js).toContain("section.style.display = 'none'");
+  });
+
+  it('never hides the section it was dropped into', () => {
+    expect(js).toContain('if (section.contains(root)) continue;');
+  });
+});

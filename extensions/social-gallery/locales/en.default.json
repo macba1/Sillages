@@ -18,6 +18,10 @@
         "full": "Full width",
         "contained": "Match the section around it"
       }
+    },
+    "replace_catalog": {
+      "label": "Replace the theme grid on collection pages",
+      "info": "On a collection page the gallery shows the same products your theme's grid does. Leave this on and the gallery takes its place. Turn it off and both are shown."
     }
   }
 }

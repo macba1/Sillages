@@ -212,10 +212,15 @@ describe('F5: the storefront stays within a mobile budget', () => {
    * document that rule won: a keyboard user could cross the whole gallery
    * without ever seeing where they were. Measured at ~21 KB gzipped for all
    * three files, on a module that is deferred and never blocks first paint.
+   * Raised a fourth time, by 2 KB, so a collection page can replace the
+   * theme's product grid rather than sit above a second copy of the same
+   * products. Measured against the alternative: the shopper was downloading
+   * and rendering both grids, so the page is lighter with this than without.
+   *
    * Anything that pushes past these again should be another decision.
    */
   const BUDGETS: Record<string, number> = {
-    'social-gallery.js': 40 * 1024,
+    'social-gallery.js': 42 * 1024,
     'gallery-core.js': 13 * 1024,
     'social-gallery.css': 29 * 1024,
   };

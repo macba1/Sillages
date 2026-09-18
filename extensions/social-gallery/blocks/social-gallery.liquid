@@ -24,6 +24,13 @@
     merchant's own choice.
   {%- endcomment -%}
   {% if collection.handle != blank %}data-collection="{{ collection.handle }}"{% endif %}
+  {%- comment -%}
+    Present only when the merchant has explicitly unticked the setting. A
+    checkbox that is simply unset is nil, and `nil | default: true` and
+    `false | default: true` both come back true — so the attribute says "keep",
+    never "replace", and the default survives the merchant's choice either way.
+  {%- endcomment -%}
+  {% if block.settings.replace_catalog == false %}data-keep-catalog="true"{% endif %}
   {% if block.settings.heading != blank %}data-heading="{{ block.settings.heading | escape }}"{% endif %}
   {{ block.shopify_attributes }}
 ></div>
@@ -45,6 +52,13 @@
         { "value": "full", "label": "t:settings.layout_width.options.full" },
         { "value": "contained", "label": "t:settings.layout_width.options.contained" }
       ]
+    },
+    {
+      "type": "checkbox",
+      "id": "replace_catalog",
+      "label": "t:settings.replace_catalog.label",
+      "info": "t:settings.replace_catalog.info",
+      "default": true
     },
     {
       "type": "text",
